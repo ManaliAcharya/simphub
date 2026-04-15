@@ -1,0 +1,10 @@
+{
+    "Inbound": true,
+    "Billing": true,
+    "Routing": true,
+    "Payment": true,
+    "Outbound": true,
+    "TrustAccounting": true,
+    "Reconciliation": true,
+    "Audit": true
+}

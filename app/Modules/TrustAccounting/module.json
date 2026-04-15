@@ -1,0 +1,11 @@
+{
+    "name": "TrustAccounting",
+    "alias": "trustaccounting",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\TrustAccounting\\Providers\\TrustAccountingServiceProvider"
+    ],
+    "files": []
+}

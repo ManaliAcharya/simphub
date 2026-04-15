@@ -1,0 +1,11 @@
+{
+    "name": "Reconciliation",
+    "alias": "reconciliation",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Reconciliation\\Providers\\ReconciliationServiceProvider"
+    ],
+    "files": []
+}
