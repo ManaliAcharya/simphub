@@ -23,5 +23,9 @@ class IngestInvoiceJob implements ShouldQueue
     public function handle(): void
     {
         // Invoice ingestion will normalize webhook payloads into Billing-owned records.
+        \Log::info('Webhook job started', [
+            'event' => $this->event->eventName,
+            'payload' => $this->event->payload
+        ]);
     }
 }
