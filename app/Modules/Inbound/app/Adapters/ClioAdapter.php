@@ -13,6 +13,16 @@ class ClioAdapter implements PmsSyncAdapterInterface
         return $event->source === 'clio';
     }
 
+    public function verifyWebhookSignature(Request $request): bool
+    {
+        $received = $request->header('X-Clio-Signature');
+        $expected = hash_hmac('sha256',
+            $request->getContent(),
+            config('pms.clio.webhook_secret')
+        );
+        return hash_equals($expected, $received); // constant-time comparison
+    }
+    
     public function mapInvoice(WebhookEvent $event): ?StandardInvoice
     {
         return null;

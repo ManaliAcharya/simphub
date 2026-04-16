@@ -17,4 +17,17 @@ class WebhookController extends Controller
 
         return response()->json(['accepted' => true, 'source' => $source], 202);
     }
+    public function handle(Request $request, string $pmsSource): JsonResponse
+    {
+        $adapter = $this->adapterFactory->make($pmsSource);
+
+        if (! $adapter->verifyWebhookSignature($request)) {
+            AuditLogger::log('WEBHOOK_SIGNATURE_FAILED', 'system', $pmsSource);
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        IngestInvoiceJob::dispatch($pmsSource, $request->all());
+        return response()->json(['status' => 'queued'], 202);
+    }
+
 }

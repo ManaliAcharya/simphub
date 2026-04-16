@@ -26,6 +26,14 @@ class ClioApiClient
 
     public function postWebhook(ClioConnection $connection, array $payload): Response
     {
-        return $this->authenticatedRequest($connection)->post('/api/v4/webhooks.json', $payload);
+        return $this->authenticatedRequest($connection)->post('/api/v4/webhooks', $payload);
+    }
+
+    public function fetchBill(ClioConnection $connection, string $externalInvoiceId): array
+    {
+        return $this->authenticatedRequest($connection)
+            ->get("/api/v4/bills/{$externalInvoiceId}.json")
+            ->throw()
+            ->json();
     }
 }

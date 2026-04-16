@@ -1,11 +1,11 @@
 <?php
 
-namespace Modules\Billing\Models;
+namespace Modules\Payment\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
-class Invoice extends Model
+class IdempotencyKey extends Model
 {
     use HasUuids;
 
@@ -14,8 +14,7 @@ class Invoice extends Model
     protected function casts(): array
     {
         return [
-            'raw_payload' => 'array',
-            'synced_at' => 'datetime',
+            'expires_at' => 'datetime',
         ];
     }
 }

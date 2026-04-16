@@ -10,4 +10,7 @@ interface GatewayAdapterInterface
     public function code(): string;
 
     public function charge(ChargeRequest $request): GatewayResponse;
+    public function getHostedFieldsConfig(string $mid): HostedFieldsConfig;
+    public function supportsMethod(PaymentMethod $method): bool;
+    public function getAdapterName(): string; // 'nmi' | 'fluidpay' | 'paya'
 }

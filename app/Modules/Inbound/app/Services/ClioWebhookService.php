@@ -34,11 +34,10 @@ class ClioWebhookService
         if ($response->failed()) {
             $response = $this->client->postWebhook($connection, $payload);
         }
-
         $response->throw();
 
         $data = (array) $response->json('data', []);
-
+        
         $connection->forceFill([
             'webhook_id' => Arr::get($data, 'id'),
             'webhook_url' => Arr::get($data, 'url', $callbackUrl),
