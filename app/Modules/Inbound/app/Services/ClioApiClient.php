@@ -33,7 +33,7 @@ class ClioApiClient
     {
         return $this->authenticatedRequest($connection)
             ->get("/api/v4/bills/{$externalInvoiceId}.json" , [
-                'fields' => 'id,number,total,balance,status,client{id,name},line_items{id,description,amount}'
+                'fields' => 'id,number,total,balance,client{id,name}'
             ])
             ->throw()
             ->json();
