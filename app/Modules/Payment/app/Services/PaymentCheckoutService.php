@@ -26,14 +26,9 @@ class PaymentCheckoutService
     public function details(PaymentSession $session): array
     {
         $invoice = $session->invoice()->firstOrFail();
-        $decision = $this->routing->decide(new RoutingContext(
-            merchantId: 'default',
-            amountInCents: (int) $invoice->amount_cents,
-            paymentMethod: 'CARD',
-            fundType: (string) $session->fund_type,
-            sessionId: (string) $session->id,
-            currency: (string) $invoice->currency,
-        ));
+        $decision = $this->routing->decide(
+            $this->makeRoutingContext($session, 'CARD')
+        );
 
         $hostedFields = $this->gateways->make($decision->gateway)->hostedFieldsConfig($decision->mid);
 
@@ -61,4 +56,20 @@ class PaymentCheckoutService
         ];
     }
 
+    
+
+    private function makeRoutingContext(PaymentSession $session, string $paymentMethod): RoutingContext
+    {
+        $invoice = $session->invoice()->firstOrFail();
+
+        return new RoutingContext(
+            'default',
+            (int) $invoice->amount_cents,
+            $paymentMethod,
+            (string) $session->fund_type,
+            (string) $session->id,
+            (string) $invoice->currency,
+            [],
+        );
+    }
 }
