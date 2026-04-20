@@ -35,7 +35,7 @@ class ClioApiClient
     {
         $response = $this->authenticatedRequest($connection)
             ->get("/api/v4/bills/{$externalInvoiceId}.json" , [
-                'fields' => 'id,number,total,balance,client{id,name,email}'
+                'fields' => 'id,number,total,balance,client{id,name,primary_email_address}'
             ]);
 
         if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
