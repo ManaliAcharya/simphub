@@ -26,8 +26,9 @@ class ClioInvoiceIngestionService
         $connection = $this->oauth->ensureValidAccessToken(ClioConnection::query()->first());
         $invoicePayload = $this->client->fetchBill($connection, $externalInvoiceId);
         $normalized = $this->normalizeInvoice($invoicePayload, $triggerPayload);
+        $recipientEmails = $this->extractClientEmails($invoicePayload);
 
-        $result = DB::transaction(function () use ($normalized, $invoicePayload, $triggerPayload) {
+        $result = DB::transaction(function () use ($normalized, $invoicePayload, $triggerPayload, $recipientEmails) {
             $invoice = Invoice::query()->updateOrCreate(
                 [
                     'pms_source' => 'clio',
@@ -45,6 +46,7 @@ class ClioInvoiceIngestionService
                         'trigger' => $triggerPayload,
                         'invoice' => $invoicePayload,
                     ],
+                    'recipient_emails' => $recipientEmails,
                     'synced_at' => now(),
                 ]
             );
@@ -80,13 +82,14 @@ class ClioInvoiceIngestionService
             $emailsSent = $this->paymentLinks->sendInvoiceLink(
                 $result['invoice'],
                 $result['payment_session'],
-                $this->extractClientEmails($invoicePayload)
+                $recipientEmails
             );
 
             if ($emailsSent > 0) {
                 AuditLogger::log('PAYMENT_LINK_SENT', 'payment_session', $result['payment_session']->id, [
                     'invoice_id' => $result['invoice']->id,
                     'emails_sent' => $emailsSent,
+                    'recipient_emails' => $recipientEmails,
                 ]);
             }
         }
@@ -126,13 +129,47 @@ class ClioInvoiceIngestionService
                 : null,
             'status' => strtoupper((string) (Arr::get($data, 'state') ?? 'PENDING')),
             'fund_type' => in_array($fundType, ['TRUST', 'OPERATING'], true) ? $fundType : 'OPERATING',
-            'amount_cents' => $this->toCents($total),
-            'currency' => strtoupper((string) (Arr::get($data, 'currency') ?? 'USD')),
+            'amount_cents' => $this->extractAmountInCents($data, $triggerPayload, $total),
+            'currency' => $this->extractCurrency($data, $triggerPayload, $total),
         ];
+    }
+
+    private function extractAmountInCents(array $data, array $triggerPayload, mixed $primaryAmount): int
+    {
+        foreach ([
+            $primaryAmount,
+            Arr::get($data, 'total.amount'),
+            Arr::get($data, 'total.value'),
+            Arr::get($data, 'total.amount_decimal'),
+            Arr::get($data, 'balance.amount'),
+            Arr::get($data, 'balance.value'),
+            Arr::get($data, 'balance.amount_decimal'),
+            Arr::get($triggerPayload, 'total'),
+            Arr::get($triggerPayload, 'amount'),
+            Arr::get($triggerPayload, 'amount_cents'),
+        ] as $candidate) {
+            $cents = $this->toCents($candidate);
+
+            if ($cents > 0) {
+                return $cents;
+            }
+        }
+
+        return 0;
     }
 
     private function toCents(mixed $amount): int
     {
+        if (is_array($amount)) {
+            foreach (['amount_cents', 'cents', 'amount', 'value', 'amount_decimal'] as $key) {
+                if (array_key_exists($key, $amount)) {
+                    return $this->toCents($amount[$key]);
+                }
+            }
+
+            return 0;
+        }
+
         if (is_int($amount)) {
             return $amount;
         }
@@ -142,6 +179,23 @@ class ClioInvoiceIngestionService
         }
 
         return 0;
+    }
+
+    private function extractCurrency(array $data, array $triggerPayload, mixed $primaryAmount): string
+    {
+        foreach ([
+            Arr::get($data, 'currency'),
+            Arr::get($data, 'total.currency'),
+            Arr::get($data, 'balance.currency'),
+            is_array($primaryAmount) ? ($primaryAmount['currency'] ?? null) : null,
+            Arr::get($triggerPayload, 'currency'),
+        ] as $candidate) {
+            if (is_string($candidate) && trim($candidate) !== '') {
+                return strtoupper(trim($candidate));
+            }
+        }
+
+        return 'USD';
     }
 
     private function extractClientEmails(array $invoicePayload): array

@@ -15,6 +15,7 @@ class Invoice extends Model
     {
         return [
             'raw_payload' => 'array',
+            'recipient_emails' => 'array',
             'synced_at' => 'datetime',
         ];
     }
