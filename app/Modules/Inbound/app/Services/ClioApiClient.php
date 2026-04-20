@@ -4,7 +4,9 @@ namespace Modules\Inbound\Services;
 
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Modules\Inbound\Models\ClioConnection;
 
 class ClioApiClient
@@ -31,11 +33,21 @@ class ClioApiClient
 
     public function fetchBill(ClioConnection $connection, string $externalInvoiceId): array
     {
-        return $this->authenticatedRequest($connection)
+        $response = $this->authenticatedRequest($connection)
             ->get("/api/v4/bills/{$externalInvoiceId}.json" , [
                 'fields' => 'id,number,total,balance,client{id,name,email}'
-            ])
-            ->throw()
-            ->json();
+            ]);
+
+        if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
+            Log::warning('Clio bill fetch rejected requested fields, retrying without field filter.', [
+                'external_invoice_id' => $externalInvoiceId,
+                'error' => $response->json(),
+            ]);
+
+            $response = $this->authenticatedRequest($connection)
+                ->get("/api/v4/bills/{$externalInvoiceId}.json");
+        }
+
+        return $response->throw()->json();
     }
 }
