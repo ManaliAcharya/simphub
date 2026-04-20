@@ -1,11 +1,9 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Payment\Http\Controllers\PaymentSessionController;
 
 Route::prefix('v1/payment')->name('payment.')->group(function (): void {
-    // API endpoints can be added here for SPA or hosted-fields integrations.
+    Route::get('/sessions/{session}', [PaymentSessionController::class, 'show'])->name('sessions.show');
+    Route::post('/sessions/{session}/submit', [PaymentSessionController::class, 'submit'])->name('sessions.submit');
 });
-/*Route::middleware(['throttle:payment_submit'])->group(function () {
-    Route::post('/pay/submit', PaymentSubmitController::class);
-});
-*/

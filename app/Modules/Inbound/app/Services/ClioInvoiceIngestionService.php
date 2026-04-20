@@ -9,6 +9,7 @@ use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Services\PaymentSessionService;
 use Modules\Inbound\Models\ClioConnection;
+use Modules\Payment\Services\PaymentLinkService;
 use RuntimeException;
 
 class ClioInvoiceIngestionService
@@ -17,6 +18,7 @@ class ClioInvoiceIngestionService
         private readonly ClioApiClient $client,
         private readonly ClioOAuthService $oauth,
         private readonly PaymentSessionService $paymentSessions,
+        private readonly PaymentLinkService $paymentLinks,
     ) {}
 
     public function ingest(string $externalInvoiceId, array $triggerPayload = []): array
@@ -25,7 +27,7 @@ class ClioInvoiceIngestionService
         $invoicePayload = $this->client->fetchBill($connection, $externalInvoiceId);
         $normalized = $this->normalizeInvoice($invoicePayload, $triggerPayload);
 
-        return DB::transaction(function () use ($normalized, $invoicePayload, $triggerPayload) {
+        $result = DB::transaction(function () use ($normalized, $invoicePayload, $triggerPayload) {
             $invoice = Invoice::query()->updateOrCreate(
                 [
                     'pms_source' => 'clio',
@@ -52,8 +54,11 @@ class ClioInvoiceIngestionService
                 ->latest('created_at')
                 ->first();
 
+            $createdSession = false;
+
             if (! $session) {
                 $session = $this->paymentSessions->create($invoice);
+                $createdSession = true;
             }
 
             AuditLogger::log('INVOICE_RECEIVED', 'invoice', $invoice->id, [
@@ -65,8 +70,30 @@ class ClioInvoiceIngestionService
             return [
                 'invoice' => $invoice->fresh(),
                 'payment_session' => $session->fresh(),
+                'created_session' => $createdSession,
             ];
         });
+
+        $emailsSent = 0;
+
+        if ($result['created_session']) {
+            $emailsSent = $this->paymentLinks->sendInvoiceLink(
+                $result['invoice'],
+                $result['payment_session'],
+                $this->extractClientEmails($invoicePayload)
+            );
+
+            if ($emailsSent > 0) {
+                AuditLogger::log('PAYMENT_LINK_SENT', 'payment_session', $result['payment_session']->id, [
+                    'invoice_id' => $result['invoice']->id,
+                    'emails_sent' => $emailsSent,
+                ]);
+            }
+        }
+
+        $result['emails_sent'] = $emailsSent;
+
+        return $result;
     }
 
     private function normalizeInvoice(array $invoicePayload, array $triggerPayload): array
@@ -115,5 +142,23 @@ class ClioInvoiceIngestionService
         }
 
         return 0;
+    }
+
+    private function extractClientEmails(array $invoicePayload): array
+    {
+        $data = (array) Arr::get($invoicePayload, 'data', []);
+        $emails = [
+            Arr::get($data, 'client.email'),
+            Arr::get($data, 'client.primary_email_address'),
+        ];
+
+        foreach ((array) Arr::get($data, 'client.emails', []) as $email) {
+            $emails[] = is_array($email) ? ($email['address'] ?? null) : $email;
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn ($email) => is_string($email) ? trim($email) : null,
+            $emails
+        ))));
     }
 }

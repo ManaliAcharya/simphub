@@ -33,6 +33,8 @@ class InvoiceIngestionController extends Controller
             'payment_session_id' => $session->id,
             'idempotency_key' => $session->idempotency_key,
             'payment_link_token' => $session->hosted_url_token,
+            'payment_link_url' => route('payment.page.show', ['session' => $session->hosted_url_token]),
+            'emails_sent' => $result['emails_sent'] ?? 0,
         ], 202);
     }
 }

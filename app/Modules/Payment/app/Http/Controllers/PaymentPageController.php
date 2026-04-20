@@ -2,16 +2,15 @@
 
 namespace Modules\Payment\Http\Controllers;
 
-use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
+use Illuminate\View\View;
 
 class PaymentPageController extends Controller
 {
-    public function show(string $session): JsonResponse
+    public function show(string $session): View
     {
-        return response()->json([
-            'session' => $session,
-            'message' => 'Payment page placeholder.',
+        return view('payment::checkout', [
+            'sessionToken' => $session,
         ]);
     }
 }

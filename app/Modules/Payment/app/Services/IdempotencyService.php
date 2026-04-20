@@ -2,6 +2,11 @@
 
 namespace Modules\Payment\Services;
 
+use Illuminate\Support\Facades\DB;
+use Modules\Billing\Models\Transaction;
+use Modules\Payment\Models\IdempotencyKey;
+use RuntimeException;
+
 class IdempotencyService
 {
     public function claim(string $key): bool
@@ -9,37 +14,46 @@ class IdempotencyService
         return $key !== '';
     }
 
-    // Returns existing transaction if already completed, null if safe to proceed
-    // Throws DuplicateRequestException if a concurrent attempt is in flight
     public function acquireLock(string $key): ?Transaction
     {
         return DB::transaction(function () use ($key) {
-            $record = IdempotencyKey::where('key', $key)
-                ->lockForUpdate()->first();
+            $record = IdempotencyKey::query()
+                ->where('key', $key)
+                ->lockForUpdate()
+                ->first();
 
             if (! $record) {
-                throw new IdempotencyKeyNotFoundException($key);
+                throw new RuntimeException("Missing idempotency key [{$key}].");
             }
 
             if ($record->response_status === 'COMPLETED') {
-                return $record->transaction; // cached result — no re-charge
+                return $record->transaction_id
+                    ? Transaction::query()->find($record->transaction_id)
+                    : null;
             }
 
             if ($record->response_status === 'IN_FLIGHT') {
-                throw new DuplicateRequestException(); // concurrent retry — 409
+                throw new RuntimeException('Payment is already being processed for this session.');
             }
 
             $record->update(['response_status' => 'IN_FLIGHT']);
-            return null; // safe to proceed
+
+            return null;
         });
     }
 
-    public function complete(string $key, Transaction $txn): void
+    public function complete(string $key, Transaction $transaction): void
     {
-        IdempotencyKey::where('key', $key)->update([
+        IdempotencyKey::query()->where('key', $key)->update([
             'response_status' => 'COMPLETED',
-            'transaction_id'  => $txn->id,
+            'transaction_id' => $transaction->id,
         ]);
     }
 
+    public function fail(string $key): void
+    {
+        IdempotencyKey::query()->where('key', $key)->update([
+            'response_status' => 'FAILED',
+        ]);
+    }
 }
