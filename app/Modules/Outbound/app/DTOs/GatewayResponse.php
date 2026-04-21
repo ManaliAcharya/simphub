@@ -8,16 +8,17 @@ readonly class GatewayResponse
         public bool $approved,
         public ?string $transactionReference = null,
         public ?string $message = null,
+        public ?string $gatewayToken = null,
         public array $raw = [],
     ) {}
 
-    public static function approved(string $transactionReference, array $raw = []): self
+    public static function approved(string $transactionReference, ?string $gatewayToken = null, array $raw = []): self
     {
-        return new self(true, $transactionReference, null, $raw);
+        return new self(true, $transactionReference, null, $gatewayToken, $raw);
     }
 
-    public static function declined(string $message, array $raw = []): self
+    public static function declined(string $message, ?string $gatewayToken = null, array $raw = []): self
     {
-        return new self(false, null, $message, $raw);
+        return new self(false, null, $message, $gatewayToken, $raw);
     }
 }
