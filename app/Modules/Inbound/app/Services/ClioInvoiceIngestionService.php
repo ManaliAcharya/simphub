@@ -23,18 +23,21 @@ class ClioInvoiceIngestionService
 
     public function ingest(string $externalInvoiceId, array $triggerPayload = []): array
     {
-        $connection = $this->oauth->ensureValidAccessToken(ClioConnection::query()->first());
+        $pmsClientId = $this->resolvePmsClientId($triggerPayload);
+        $connection = $this->oauth->ensureValidAccessToken($this->resolveConnection($pmsClientId));
         $invoicePayload = $this->client->fetchBill($connection, $externalInvoiceId);
         $normalized = $this->normalizeInvoice($invoicePayload, $triggerPayload);
         $recipientEmails = $this->extractClientEmails($invoicePayload);
 
-        $result = DB::transaction(function () use ($normalized, $invoicePayload, $triggerPayload, $recipientEmails) {
+        $result = DB::transaction(function () use ($normalized, $invoicePayload, $triggerPayload, $recipientEmails, $pmsClientId) {
             $invoice = Invoice::query()->updateOrCreate(
                 [
                     'pms_source' => 'clio',
+                    'pms_client_id' => $pmsClientId,
                     'external_invoice_id' => $normalized['external_invoice_id'],
                 ],
                 [
+                    'pms_client_id' => $pmsClientId,
                     'external_client_id' => $normalized['external_client_id'],
                     'external_matter_id' => $normalized['external_matter_id'],
                     'status' => $normalized['status'],
@@ -65,6 +68,7 @@ class ClioInvoiceIngestionService
 
             AuditLogger::log('INVOICE_RECEIVED', 'invoice', $invoice->id, [
                 'pms_source' => 'clio',
+                'pms_client_id' => $pmsClientId,
                 'external_invoice_id' => $invoice->external_invoice_id,
                 'payment_session_id' => $session->id,
             ]);
@@ -85,12 +89,13 @@ class ClioInvoiceIngestionService
                 $recipientEmails
             );
 
-            if ($emailsSent > 0) {
-                AuditLogger::log('PAYMENT_LINK_SENT', 'payment_session', $result['payment_session']->id, [
-                    'invoice_id' => $result['invoice']->id,
-                    'emails_sent' => $emailsSent,
-                    'recipient_emails' => $recipientEmails,
-                ]);
+                if ($emailsSent > 0) {
+                    AuditLogger::log('PAYMENT_LINK_SENT', 'payment_session', $result['payment_session']->id, [
+                        'invoice_id' => $result['invoice']->id,
+                        'pms_client_id' => $pmsClientId,
+                        'emails_sent' => $emailsSent,
+                        'recipient_emails' => $recipientEmails,
+                    ]);
             }
         }
 
@@ -214,5 +219,34 @@ class ClioInvoiceIngestionService
             static fn ($email) => is_string($email) ? trim($email) : null,
             $emails
         ))));
+    }
+
+    private function resolvePmsClientId(array $triggerPayload): string
+    {
+        $pmsClientId = (string) (
+            $triggerPayload['pms_client_id']
+            ?? data_get($triggerPayload, 'meta.pms_client_id')
+            ?? ''
+        );
+
+        if ($pmsClientId === '') {
+            throw new RuntimeException('PMS client identifier is required for Clio invoice ingestion.');
+        }
+
+        return $pmsClientId;
+    }
+
+    private function resolveConnection(string $pmsClientId): ClioConnection
+    {
+        $connection = ClioConnection::query()
+            ->where('provider', 'clio')
+            ->where('pms_client_id', $pmsClientId)
+            ->first();
+
+        if (! $connection) {
+            throw new RuntimeException("Unknown Clio PMS client identifier [{$pmsClientId}].");
+        }
+
+        return $connection;
     }
 }

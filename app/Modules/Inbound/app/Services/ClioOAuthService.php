@@ -5,6 +5,7 @@ namespace Modules\Inbound\Services;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Modules\Inbound\Models\ClioConnection;
 use RuntimeException;
 
@@ -57,10 +58,19 @@ class ClioOAuthService
 
     public function ensureValidAccessToken(?ClioConnection $connection = null): ClioConnection
     {
-        $connection ??= ClioConnection::query()->first();
-
         if (! $connection) {
-            throw new RuntimeException('No Clio connection found. Complete the OAuth flow first.');
+            $connections = ClioConnection::query()
+                ->where('provider', 'clio')
+                ->orderByDesc('updated_at')
+                ->get();
+
+            if ($connections->count() === 1) {
+                $connection = $connections->first();
+            } elseif ($connections->isEmpty()) {
+                throw new RuntimeException('No Clio connection found. Complete the OAuth flow first.');
+            } else {
+                throw new RuntimeException('Multiple Clio connections found. Provide a PMS client identifier.');
+            }
         }
 
         if ($connection->token_expires_at && $connection->token_expires_at->subMinutes(2)->isPast()) {
@@ -89,10 +99,14 @@ class ClioOAuthService
 
     private function persistTokens(array $payload, ?ClioConnection $connection = null): ClioConnection
     {
-        $connection ??= ClioConnection::query()->firstOrNew(['provider' => 'clio']);
+        $connection ??= new ClioConnection([
+            'provider' => 'clio',
+            'pms_client_id' => (string) Str::uuid(),
+        ]);
 
         $connection->fill([
             'provider' => 'clio',
+            'pms_client_id' => $connection->pms_client_id ?: (string) Str::uuid(),
             'access_token' => $payload['access_token'] ?? null,
             'refresh_token' => $payload['refresh_token'] ?? $connection->refresh_token,
             'token_expires_at' => isset($payload['expires_in'])

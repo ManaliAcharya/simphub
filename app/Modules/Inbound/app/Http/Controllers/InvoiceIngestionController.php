@@ -5,14 +5,13 @@ namespace Modules\Inbound\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\Inbound\Services\ClioInvoiceIngestionService;
+use Modules\Inbound\Services\InboundInvoiceProcessor;
+use RuntimeException;
 
 class InvoiceIngestionController extends Controller
 {
-    public function store(Request $request, string $source, ClioInvoiceIngestionService $clio): JsonResponse
+    public function store(Request $request, string $source, InboundInvoiceProcessor $processor): JsonResponse
     {
-        abort_unless($source === 'clio', 404);
-
         $externalInvoiceId = (string) (
             $request->input('external_invoice_id')
             ?? $request->input('invoice_id')
@@ -21,8 +20,20 @@ class InvoiceIngestionController extends Controller
         );
 
         abort_if($externalInvoiceId === '', 422, 'Invoice id is required.');
+        abort_if(
+            (string) ($request->input('pms_client_id') ?? '') === '',
+            422,
+            'PMS client identifier is required.'
+        );
 
-        $result = $clio->ingest($externalInvoiceId, $request->all());
+        try {
+            $result = $processor->process($source, $externalInvoiceId, $request->all());
+        } catch (RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
         $invoice = $result['invoice'];
         $session = $result['payment_session'];
 
@@ -30,6 +41,7 @@ class InvoiceIngestionController extends Controller
             'status' => 'ok',
             'invoice_id' => $invoice->id,
             'external_invoice_id' => $invoice->external_invoice_id,
+            'pms_client_id' => $invoice->pms_client_id,
             'payment_session_id' => $session->id,
             'idempotency_key' => $session->idempotency_key,
             'payment_link_token' => $session->hosted_url_token,

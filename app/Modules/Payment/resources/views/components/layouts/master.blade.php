@@ -77,6 +77,11 @@
             gap: 16px;
             flex-wrap: wrap;
         }
+        .gateway-options {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
         .primary-button {
             border: 0;
             border-radius: 999px;

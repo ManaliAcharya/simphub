@@ -26,7 +26,7 @@
                     <p class="step">Step 1</p>
                     <h2>Choose how you want to pay</h2>
                 </div>
-                <button id="pay-card-button" class="primary-button" type="button">Pay by card</button>
+                <div id="gateway-options" class="gateway-options"></div>
             </div>
 
             <div id="card-panel" class="card-panel hidden">
@@ -71,14 +71,14 @@
     </script>
     <script>
         const sessionToken = window.paymentSessionToken;
-        const state = { details: null, token: '' };
+        const state = { details: null, token: '', selectedOption: null };
         const els = {
             title: document.getElementById('invoice-title'),
             copy: document.getElementById('invoice-copy'),
             amount: document.getElementById('invoice-amount'),
             fundType: document.getElementById('invoice-fund-type'),
             status: document.getElementById('session-status'),
-            payCardButton: document.getElementById('pay-card-button'),
+            gatewayOptions: document.getElementById('gateway-options'),
             cardPanel: document.getElementById('card-panel'),
             hostedFields: document.getElementById('hosted-fields'),
             mockTokenPanel: document.getElementById('mock-token-panel'),
@@ -99,15 +99,47 @@
             els.amount.textContent = `${amount} ${details.invoice.currency}`;
             els.fundType.textContent = details.invoice.fund_type;
             els.status.textContent = details.session.status;
-            els.gatewayMode.textContent = details.hosted_fields.metadata.mode === 'collectjs'
-                ? 'Gateway-hosted Collect.js fields are ready.'
-                : 'Gateway hosted fields are not configured, so test mode is enabled.';
+            renderOptions(details.payment_options || []);
         }
 
         function enableSubmit(token) {
             state.token = token;
-            els.submitButton.disabled = !token;
+            els.submitButton.disabled = !token || !state.selectedOption;
             els.submitStatus.textContent = token ? 'Gateway token ready.' : '';
+        }
+
+        function renderOptions(options) {
+            els.gatewayOptions.innerHTML = '';
+
+            options.forEach((option, index) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'primary-button';
+                button.textContent = `Pay with ${option.gateway.toUpperCase()}`;
+                button.addEventListener('click', () => selectOption(option, button));
+                els.gatewayOptions.appendChild(button);
+
+                if (index === 0) {
+                    selectOption(option, button);
+                }
+            });
+        }
+
+        function selectOption(option, button) {
+            state.selectedOption = option;
+            Array.from(els.gatewayOptions.children).forEach((child) => {
+                child.style.outline = '';
+            });
+            if (button) {
+                button.style.outline = '3px solid rgba(239, 131, 84, 0.4)';
+            }
+
+            els.gatewayMode.textContent = option.hosted_fields.metadata.mode === 'collectjs'
+                ? `Gateway-hosted Collect.js fields are ready for ${option.gateway.toUpperCase()}.`
+                : `${option.gateway.toUpperCase()} is in test mode, so a gateway token can be entered directly.`;
+
+            setupCardEntry();
+            enableSubmit(state.token);
         }
 
         function loadScript(src) {
@@ -123,12 +155,14 @@
 
         async function setupCardEntry() {
             els.cardPanel.classList.remove('hidden');
-            if (!state.details) return;
-            const mode = state.details.hosted_fields.metadata.mode;
+            if (!state.selectedOption) return;
+            const mode = state.selectedOption.hosted_fields.metadata.mode;
+            els.hostedFields.classList.add('hidden');
+            els.mockTokenPanel.classList.add('hidden');
 
-            if (mode === 'collectjs' && state.details.hosted_fields.fields.script_url) {
+            if (mode === 'collectjs' && state.selectedOption.hosted_fields.fields.script_url) {
                 try {
-                    await loadScript(state.details.hosted_fields.fields.script_url);
+                    await loadScript(state.selectedOption.hosted_fields.fields.script_url);
                 } catch (error) {
                 }
             }
@@ -140,10 +174,6 @@
 
             els.mockTokenPanel.classList.remove('hidden');
         }
-
-        els.payCardButton.addEventListener('click', () => {
-            setupCardEntry();
-        });
 
         els.tokenInput.addEventListener('input', (event) => {
             enableSubmit(event.target.value.trim());
@@ -168,6 +198,7 @@
                 },
                 body: JSON.stringify({
                     token: state.token,
+                    routing_rule_id: state.selectedOption.routing_rule_id,
                     payment_method: 'CARD',
                 }),
             });

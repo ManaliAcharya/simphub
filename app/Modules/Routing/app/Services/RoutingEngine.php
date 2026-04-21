@@ -11,7 +11,18 @@ class RoutingEngine
 {
     public function decide(RoutingContext $context): RoutingDecision
     {
-        $rule = RoutingRule::query()
+        $candidates = $this->candidates($context);
+
+        if ($candidates->isEmpty()) {
+            throw new RuntimeException('No routing rule available for this payment session.');
+        }
+
+        return $candidates->first();
+    }
+
+    public function candidates(RoutingContext $context)
+    {
+        return RoutingRule::query()
             ->where('is_active', true)
             ->where('merchant_id', $context->merchantId)
             ->whereIn('payment_method', [$context->paymentMethod, 'ANY'])
@@ -23,12 +34,24 @@ class RoutingEngine
             })
             ->orderBy('is_fallback')
             ->orderBy('priority')
-            ->first();
+            ->get()
+            ->map(fn (RoutingRule $rule) => $this->mapRuleToDecision($rule));
+    }
 
-        if (! $rule) {
-            throw new RuntimeException('No routing rule available for this payment session.');
+    public function findCandidate(RoutingContext $context, string $routingRuleId): RoutingDecision
+    {
+        $decision = $this->candidates($context)
+            ->first(fn (RoutingDecision $candidate) => $candidate->routingRuleId === $routingRuleId);
+
+        if (! $decision) {
+            throw new RuntimeException('Selected routing rule is not available for this payment session.');
         }
 
+        return $decision;
+    }
+
+    private function mapRuleToDecision(RoutingRule $rule): RoutingDecision
+    {
         return new RoutingDecision(
             gateway: (string) $rule->gateway,
             mid: (string) $rule->mid,

@@ -19,7 +19,7 @@ class ClioWebhookService
 
     public function registerInvoiceCreatedWebhook(ClioConnection $connection): array
     {
-        $callbackUrl = $this->callbackUrl();
+        $callbackUrl = $this->callbackUrl($connection);
         $expiresAt = CarbonImmutable::now()->addDays(max(1, (int) config('services.clio.webhook_expiry_days', 30)));
         $payload = [
             'url' => $callbackUrl,
@@ -40,7 +40,7 @@ class ClioWebhookService
         
         $connection->forceFill([
             'webhook_id' => Arr::get($data, 'id'),
-            'webhook_url' => Arr::get($data, 'url', $callbackUrl),
+            'webhook_url' => $callbackUrl,
             'webhook_expires_at' => Arr::get($data, 'expires_at', $expiresAt->toIso8601String()),
             'last_error' => null,
             'meta' => [
@@ -53,10 +53,11 @@ class ClioWebhookService
 
     public function handleIncoming(Request $request): Response
     {
+        $pmsClientId = (string) $request->query('pms_client_id', '');
         $secret = $request->header('X-Hook-Secret');
 
         if (is_string($secret) && $secret !== '') {
-            $connection = ClioConnection::query()->firstOrFail();
+            $connection = $this->findConnectionOrFail($pmsClientId);
             $connection->forceFill([
                 'webhook_secret' => $secret,
                 'last_error' => null,
@@ -65,7 +66,7 @@ class ClioWebhookService
             return response('', 200, ['X-Hook-Secret' => $secret]);
         }
 
-        $connection = ClioConnection::query()->first();
+        $connection = $this->findConnection($pmsClientId);
 
         if (! $connection?->webhook_secret) {
             return response()->json(['message' => 'Clio webhook secret has not been initialized.'], 409);
@@ -85,18 +86,20 @@ class ClioWebhookService
         ) {
             return response()->json(['message' => 'Invalid Clio webhook signature.'], 401);
         }
-
+        
         IngestInvoiceJob::dispatch(new WebhookEvent(
             source: 'clio',
             eventName: (string) Arr::get($request->json()->all(), 'data.event', 'created'),
-            payload: $request->json()->all(),
+            payload: array_merge($request->json()->all(), [
+                'pms_client_id' => $connection->pms_client_id,
+            ]),
             headers: $request->headers->all(),
         ));
 
         return response()->json(['accepted' => true], 202);
     }
 
-    private function callbackUrl(): string
+    private function callbackUrl(ClioConnection $connection): string
     {
         $url = config('services.clio.webhook_callback_url');
 
@@ -104,6 +107,29 @@ class ClioWebhookService
             throw new RuntimeException('Missing Clio webhook callback URL.');
         }
 
-        return $url;
+        return $url.(str_contains($url, '?') ? '&' : '?').'pms_client_id='.$connection->pms_client_id;
+    }
+
+    private function findConnection(string $pmsClientId): ?ClioConnection
+    {
+        if ($pmsClientId === '') {
+            return null;
+        }
+
+        return ClioConnection::query()
+            ->where('provider', 'clio')
+            ->where('pms_client_id', $pmsClientId)
+            ->first();
+    }
+
+    private function findConnectionOrFail(string $pmsClientId): ClioConnection
+    {
+        $connection = $this->findConnection($pmsClientId);
+
+        if (! $connection) {
+            throw new RuntimeException('Unknown PMS client identifier for Clio webhook.');
+        }
+
+        return $connection;
     }
 }
