@@ -5,9 +5,7 @@ namespace Modules\Inbound\Services;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
-use Modules\Inbound\Jobs\IngestInvoiceJob;
 use Modules\Inbound\Models\ClioConnection;
-use Modules\Inbound\DTOs\WebhookEvent;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -15,6 +13,7 @@ class ClioWebhookService
 {
     public function __construct(
         private readonly ClioApiClient $client,
+        private readonly InternalInboundApiCaller $inboundApi,
     ) {}
 
     public function registerInvoiceCreatedWebhook(ClioConnection $connection): array
@@ -87,14 +86,23 @@ class ClioWebhookService
             return response()->json(['message' => 'Invalid Clio webhook signature.'], 401);
         }
         
-        IngestInvoiceJob::dispatch(new WebhookEvent(
-            source: 'clio',
-            eventName: (string) Arr::get($request->json()->all(), 'data.event', 'created'),
-            payload: array_merge($request->json()->all(), [
-                'pms_client_id' => $connection->pms_client_id,
-            ]),
-            headers: $request->headers->all(),
-        ));
+        $payloadData = $request->json()->all();
+        $invoiceId = (string) (
+            Arr::get($payloadData, 'data.id')
+            ?? Arr::get($payloadData, 'data.bill.id')
+            ?? Arr::get($payloadData, 'id')
+        );
+
+        if ($invoiceId === '') {
+            return response()->json(['message' => 'Webhook payload does not contain an invoice id.'], 422);
+        }
+
+        $this->inboundApi->callInvoiceIngestion('clio', array_merge($payloadData, [
+            'invoice_id' => $invoiceId,
+            'pms_client_id' => $connection->pms_client_id,
+            'event_name' => (string) Arr::get($payloadData, 'data.event', 'created'),
+            'headers' => $request->headers->all(),
+        ]));
 
         return response()->json(['accepted' => true], 202);
     }
