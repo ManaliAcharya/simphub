@@ -6,6 +6,8 @@ readonly class RoutingDecision
 {
     public function __construct(
         public string $gateway,
+        public string $mid,
+        public string $routingRuleId,
         public array $ruleMatches = [],
     ) {}
 }
