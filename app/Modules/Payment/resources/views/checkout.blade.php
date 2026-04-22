@@ -2,16 +2,12 @@
     <div class="shell">
         <section class="panel hero">
             <p class="eyebrow">Secure Invoice Payment</p>
-            <h1 id="invoice-title">Loading invoice...</h1>
+            <h2 id="invoice-title">Loading invoice...</h2>
             <p id="invoice-copy">We are preparing your secure payment session.</p>
             <div class="summary">
                 <div>
                     <span>Amount</span>
                     <strong id="invoice-amount">--</strong>
-                </div>
-                <div>
-                    <span>Fund type</span>
-                    <strong id="invoice-fund-type">--</strong>
                 </div>
                 <div>
                     <span>Status</span>
@@ -34,7 +30,7 @@
                 <h3>Enter card details in the secure gateway fields</h3>
                 <p id="gateway-mode" class="muted"></p>
 
-                <div id="hosted-fields" class="hosted-fields hidden">
+                <!-- <div id="hosted-fields" class="hosted-fields hidden">
                     <div class="field">
                         <label>Card number</label>
                         <div id="ccnumber"></div>
@@ -61,7 +57,7 @@
                 <div class="actions">
                     <button id="submit-button" class="primary-button" type="button" disabled>Submit payment</button>
                     <span id="submit-status" class="muted"></span>
-                </div>
+                </div> -->
             </div>
         </section>
     </div>
@@ -76,13 +72,13 @@
             title: document.getElementById('invoice-title'),
             copy: document.getElementById('invoice-copy'),
             amount: document.getElementById('invoice-amount'),
-            fundType: document.getElementById('invoice-fund-type'),
+            //fundType: document.getElementById('invoice-fund-type'),
             status: document.getElementById('session-status'),
             gatewayOptions: document.getElementById('gateway-options'),
             cardPanel: document.getElementById('card-panel'),
             hostedFields: document.getElementById('hosted-fields'),
             mockTokenPanel: document.getElementById('mock-token-panel'),
-            tokenInput: document.getElementById('token-input'),
+            //tokenInput: document.getElementById('token-input'),
             submitButton: document.getElementById('submit-button'),
             submitStatus: document.getElementById('submit-status'),
             gatewayMode: document.getElementById('gateway-mode'),
@@ -97,7 +93,7 @@
             els.title.textContent = `Invoice ${details.invoice.external_invoice_id}`;
             els.copy.textContent = 'Review the invoice details below and continue to the secure card form.';
             els.amount.textContent = `${amount} ${details.invoice.currency}`;
-            els.fundType.textContent = details.invoice.fund_type;
+            //els.fundType.textContent = details.invoice.fund_type;
             els.status.textContent = details.session.status;
             renderOptions(details.payment_options || []);
         }
@@ -138,8 +134,8 @@
                 ? `Gateway-hosted Collect.js fields are ready for ${option.gateway.toUpperCase()}.`
                 : `${option.gateway.toUpperCase()} is in test mode, so a gateway token can be entered directly.`;
 
-            setupCardEntry();
-            enableSubmit(state.token);
+            //setupCardEntry();
+            //enableSubmit(state.token);
         }
 
         function loadScript(src) {
@@ -175,17 +171,17 @@
             els.mockTokenPanel.classList.remove('hidden');
         }
 
-        els.tokenInput.addEventListener('input', (event) => {
+        /*els.tokenInput.addEventListener('input', (event) => {
             enableSubmit(event.target.value.trim());
-        });
+        });*/
 
-        els.tokenizeButton.addEventListener('click', () => {
+        /*els.tokenizeButton.addEventListener('click', () => {
             if (window.CollectJS && typeof window.CollectJS.startPaymentRequest === 'function') {
                 window.CollectJS.startPaymentRequest();
             }
-        });
+        });*/
 
-        els.submitButton.addEventListener('click', async () => {
+        /*els.submitButton.addEventListener('click', async () => {
             if (!state.token) return;
             els.submitButton.disabled = true;
             els.submitStatus.textContent = 'Submitting payment...';
@@ -213,7 +209,7 @@
 
             els.submitStatus.textContent = `Payment approved. Gateway reference: ${payload.gateway_txn_id}`;
             els.status.textContent = 'COMPLETED';
-        });
+        });*/
 
         loadDetails().catch(() => {
             els.title.textContent = 'Unable to load payment session';

@@ -218,7 +218,7 @@
             </div>
         </section>
 
-        <section class="grid">
+        <!-- <section class="grid">
             <article class="card">
                 <h2>Connection Status</h2>
                 <p>
@@ -249,7 +249,7 @@
                 </dl>
             </article>
 
-            <!-- <article class="card">
+            <article class="card">
                 <h2>Clio App Setup</h2>
                 <dl class="kv">
                     <div>
@@ -265,18 +265,8 @@
                         <dd><code>{{ $connectUrl }}</code></dd>
                     </div>
                 </dl>
-            </article> -->
-
-            <article class="card">
-                <h2>Webhook setup</h2>
-                <dl class="kv">
-                    <div>
-                        <dt>Webhook Target URL</dt>
-                        <dd><code>{{ $webhookUrl }}</code></dd>
-                    </div>
-                </dl>
             </article>
-        </section>
+        </section> -->
     </main>
 </body>
 </html>
