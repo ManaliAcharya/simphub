@@ -1,0 +1,27 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('clients', function (Blueprint $table): void {
+            $table->uuid('id')->primary();
+            $table->uuid('pms_client_id')->unique();
+            $table->string('client_name');
+            $table->string('client_pms', 50);
+            $table->boolean('webhook_flow_enabled')->default(false);
+            $table->boolean('call_api_to_pms')->default(false);
+            $table->boolean('client_calls_our_api')->default(false);
+            $table->timestamps();
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('clients');
+    }
+};

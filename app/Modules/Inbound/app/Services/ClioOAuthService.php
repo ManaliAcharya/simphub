@@ -5,23 +5,23 @@ namespace Modules\Inbound\Services;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
+use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClioConnection;
 use RuntimeException;
 
 class ClioOAuthService
 {
-    public function authorizationUrl(): string
+    public function authorizationUrl(string $pmsClientId): string
     {
         return config('services.clio.base_url').'/oauth/authorize?'.http_build_query([
             'response_type' => 'code',
             'client_id' => $this->clientId(),
             'redirect_uri' => $this->redirectUri(),
-            'state' => $this->makeState(),
+            'state' => $this->makeState($pmsClientId),
         ]);
     }
 
-    public function exchangeCode(string $code): ClioConnection
+    public function exchangeCode(string $code, string $pmsClientId): ClioConnection
     {
         $response = Http::asForm()
             ->acceptJson()
@@ -34,7 +34,7 @@ class ClioOAuthService
             ])
             ->throw();
 
-        return $this->persistTokens($response->json());
+        return $this->persistTokens($response->json(), pmsClientId: $pmsClientId);
     }
 
     public function refreshAccessToken(ClioConnection $connection): ClioConnection
@@ -80,7 +80,7 @@ class ClioOAuthService
         return $connection;
     }
 
-    public function validateState(?string $state): void
+    public function validateState(?string $state): array
     {
         if (! $state) {
             throw new RuntimeException('Missing OAuth state.');
@@ -95,18 +95,38 @@ class ClioOAuthService
         if (CarbonImmutable::parse($payload['issued_at'])->addMinutes(10)->isPast()) {
             throw new RuntimeException('OAuth state has expired.');
         }
+
+        if (! isset($payload['pms_client_id']) || ! is_string($payload['pms_client_id']) || trim($payload['pms_client_id']) === '') {
+            throw new RuntimeException('OAuth state is missing PMS client identifier.');
+        }
+
+        return $payload;
     }
 
-    private function persistTokens(array $payload, ?ClioConnection $connection = null): ClioConnection
+    private function persistTokens(array $payload, ?ClioConnection $connection = null, ?string $pmsClientId = null): ClioConnection
     {
-        $connection ??= new ClioConnection([
+        $pmsClientId = $pmsClientId ?: $connection?->pms_client_id;
+
+        if (! $pmsClientId) {
+            throw new RuntimeException('Missing PMS client identifier for Clio connection.');
+        }
+
+        $clientExists = Client::query()
+            ->where('pms_client_id', $pmsClientId)
+            ->exists();
+
+        if (! $clientExists) {
+            throw new RuntimeException("Unknown client for PMS client identifier [{$pmsClientId}].");
+        }
+
+        $connection ??= ClioConnection::query()->firstOrNew([
             'provider' => 'clio',
-            'pms_client_id' => (string) Str::uuid(),
+            'pms_client_id' => $pmsClientId,
         ]);
 
         $connection->fill([
             'provider' => 'clio',
-            'pms_client_id' => $connection->pms_client_id ?: (string) Str::uuid(),
+            'pms_client_id' => $pmsClientId,
             'access_token' => $payload['access_token'] ?? null,
             'refresh_token' => $payload['refresh_token'] ?? $connection->refresh_token,
             'token_expires_at' => isset($payload['expires_in'])
@@ -120,10 +140,11 @@ class ClioOAuthService
         return $connection->fresh();
     }
 
-    private function makeState(): string
+    private function makeState(string $pmsClientId): string
     {
         return Crypt::encryptString(json_encode([
             'issued_at' => now()->toIso8601String(),
+            'pms_client_id' => $pmsClientId,
         ], JSON_THROW_ON_ERROR));
     }
 
