@@ -17,6 +17,7 @@ class Client extends Model
             'webhook_flow_enabled' => 'boolean',
             'call_api_to_pms' => 'boolean',
             'client_calls_our_api' => 'boolean',
+            'allowed_payment_gateways' => 'array',
         ];
     }
 }

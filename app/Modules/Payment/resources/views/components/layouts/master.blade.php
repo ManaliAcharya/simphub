@@ -93,8 +93,15 @@
         }
         .primary-button:hover { background: var(--accent-dark); }
         .primary-button:disabled { opacity: 0.55; cursor: not-allowed; }
+        .gateway-options .primary-button.is-selected {
+            background: var(--accent);
+            box-shadow: 0 0 0 3px rgba(239, 131, 84, 0.22);
+        }
         .card-panel { margin-top: 22px; }
         .hidden { display: none; }
+        #fluidpay-payment-form {
+            min-height: 220px;
+        }
         .field-row {
             display: grid;
             gap: 12px;

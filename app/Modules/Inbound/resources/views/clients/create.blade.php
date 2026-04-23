@@ -20,6 +20,30 @@
                     </select>
                 </label>
 
+                <fieldset class="fieldset">
+                    <legend>Allowed payment gateways</legend>
+                    @if (! empty($availableGateways))
+                        <div class="option-grid">
+                            @foreach ($availableGateways as $gateway)
+                                <label class="checkbox gateway-option">
+                                    <input
+                                        type="checkbox"
+                                        name="allowed_payment_gateways[]"
+                                        value="{{ $gateway }}"
+                                        @checked(in_array($gateway, old('allowed_payment_gateways', []), true))
+                                    >
+                                    <span>
+                                        <strong>{{ $gateway }}</strong>
+                                        Available to the payer on the hosted payment page.
+                                    </span>
+                                </label>
+                            @endforeach
+                        </div>
+                    @else
+                        <p class="copy">No active routing rules were found yet. Add routing rules first to choose payment gateways for this client.</p>
+                    @endif
+                </fieldset>
+
                 <label class="checkbox">
                     <input type="hidden" name="webhook_flow_enabled" value="0">
                     <input type="checkbox" name="webhook_flow_enabled" value="1" @checked(old('webhook_flow_enabled'))>
@@ -47,6 +71,30 @@
             @if ($errors->any())
                 <div class="notice error">
                     {{ $errors->first() }}
+                </div>
+            @endif
+        </section>
+
+        <section class="panel">
+            <p class="eyebrow">Configured Clients</p>
+            <h2>Existing PMS Clients</h2>
+
+            @if ($clients->isEmpty())
+                <p class="empty">No clients have been created yet.</p>
+            @else
+                <div class="client-list">
+                    @foreach ($clients as $client)
+                        <div class="client-row">
+                            <span>Client</span>
+                            <strong>{{ $client->client_name }}</strong>
+                            <span>PMS</span>
+                            <strong>{{ $client->client_pms }}</strong>
+                            <span>PMS client id</span>
+                            <code>{{ $client->pms_client_id }}</code>
+                            <span>Allowed gateways</span>
+                            <strong>{{ collect($client->allowed_payment_gateways)->implode(', ') ?: 'Not configured' }}</strong>
+                        </div>
+                    @endforeach
                 </div>
             @endif
         </section>

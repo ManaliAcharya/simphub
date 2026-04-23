@@ -26,4 +26,35 @@ class PaymentSessionController extends Controller
         }
     }
 
+    public function submit(Request $request, string $session, PaymentCheckoutService $checkout): JsonResponse
+    {
+        $paymentSession = PaymentSession::query()
+            ->where('hosted_url_token', $session)
+            ->firstOrFail();
+
+        $request->validate([
+            'token' => ['required', 'string'],
+            'payment_method' => ['nullable', 'string'],
+            'routing_rule_id' => ['required', 'string'],
+        ]);
+
+        try {
+            $transaction = $checkout->submit(
+                session: $paymentSession,
+                token: (string) $request->string('token'),
+                paymentMethod: (string) ($request->input('payment_method') ?: 'CARD'),
+                routingRuleId: (string) $request->string('routing_rule_id'),
+            );
+        } catch (RuntimeException $exception) {
+            return response()->json([
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
+
+        return response()->json([
+            'status' => 'APPROVED',
+            'transaction_id' => $transaction->id,
+            'gateway_txn_id' => $transaction->gateway_txn_id,
+        ]);
+    }
 }

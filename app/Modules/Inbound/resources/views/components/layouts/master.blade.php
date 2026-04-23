@@ -85,6 +85,23 @@
             border: 1px solid rgba(19, 34, 56, 0.12);
             font: inherit;
         }
+        .fieldset {
+            border: 1px solid rgba(19, 34, 56, 0.1);
+            border-radius: 18px;
+            padding: 16px;
+            background: #fff;
+        }
+        .fieldset legend {
+            padding: 0 6px;
+            color: #6b7c93;
+            font-size: 0.95rem;
+        }
+        .option-grid {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            margin-top: 8px;
+        }
         .checkbox {
             display: flex;
             align-items: center;
@@ -93,6 +110,14 @@
             border: 1px solid rgba(19, 34, 56, 0.1);
             border-radius: 14px;
             background: #fff;
+        }
+        .checkbox.gateway-option {
+            align-items: flex-start;
+            min-height: 74px;
+        }
+        .checkbox.gateway-option strong {
+            display: block;
+            margin-bottom: 4px;
         }
         .client-list {
             display: grid;
