@@ -8,6 +8,7 @@ readonly class RoutingDecision
         public string $gateway,
         public string $mid,
         public string $routingRuleId,
+        public array $midCredentials = [],
         public array $ruleMatches = [],
     ) {}
 }

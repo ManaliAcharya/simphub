@@ -54,8 +54,14 @@ class ClioInvoiceIngestionService
                 ]
             );
 
+            Invoice::query()
+                ->whereKey($invoice->id)
+                ->lockForUpdate()
+                ->first();
+
             $session = PaymentSession::query()
                 ->where('invoice_id', $invoice->id)
+                ->lockForUpdate()
                 ->latest('created_at')
                 ->first();
 
@@ -82,21 +88,19 @@ class ClioInvoiceIngestionService
 
         $emailsSent = 0;
 
-        if ($result['created_session']) {
-            $emailsSent = $this->paymentLinks->sendInvoiceLink(
-                $result['invoice'],
-                $result['payment_session'],
-                $recipientEmails
-            );
+        $emailsSent = $this->paymentLinks->sendInvoiceLinkOnce(
+            $result['invoice'],
+            $result['payment_session'],
+            $recipientEmails
+        );
 
-                if ($emailsSent > 0) {
-                    AuditLogger::log('PAYMENT_LINK_SENT', 'payment_session', $result['payment_session']->id, [
-                        'invoice_id' => $result['invoice']->id,
-                        'pms_client_id' => $pmsClientId,
-                        'emails_sent' => $emailsSent,
-                        'recipient_emails' => $recipientEmails,
-                    ]);
-            }
+        if ($emailsSent > 0) {
+            AuditLogger::log('PAYMENT_LINK_SENT', 'payment_session', $result['payment_session']->id, [
+                'invoice_id' => $result['invoice']->id,
+                'pms_client_id' => $pmsClientId,
+                'emails_sent' => $emailsSent,
+                'recipient_emails' => $recipientEmails,
+            ]);
         }
 
         $result['emails_sent'] = $emailsSent;

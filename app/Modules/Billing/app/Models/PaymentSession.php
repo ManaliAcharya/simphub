@@ -17,6 +17,8 @@ class PaymentSession extends Model
         return [
             'expires_at' => 'datetime',
             'completed_at' => 'datetime',
+            'payment_link_sent_at' => 'datetime',
+            'payment_link_last_sent_to' => 'array',
         ];
     }
 

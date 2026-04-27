@@ -6,11 +6,17 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Inbound\Services\InboundInvoiceProcessor;
+use Modules\Payment\Services\PaymentLinkService;
 use RuntimeException;
 
 class InvoiceIngestionController extends Controller
 {
-    public function store(Request $request, string $source, InboundInvoiceProcessor $processor): JsonResponse
+    public function store(
+        Request $request,
+        string $source,
+        InboundInvoiceProcessor $processor,
+        PaymentLinkService $paymentLinks
+    ): JsonResponse
     {
         $externalInvoiceId = (string) (
             $request->input('external_invoice_id')
@@ -45,7 +51,7 @@ class InvoiceIngestionController extends Controller
             'payment_session_id' => $session->id,
             'idempotency_key' => $session->idempotency_key,
             'payment_link_token' => $session->hosted_url_token,
-            'payment_link_url' => route('payment.page.show', ['session' => $session->hosted_url_token]),
+            'payment_link_url' => $paymentLinks->urlForSession($session),
             'emails_sent' => $result['emails_sent'] ?? 0,
         ], 202);
     }

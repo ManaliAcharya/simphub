@@ -49,4 +49,8 @@ return [
         'webhook_expiry_days' => (int) env('CLIO_WEBHOOK_EXPIRY_DAYS', 30),
     ],
 
+    'payment' => [
+        'host_url' => rtrim(env('PAYMENT_HOST_URL', env('APP_URL', 'http://localhost')), '/'),
+    ],
+
 ];

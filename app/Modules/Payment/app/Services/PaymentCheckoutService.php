@@ -49,7 +49,10 @@ class PaymentCheckoutService
                 'client_emails' => array_values(array_filter((array) $invoice->recipient_emails)),
             ],
             'payment_options' => $options->map(function ($decision) {
-                $hostedFields = $this->gateways->make($decision->gateway)->hostedFieldsConfig($decision->mid);
+                $hostedFields = $this->gateways->make($decision->gateway)->hostedFieldsConfig(
+                    $decision->mid,
+                    $decision->midCredentials,
+                );
 
                 return [
                     'routing_rule_id' => $decision->routingRuleId,

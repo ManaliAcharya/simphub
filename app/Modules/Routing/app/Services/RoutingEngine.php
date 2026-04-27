@@ -52,10 +52,21 @@ class RoutingEngine
 
     private function mapRuleToDecision(RoutingRule $rule): RoutingDecision
     {
+        $midCredentials = [];
+
+        if ($rule->mid_credentials) {
+            try {
+                $midCredentials = (array) decrypt($rule->mid_credentials);
+            } catch (\Throwable) {
+                $midCredentials = [];
+            }
+        }
+
         return new RoutingDecision(
             gateway: (string) $rule->gateway,
             mid: (string) $rule->mid,
             routingRuleId: (string) $rule->id,
+            midCredentials: $midCredentials,
             ruleMatches: [
                 'merchant_id' => $rule->merchant_id,
                 'payment_method' => $rule->payment_method,

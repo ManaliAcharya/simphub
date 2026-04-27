@@ -26,15 +26,16 @@ class FluidPayAdapter implements GatewayAdapterInterface
         ]);
     }
 
-    public function hostedFieldsConfig(string $mid): HostedFieldsConfig
+    public function hostedFieldsConfig(string $mid, array $midCredentials = []): HostedFieldsConfig
     {
-        $publicKey = (string) env('FLUIDPAY_PUBLIC_KEY', '');
-        $baseUrl = (string) env('FLUIDPAY_BASE_URL', 'https://sandbox.fluidpay.com');
+        $publicKey = (string) ($midCredentials['public_key'] ?? env('FLUIDPAY_PUBLIC_KEY', ''));
+        $baseUrl = (string) ($midCredentials['base_url'] ?? env('FLUIDPAY_BASE_URL', 'https://sandbox.fluidpay.com'));
+        $tokenizerUrl = (string) ($midCredentials['tokenizer_url'] ?? env('FLUIDPAY_TOKENIZER_URL', rtrim($baseUrl, '/').'/tokenizer/tokenizer.js'));
 
         return new HostedFieldsConfig(
             gateway: 'fluidpay',
             fields: [
-                'script_url' => env('FLUIDPAY_TOKENIZER_URL', rtrim($baseUrl, '/').'/tokenizer/tokenizer.js'),
+                'script_url' => $tokenizerUrl,
                 'container' => '#fluidpay-payment-form',
                 'button_label' => 'Securely tokenize card with FluidPay',
             ],

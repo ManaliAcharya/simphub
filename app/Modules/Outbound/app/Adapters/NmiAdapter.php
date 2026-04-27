@@ -32,8 +32,10 @@ class NmiAdapter implements GatewayAdapterInterface
         );
     }
 
-    public function hostedFieldsConfig(string $mid): HostedFieldsConfig
+    public function hostedFieldsConfig(string $mid, array $midCredentials = []): HostedFieldsConfig
     {
+        $publicKey = (string) ($midCredentials['public_key'] ?? env('NMI_COLLECTJS_PUBLIC_KEY'));
+
         return new HostedFieldsConfig(
             gateway: 'nmi',
             fields: [
@@ -47,8 +49,8 @@ class NmiAdapter implements GatewayAdapterInterface
             ],
             metadata: [
                 'mid' => $mid,
-                'public_key' => env('NMI_COLLECTJS_PUBLIC_KEY'),
-                'mode' => env('NMI_COLLECTJS_PUBLIC_KEY') ? 'collectjs' : 'mock',
+                'public_key' => $publicKey,
+                'mode' => $publicKey !== '' ? 'collectjs' : 'mock',
             ],
         );
     }

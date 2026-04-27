@@ -26,7 +26,7 @@ class PayaAdapter implements GatewayAdapterInterface
         ]);
     }
 
-    public function hostedFieldsConfig(string $mid): HostedFieldsConfig
+    public function hostedFieldsConfig(string $mid, array $midCredentials = []): HostedFieldsConfig
     {
         return new HostedFieldsConfig(
             gateway: 'paya',

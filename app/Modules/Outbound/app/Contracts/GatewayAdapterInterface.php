@@ -12,5 +12,5 @@ interface GatewayAdapterInterface
 
     public function charge(ChargeRequest $request): GatewayResponse;
 
-    public function hostedFieldsConfig(string $mid): HostedFieldsConfig;
+    public function hostedFieldsConfig(string $mid, array $midCredentials = []): HostedFieldsConfig;
 }
