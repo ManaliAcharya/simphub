@@ -16,6 +16,7 @@
                     <span>Client PMS</span>
                     <select name="client_pms" required>
                         <option value="CLIO" @selected(old('client_pms') === 'CLIO')>Clio</option>
+                        <option value="ZOHO" @selected(old('client_pms') === 'ZOHO')>Zoho</option>
                         <option value="LAWCUS" @selected(old('client_pms') === 'LAWCUS')>Lawcus</option>
                     </select>
                 </label>

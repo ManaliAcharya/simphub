@@ -2,8 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Inbound\Http\Controllers\ClientConfigController;
-use Modules\Inbound\Http\Controllers\ClioAuthController;
-use Modules\Inbound\Http\Controllers\ClioIntegrationController;
+use Modules\Inbound\Http\Controllers\PmsAuthController;
+use Modules\Inbound\Http\Controllers\PmsIntegrationController;
 
 Route::middleware('web')->group(function (): void {
     Route::prefix('inbound/clients')->name('inbound.clients.')->group(function (): void {
@@ -11,9 +11,11 @@ Route::middleware('web')->group(function (): void {
         Route::post('/', [ClientConfigController::class, 'store'])->name('store');
     });
 
-    Route::prefix('inbound/clio')->name('inbound.clio.')->group(function (): void {
-        Route::get('/', [ClioIntegrationController::class, 'show'])->name('page');
-        Route::get('/connect', [ClioAuthController::class, 'redirect'])->name('connect');
-        Route::get('/callback', [ClioAuthController::class, 'callback'])->name('callback');
-    });
+    foreach (['clio', 'zoho'] as $provider) {
+        Route::prefix("inbound/{$provider}")->name("inbound.{$provider}.")->group(function () use ($provider): void {
+            Route::get('/', [PmsIntegrationController::class, 'show'])->defaults('provider', $provider)->name('page');
+            Route::get('/connect', [PmsAuthController::class, 'redirect'])->defaults('provider', $provider)->name('connect');
+            Route::get('/callback', [PmsAuthController::class, 'callback'])->defaults('provider', $provider)->name('callback');
+        });
+    }
 });

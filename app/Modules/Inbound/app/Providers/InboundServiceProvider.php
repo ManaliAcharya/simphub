@@ -2,6 +2,9 @@
 
 namespace Modules\Inbound\Providers;
 
+use Modules\Inbound\Services\Connectors\ClioConnector;
+use Modules\Inbound\Services\Connectors\ZohoConnector;
+use Modules\Inbound\Services\PmsConnectorRegistry;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 
@@ -33,6 +36,18 @@ class InboundServiceProvider extends ModuleServiceProvider
         EventServiceProvider::class,
         RouteServiceProvider::class,
     ];
+
+    public function register(): void
+    {
+        parent::register();
+
+        $this->app->singleton(PmsConnectorRegistry::class, function ($app) {
+            return new PmsConnectorRegistry([
+                $app->make(ClioConnector::class),
+                $app->make(ZohoConnector::class),
+            ]);
+        });
+    }
 
     /**
      * Define module schedules.

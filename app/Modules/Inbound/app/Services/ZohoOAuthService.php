@@ -4,30 +4,34 @@ namespace Modules\Inbound\Services;
 
 use Illuminate\Support\Facades\Http;
 use Modules\Inbound\Models\Client;
-use Modules\Inbound\Models\ClioConnection;
+use Modules\Inbound\Models\PmsConnection;
 use RuntimeException;
 
-class ClioOAuthService
+class ZohoOAuthService
 {
     public function __construct(
         private readonly PmsOAuthStateService $state,
+        private readonly ZohoApiClient $client,
     ) {}
 
     public function authorizationUrl(string $pmsClientId): string
     {
-        return config('services.clio.base_url').'/oauth/authorize?'.http_build_query([
+        return rtrim(config('services.zoho.accounts_base_url'), '/').'/oauth/v2/auth?'.http_build_query([
             'response_type' => 'code',
             'client_id' => $this->clientId(),
             'redirect_uri' => $this->redirectUri(),
-            'state' => $this->state->make('clio', $pmsClientId),
+            'scope' => $this->scope(),
+            'access_type' => 'offline',
+            'prompt' => 'consent',
+            'state' => $this->state->make('zoho', $pmsClientId),
         ]);
     }
 
-    public function exchangeCode(string $code, string $pmsClientId): ClioConnection
+    public function exchangeCode(string $code, string $pmsClientId): PmsConnection
     {
         $response = Http::asForm()
             ->acceptJson()
-            ->post(config('services.clio.base_url').'/oauth/token', [
+            ->post(rtrim(config('services.zoho.accounts_base_url'), '/').'/oauth/v2/token', [
                 'grant_type' => 'authorization_code',
                 'client_id' => $this->clientId(),
                 'client_secret' => $this->clientSecret(),
@@ -36,18 +40,32 @@ class ClioOAuthService
             ])
             ->throw();
 
-        return $this->persistTokens($response->json(), pmsClientId: $pmsClientId);
+        $connection = $this->persistTokens($response->json(), pmsClientId: $pmsClientId);
+        $organizationsPayload = $this->client->fetchOrganizations($connection);
+        $organizations = (array) ($organizationsPayload['organizations'] ?? []);
+        $defaultOrganization = collect($organizations)->firstWhere('is_default_org', true) ?? $organizations[0] ?? null;
+
+        $connection->forceFill([
+            'meta' => array_filter([
+                ...((array) $connection->meta),
+                'organizations' => $organizations,
+                'default_organization_id' => data_get($defaultOrganization, 'organization_id'),
+                'default_organization_name' => data_get($defaultOrganization, 'name'),
+            ], static fn ($value) => $value !== null),
+        ])->save();
+
+        return $connection->fresh();
     }
 
-    public function refreshAccessToken(ClioConnection $connection): ClioConnection
+    public function refreshAccessToken(PmsConnection $connection): PmsConnection
     {
         if (! $connection->refresh_token) {
-            throw new RuntimeException('Missing Clio refresh token.');
+            throw new RuntimeException('Missing Zoho refresh token.');
         }
 
         $response = Http::asForm()
             ->acceptJson()
-            ->post(config('services.clio.base_url').'/oauth/token', [
+            ->post(rtrim(config('services.zoho.accounts_base_url'), '/').'/oauth/v2/token', [
                 'grant_type' => 'refresh_token',
                 'client_id' => $this->clientId(),
                 'client_secret' => $this->clientSecret(),
@@ -58,21 +76,17 @@ class ClioOAuthService
         return $this->persistTokens($response->json(), $connection);
     }
 
-    public function ensureValidAccessToken(?ClioConnection $connection = null): ClioConnection
+    public function ensureValidAccessToken(?PmsConnection $connection = null): PmsConnection
     {
         if (! $connection) {
-            $connections = ClioConnection::query()
-                ->where('provider', 'clio')
-                ->orderByDesc('updated_at')
-                ->get();
+            $connection = PmsConnection::query()
+                ->where('provider', 'zoho')
+                ->latest('updated_at')
+                ->first();
+        }
 
-            if ($connections->count() === 1) {
-                $connection = $connections->first();
-            } elseif ($connections->isEmpty()) {
-                throw new RuntimeException('No Clio connection found. Complete the OAuth flow first.');
-            } else {
-                throw new RuntimeException('Multiple Clio connections found. Provide a PMS client identifier.');
-            }
+        if (! $connection) {
+            throw new RuntimeException('No Zoho connection found. Complete the OAuth flow first.');
         }
 
         if ($connection->token_expires_at && $connection->token_expires_at->subMinutes(2)->isPast()) {
@@ -82,17 +96,12 @@ class ClioOAuthService
         return $connection;
     }
 
-    public function validateState(?string $state): array
-    {
-        return $this->state->validate($state);
-    }
-
-    private function persistTokens(array $payload, ?ClioConnection $connection = null, ?string $pmsClientId = null): ClioConnection
+    private function persistTokens(array $payload, ?PmsConnection $connection = null, ?string $pmsClientId = null): PmsConnection
     {
         $pmsClientId = $pmsClientId ?: $connection?->pms_client_id;
 
         if (! $pmsClientId) {
-            throw new RuntimeException('Missing PMS client identifier for Clio connection.');
+            throw new RuntimeException('Missing PMS client identifier for Zoho connection.');
         }
 
         $clientExists = Client::query()
@@ -103,13 +112,13 @@ class ClioOAuthService
             throw new RuntimeException("Unknown client for PMS client identifier [{$pmsClientId}].");
         }
 
-        $connection ??= ClioConnection::query()->firstOrNew([
-            'provider' => 'clio',
+        $connection ??= PmsConnection::query()->firstOrNew([
+            'provider' => 'zoho',
             'pms_client_id' => $pmsClientId,
         ]);
 
         $connection->fill([
-            'provider' => 'clio',
+            'provider' => 'zoho',
             'pms_client_id' => $pmsClientId,
             'access_token' => $payload['access_token'] ?? null,
             'refresh_token' => $payload['refresh_token'] ?? $connection->refresh_token,
@@ -139,12 +148,17 @@ class ClioOAuthService
         return $this->requiredConfig('redirect_uri');
     }
 
+    private function scope(): string
+    {
+        return $this->requiredConfig('scope');
+    }
+
     private function requiredConfig(string $key): string
     {
-        $value = config("services.clio.{$key}");
+        $value = config("services.zoho.{$key}");
 
         if (! is_string($value) || trim($value) === '') {
-            throw new RuntimeException("Missing Clio configuration value [{$key}].");
+            throw new RuntimeException("Missing Zoho configuration value [{$key}].");
         }
 
         return $value;

@@ -66,9 +66,14 @@ class ClientConfigController extends Controller
             'client_calls_our_api' => (bool) ($validated['client_calls_our_api'] ?? false),
         ]);
 
-        return redirect()->route('inbound.clio.page', [
+        $providerRoute = match ($client->client_pms) {
+            'ZOHO' => 'inbound.zoho.page',
+            default => 'inbound.clio.page',
+        };
+
+        return redirect()->route($providerRoute, [
             'pms_client_id' => $client->pms_client_id,
-            'success' => 'Client created. Continue with Clio connection.',
+            'success' => 'Client created. Continue with PMS connection.',
         ]);
     }
 }
