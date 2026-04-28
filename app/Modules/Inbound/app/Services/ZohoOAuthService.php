@@ -42,16 +42,36 @@ class ZohoOAuthService
 
         $connection = $this->persistTokens($response->json(), pmsClientId: $pmsClientId);
         $organizationsPayload = $this->client->fetchOrganizations($connection);
-        $organizations = (array) ($organizationsPayload['organizations'] ?? []);
-        $defaultOrganization = collect($organizations)->firstWhere('is_default_org', true) ?? $organizations[0] ?? null;
+        $organizations = $this->extractOrganizations($organizationsPayload);
+        $defaultOrganization = $this->resolveDefaultOrganization($organizations);
+        $defaultOrganizationId = (string) (
+            data_get($defaultOrganization, 'organization_id')
+            ?? config('services.zoho.organization_id')
+            ?? ''
+        );
+        $defaultOrganizationName = (string) (
+            data_get($defaultOrganization, 'name')
+            ?? config('services.zoho.organization_name')
+            ?? ''
+        );
+
+        if ($organizations === [] && $defaultOrganizationId !== '') {
+            $organizations = [[
+                'organization_id' => $defaultOrganizationId,
+                'name' => $defaultOrganizationName,
+                'is_default_org' => true,
+            ]];
+        }
 
         $connection->forceFill([
             'meta' => array_filter([
                 ...((array) $connection->meta),
                 'organizations' => $organizations,
-                'default_organization_id' => data_get($defaultOrganization, 'organization_id'),
-                'default_organization_name' => data_get($defaultOrganization, 'name'),
+                'organizations_payload' => $organizationsPayload,
+                'default_organization_id' => $defaultOrganizationId !== '' ? $defaultOrganizationId : null,
+                'default_organization_name' => $defaultOrganizationName !== '' ? $defaultOrganizationName : null,
             ], static fn ($value) => $value !== null),
+            'last_error' => $defaultOrganizationId === '' ? 'Zoho organization id could not be resolved during authentication.' : null,
         ])->save();
 
         return $connection->fresh();
@@ -162,5 +182,48 @@ class ZohoOAuthService
         }
 
         return $value;
+    }
+
+    private function extractOrganizations(array $payload): array
+    {
+        $organizations = $payload['organizations']
+            ?? data_get($payload, 'data.organizations')
+            ?? data_get($payload, 'organization')
+            ?? data_get($payload, 'data.organization')
+            ?? [];
+
+        if (! is_array($organizations)) {
+            return [];
+        }
+
+        if (array_is_list($organizations)) {
+            return array_values(array_filter($organizations, 'is_array'));
+        }
+
+        return [$organizations];
+    }
+
+    private function resolveDefaultOrganization(array $organizations): ?array
+    {
+        $configuredOrganizationId = (string) (config('services.zoho.organization_id') ?? '');
+
+        if ($configuredOrganizationId !== '') {
+            $match = collect($organizations)->first(fn (array $organization) => (string) ($organization['organization_id'] ?? '') === $configuredOrganizationId);
+            if (is_array($match)) {
+                return $match;
+            }
+        }
+
+        $default = collect($organizations)->first(function (array $organization): bool {
+            $flag = $organization['is_default_org'] ?? false;
+
+            return $flag === true || $flag === 'true' || $flag === 1 || $flag === '1';
+        });
+
+        if (is_array($default)) {
+            return $default;
+        }
+
+        return $organizations[0] ?? null;
     }
 }

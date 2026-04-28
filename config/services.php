@@ -56,6 +56,8 @@ return [
         'client_secret' => env('ZOHO_CLIENT_SECRET'),
         'redirect_uri' => env('ZOHO_REDIRECT_URI', rtrim(env('APP_URL', 'http://localhost'), '/').'/inbound/zoho/callback'),
         'scope' => env('ZOHO_SCOPE', 'ZohoBooks.fullaccess.all'),
+        'organization_id' => env('ZOHO_ORGANIZATION_ID'),
+        'organization_name' => env('ZOHO_ORGANIZATION_NAME'),
         'webhook_callback_url' => env('ZOHO_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/zoho'),
     ],
 

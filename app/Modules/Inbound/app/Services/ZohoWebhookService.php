@@ -16,7 +16,7 @@ class ZohoWebhookService
 
     public function handleIncoming(Request $request): Response
     {
-        $pmsClientId = (string) $request->query('pms_client_id', '');
+        $pmsClientId = (string) ($request->query('pms_client_id', '') ?: $request->input('pms_client_id', ''));
         $connection = $this->findConnection($pmsClientId);
 
         if (! $connection) {
@@ -27,6 +27,7 @@ class ZohoWebhookService
         $invoiceId = (string) (
             Arr::get($payloadData, 'bill_id')
             ?? Arr::get($payloadData, 'data.bill_id')
+            ?? Arr::get($payloadData, 'data.invoice_id')
             ?? Arr::get($payloadData, 'data.bill.bill_id')
             ?? Arr::get($payloadData, 'bill.bill_id')
             ?? Arr::get($payloadData, 'entity_id')
