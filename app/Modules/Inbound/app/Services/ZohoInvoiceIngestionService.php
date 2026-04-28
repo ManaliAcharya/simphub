@@ -187,6 +187,7 @@ class ZohoInvoiceIngestionService
             ?? data_get($triggerPayload, 'organization.organization_id')
             ?? data_get($triggerPayload, 'data.organization_id')
             ?? data_get($connection->meta, 'organizations_payload.org.0.id')
+            ?? data_get($connection->meta, 'organizations.0.organization_id')
             ?? ''
         );
 
