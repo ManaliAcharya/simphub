@@ -25,7 +25,7 @@ class ZohoApiClient
     public function fetchOrganizations(PmsConnection $connection): array
     {
         return $this->authenticatedRequest($connection)
-            ->get('/organizations')
+            ->get('/org')
             ->throw()
             ->json();
     }
