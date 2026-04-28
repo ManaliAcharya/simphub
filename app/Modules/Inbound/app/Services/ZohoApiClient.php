@@ -8,11 +8,13 @@ use Modules\Inbound\Models\PmsConnection;
 
 class ZohoApiClient
 {
-    public function baseRequest(): PendingRequest
+    public function baseRequest(?string $url = null): PendingRequest
     {
+        $baseUrl = $url ?? config('services.zoho.api_base_url');
+
         return Http::acceptJson()
             ->asJson()
-            ->baseUrl(config('services.zoho.api_base_url'));
+            ->baseUrl($baseUrl);
     }
 
     public function authenticatedRequest(PmsConnection $connection): PendingRequest
@@ -32,7 +34,9 @@ class ZohoApiClient
 
     public function fetchBill(PmsConnection $connection, string $billId, string $organizationId): array
     {
-        return $this->authenticatedRequest($connection)
+        $invoiceUrl = config('services.zoho.invoice_base_url');
+
+        return $this->authenticatedRequest($connection, $invoiceUrl)
             ->get("/invoices/{$billId}", [
                 'organization_id' => $organizationId,
             ])

@@ -51,6 +51,7 @@ return [
 
     'zoho' => [
         'accounts_base_url' => rtrim(env('ZOHO_ACCOUNTS_BASE_URL', 'https://accounts.zoho.com'), '/'),
+        'invoice_base_url' => rtrim(env('ZOHO_INVOICE_BASE_URL', 'https://www.zohoapis.com/invoice/v3'), '/'),
         'api_base_url' => rtrim(env('ZOHO_API_BASE_URL', 'https://www.zohoapis.com/books/v3'), '/'),
         'client_id' => env('ZOHO_CLIENT_ID'),
         'client_secret' => env('ZOHO_CLIENT_SECRET'),
