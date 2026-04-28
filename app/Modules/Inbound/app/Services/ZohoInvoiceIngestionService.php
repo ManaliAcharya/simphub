@@ -105,11 +105,11 @@ class ZohoInvoiceIngestionService
 
     private function normalizeInvoice(array $invoicePayload, array $triggerPayload, string $organizationId): array
     {
-        $data = Arr::get($invoicePayload, 'bill', $invoicePayload);
-        $billId = Arr::get($data, 'bill_id');
+        $data = Arr::get($invoicePayload, 'invoice', $invoicePayload);
+        $billId = Arr::get($data, 'invoice_id');
 
         if (! $billId) {
-            throw new RuntimeException('Zoho bill response did not include a bill id.');
+            throw new RuntimeException('Zoho invoice response did not include a invoice id.');
         }
 
         $fundType = strtoupper((string) (
@@ -122,6 +122,7 @@ class ZohoInvoiceIngestionService
             'external_invoice_id' => (string) $billId,
             'external_client_id' => (string) (
                 Arr::get($data, 'vendor_id')
+                ?? Arr::get($data, 'customer_id')
                 ?? Arr::get($triggerPayload, 'vendor_id')
                 ?? Arr::get($data, 'vendor_name')
                 ?? $billId
