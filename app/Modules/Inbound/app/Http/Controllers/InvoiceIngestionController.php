@@ -21,8 +21,11 @@ class InvoiceIngestionController extends Controller
         $externalInvoiceId = (string) (
             $request->input('external_invoice_id')
             ?? $request->input('invoice_id')
+            ?? $request->input('bill_id')
+            ?? $request->input('entity_id')
             ?? $request->input('id')
             ?? data_get($request->input('invoice'), 'id')
+            ?? data_get($request->input('bill'), 'bill_id')
         );
 
         abort_if($externalInvoiceId === '', 422, 'Invoice id is required.');

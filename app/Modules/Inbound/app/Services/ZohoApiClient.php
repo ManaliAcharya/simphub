@@ -29,4 +29,14 @@ class ZohoApiClient
             ->throw()
             ->json();
     }
+
+    public function fetchBill(PmsConnection $connection, string $billId, string $organizationId): array
+    {
+        return $this->authenticatedRequest($connection)
+            ->get("/bills/{$billId}", [
+                'organization_id' => $organizationId,
+            ])
+            ->throw()
+            ->json();
+    }
 }
