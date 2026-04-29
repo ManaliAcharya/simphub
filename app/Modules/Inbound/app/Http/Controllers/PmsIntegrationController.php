@@ -11,8 +11,22 @@ class PmsIntegrationController extends Controller
 {
     public function show(string $provider, PmsConnectorRegistry $registry): View
     {
+        return $this->render($provider, (string) request()->query('pms_client_id', ''), $registry);
+    }
+
+    public function showByToken(string $provider, string $token, PmsConnectorRegistry $registry): View
+    {
+        $client = Client::query()
+            ->where('client_pms', strtoupper($provider))
+            ->where('setup_token', $token)
+            ->firstOrFail();
+
+        return $this->render($provider, (string) $client->pms_client_id, $registry);
+    }
+
+    private function render(string $provider, string $pmsClientId, PmsConnectorRegistry $registry): View
+    {
         $connector = $registry->for($provider);
-        $pmsClientId = (string) request()->query('pms_client_id', '');
         $client = $pmsClientId !== ''
             ? Client::query()->where('pms_client_id', $pmsClientId)->first()
             : null;
@@ -29,6 +43,9 @@ class PmsIntegrationController extends Controller
             'error' => request()->query('error'),
             'connectUrl' => $client
                 ? route("inbound.{$provider}.connect", ['pms_client_id' => $client->pms_client_id])
+                : null,
+            'shareUrl' => $client?->setup_token
+                ? route("inbound.{$provider}.share", ['token' => $client->setup_token])
                 : null,
             'callbackUrl' => route("inbound.{$provider}.callback"),
             ...$data,

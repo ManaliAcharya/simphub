@@ -14,6 +14,7 @@ Route::middleware('web')->group(function (): void {
     foreach (['clio', 'zoho'] as $provider) {
         Route::prefix("inbound/{$provider}")->name("inbound.{$provider}.")->group(function () use ($provider): void {
             Route::get('/', [PmsIntegrationController::class, 'show'])->defaults('provider', $provider)->name('page');
+            Route::get('/share/{token}', [PmsIntegrationController::class, 'showByToken'])->defaults('provider', $provider)->name('share');
             Route::get('/connect', [PmsAuthController::class, 'redirect'])->defaults('provider', $provider)->name('connect');
             Route::get('/callback', [PmsAuthController::class, 'callback'])->defaults('provider', $provider)->name('callback');
         });

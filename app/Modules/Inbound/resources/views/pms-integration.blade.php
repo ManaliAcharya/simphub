@@ -42,6 +42,24 @@
                 @endif
             </div>
 
+            @if ($shareUrl)
+                <div class="summary-card" style="margin-top: 18px;">
+                    <span>Share this setup link with client</span>
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
+                        <input id="setup-share-url" type="text" value="{{ $shareUrl }}" readonly style="flex: 1; min-width: 280px; padding: 10px 12px; border: 1px solid rgba(19, 34, 56, 0.12); border-radius: 12px; font: inherit;">
+                        <button type="button" class="button secondary" onclick="copyShareLink()">Copy Link</button>
+                    </div>
+                </div>
+                <script>
+                    function copyShareLink() {
+                        const input = document.getElementById('setup-share-url');
+                        input.select();
+                        input.setSelectionRange(0, 99999);
+                        navigator.clipboard.writeText(input.value);
+                    }
+                </script>
+            @endif
+
             @if (!empty($webhook_instructions))
             <div class="webhook-card" style="margin-top: 18px; padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; font-family: sans-serif;">
                 <div style="display: flex; align-items: center; margin-bottom: 15px;">

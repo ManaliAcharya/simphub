@@ -3,11 +3,11 @@
 namespace Modules\Outbound\Services;
 
 use DOMDocument;
-use Illuminate\Support\Facades\Log;
 use Modules\Outbound\DTOs\ChargeRequest;
 use RuntimeException;
 use SoapClient;
 use SoapHeader;
+use stdClass;
 
 class PayaSandboxChargeService
 {
@@ -27,12 +27,6 @@ class PayaSandboxChargeService
 
         $settingsResult = $client->__soapCall($terminalSettingsMethod, []);
         $settingsXml = (string) ($settingsResult->{$terminalSettingsMethod.'Result'} ?? '');
-        $this->logSoapExchange('Paya certification request', $client, $config, [
-            'method' => $terminalSettingsMethod,
-            'amount' => $amount,
-            'request_id' => $paymentInfo->RequestID,
-            'transaction_id' => $paymentInfo->TransactionID,
-        ]);
 
         if (! $this->isCertified($settingsXml)) {
             throw new RuntimeException($this->certificationFailureMessage($settingsXml));
@@ -41,13 +35,6 @@ class PayaSandboxChargeService
         $processResult = $client->__soapCall($processMethod, [[
             'DataPacket' => $xml,
         ]]);
-        $this->logSoapExchange('Paya process request', $client, $config, [
-            'method' => $processMethod,
-            'amount' => $amount,
-            'request_id' => $paymentInfo->RequestID,
-            'transaction_id' => $paymentInfo->TransactionID,
-            'data_packet' => $xml,
-        ]);
 
         $rawXml = (string) ($processResult->{$processMethod.'Result'} ?? '');
         if ($rawXml === '') {
@@ -115,7 +102,7 @@ class PayaSandboxChargeService
         $transaction->appendChild($merchant);
 
         $packet = $dom->createElement('PACKET');
-        $packet->appendChild($dom->createElement('IDENTIFIER', (string) ($paymentInfo->Identifier ?? 'A')));
+        $packet->appendChild($dom->createElement('IDENTIFIER', 'R'));
 
         $account = $dom->createElement('ACCOUNT');
         $account->appendChild($dom->createElement('ROUTING_NUMBER', $paymentInfo->RoutingNumber));
@@ -167,22 +154,13 @@ class PayaSandboxChargeService
         return [
             'wsdl' => $this->credentialValue($credentials, 'wsdl', 'PAYA_WSDL_PATH', 'C:\\laragon\\www\\payment-middleware\\paya_payment\\AuthGatewayWSDL-Demo.eftchecks.com.xml'),
             'username' => $this->credentialValue($credentials, 'username', 'PAYA_USERNAME', 'ImpactPaysCert'),
-            'password' => $this->credentialValue($credentials, 'password', 'PAYA_PASSWORD', '4AA3ZNSk#gpFbe9Z'),
+            'password' => '4AA3ZNSk#gpFbe9Z',
             'terminal_id' => $this->credentialValue($credentials, 'terminal_id', 'PAYA_TERMINAL_ID', '1814'),
             'namespace' => $this->normalizeNamespace(
                 $this->credentialValue($credentials, 'namespace', 'PAYA_NAMESPACE', 'http://tempuri.org/GETI.eMagnus.WebServices/AuthGateway')
             ),
             'terminal_settings_method' => $this->credentialValue($credentials, 'terminal_settings_method', 'PAYA_TERMINAL_SETTINGS_METHOD', 'GetCertificationTerminalSettings'),
             'process_method' => $this->credentialValue($credentials, 'process_method', 'PAYA_PROCESS_METHOD', 'ProcessSingleCertificationCheck'),
-            'sources' => [
-                'wsdl' => $this->credentialSource($credentials, 'wsdl'),
-                'username' => $this->credentialSource($credentials, 'username'),
-                'password' => $this->credentialSource($credentials, 'password'),
-                'terminal_id' => $this->credentialSource($credentials, 'terminal_id'),
-                'namespace' => $this->credentialSource($credentials, 'namespace'),
-                'terminal_settings_method' => $this->credentialSource($credentials, 'terminal_settings_method'),
-                'process_method' => $this->credentialSource($credentials, 'process_method'),
-            ],
         ];
     }
 
@@ -202,7 +180,7 @@ class PayaSandboxChargeService
             'PhoneNumber' => env('PAYA_PHONE_NUMBER', '9015551212'),
             'DLState' => env('PAYA_DL_STATE', 'TN'),
             'DLNumber' => env('PAYA_DL_NUMBER', '12345'),
-            'Identifier' => env('PAYA_IDENTIFIER', 'A'),
+            'Identifier' => 'R',
         ];
     }
 
@@ -215,17 +193,6 @@ class PayaSandboxChargeService
         }
 
         return (string) env($envKey, $default);
-    }
-
-    private function credentialSource(array $credentials, string $key): string
-    {
-        $value = $credentials[$key] ?? null;
-
-        if (is_string($value) && trim($value) !== '') {
-            return 'mid_credentials';
-        }
-
-        return 'env';
     }
 
     private function certificationFailureMessage(string $settingsXml): string
@@ -248,36 +215,6 @@ class PayaSandboxChargeService
         }
 
         return 'Paya certification terminal settings failed.';
-    }
-
-    private function logSoapExchange(string $label, SoapClient $client, array $config, array $context = []): void
-    {
-        Log::info($label, [
-            ...$context,
-            'wsdl' => $config['wsdl'],
-            'namespace' => $config['namespace'],
-            'username' => $config['username'],
-            'password' => $this->maskSecret($config['password']),
-            'terminal_id' => $config['terminal_id'],
-            'sources' => $config['sources'] ?? [],
-            'soap_request_headers' => method_exists($client, '__getLastRequestHeaders') ? $client->__getLastRequestHeaders() : null,
-            'soap_request_xml' => method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null,
-            'soap_response_headers' => method_exists($client, '__getLastResponseHeaders') ? $client->__getLastResponseHeaders() : null,
-            'soap_response_xml' => method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null,
-        ]);
-    }
-
-    private function maskSecret(string $secret): string
-    {
-        if ($secret === '') {
-            return '[empty]';
-        }
-
-        if (strlen($secret) <= 4) {
-            return str_repeat('*', strlen($secret));
-        }
-
-        return substr($secret, 0, 2).str_repeat('*', max(0, strlen($secret) - 4)).substr($secret, -2);
     }
 
     private function normalizeNamespace(string $namespace): string

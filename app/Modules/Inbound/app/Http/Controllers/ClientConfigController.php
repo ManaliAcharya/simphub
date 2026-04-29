@@ -54,6 +54,7 @@ class ClientConfigController extends Controller
 
         $client = Client::query()->create([
             'pms_client_id' => (string) Str::uuid(),
+            'setup_token' => strtolower(Str::random(12)),
             'client_name' => $validated['client_name'],
             'client_pms' => strtoupper($validated['client_pms']),
             'allowed_payment_gateways' => collect($validated['allowed_payment_gateways'] ?? [])
