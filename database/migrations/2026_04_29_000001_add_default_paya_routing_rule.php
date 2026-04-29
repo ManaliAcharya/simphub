@@ -29,7 +29,7 @@ return new class extends Migration
                 'password' => env('PAYA_PASSWORD', ''),
                 'terminal_id' => env('PAYA_TERMINAL_ID', '1814'),
                 'wsdl' => env('PAYA_WSDL_PATH', 'C:\\laragon\\www\\payment-middleware\\paya_payment\\AuthGatewayWSDL-Demo.eftchecks.com.xml'),
-                'namespace' => env('PAYA_NAMESPACE', 'http://tempuri.org/GETI.eMagnus.WebServices/AuthGateway/GetCertificationTerminalSettings'),
+                'namespace' => env('PAYA_NAMESPACE', 'http://tempuri.org/GETI.eMagnus.WebServices/AuthGateway'),
                 'terminal_settings_method' => env('PAYA_TERMINAL_SETTINGS_METHOD', 'GetCertificationTerminalSettings'),
                 'process_method' => env('PAYA_PROCESS_METHOD', 'ProcessSingleCertificationCheck'),
                 'payment_info' => [

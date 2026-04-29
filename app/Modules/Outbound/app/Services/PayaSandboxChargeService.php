@@ -67,7 +67,7 @@ class PayaSandboxChargeService
 
     private function makeSoapClient(array $config): SoapClient
     {
-        $client = new SoapClient($config['wsdl'], [
+        $client = new SoapClient(base_path('paya_payment/AuthGatewayWSDL-Demo.eftchecks.com.xml'), [
             'trace' => true,
             'exceptions' => true,
             'cache_wsdl' => WSDL_CACHE_NONE,
@@ -156,7 +156,9 @@ class PayaSandboxChargeService
             'username' => $this->credentialValue($credentials, 'username', 'PAYA_USERNAME', 'ImpactPaysCert'),
             'password' => $this->credentialValue($credentials, 'password', 'PAYA_PASSWORD', '4AA3ZNSk#gpFbe9Z'),
             'terminal_id' => $this->credentialValue($credentials, 'terminal_id', 'PAYA_TERMINAL_ID', '1814'),
-            'namespace' => $this->credentialValue($credentials, 'namespace', 'PAYA_NAMESPACE', 'http://tempuri.org/GETI.eMagnus.WebServices/AuthGateway/GetCertificationTerminalSettings'),
+            'namespace' => $this->normalizeNamespace(
+                $this->credentialValue($credentials, 'namespace', 'PAYA_NAMESPACE', 'http://tempuri.org/GETI.eMagnus.WebServices/AuthGateway')
+            ),
             'terminal_settings_method' => $this->credentialValue($credentials, 'terminal_settings_method', 'PAYA_TERMINAL_SETTINGS_METHOD', 'GetCertificationTerminalSettings'),
             'process_method' => $this->credentialValue($credentials, 'process_method', 'PAYA_PROCESS_METHOD', 'ProcessSingleCertificationCheck'),
         ];
@@ -213,5 +215,27 @@ class PayaSandboxChargeService
         }
 
         return 'Paya certification terminal settings failed.';
+    }
+
+    private function normalizeNamespace(string $namespace): string
+    {
+        $namespace = trim($namespace);
+
+        if ($namespace === '') {
+            return 'http://tempuri.org/GETI.eMagnus.WebServices/AuthGateway';
+        }
+
+        foreach ([
+            '/GetCertificationTerminalSettings',
+            '/ProcessSingleCertificationCheck',
+            '/GetTerminalSettings',
+            '/ProcessSingleCheck',
+        ] as $suffix) {
+            if (str_ends_with($namespace, $suffix)) {
+                return substr($namespace, 0, -strlen($suffix));
+            }
+        }
+
+        return $namespace;
     }
 }
