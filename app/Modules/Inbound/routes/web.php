@@ -6,6 +6,10 @@ use Modules\Inbound\Http\Controllers\PmsAuthController;
 use Modules\Inbound\Http\Controllers\PmsIntegrationController;
 
 Route::middleware('web')->group(function (): void {
+    Route::get('/setup/{provider}/{token}', [PmsIntegrationController::class, 'showByToken'])
+        ->whereIn('provider', ['clio', 'zoho'])
+        ->name('inbound.setup.share');
+
     Route::prefix('inbound/clients')->name('inbound.clients.')->group(function (): void {
         Route::get('/create', [ClientConfigController::class, 'create'])->name('create');
         Route::post('/', [ClientConfigController::class, 'store'])->name('store');
