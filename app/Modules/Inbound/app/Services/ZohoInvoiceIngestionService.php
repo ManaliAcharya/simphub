@@ -151,9 +151,13 @@ class ZohoInvoiceIngestionService
         $emails = [
             Arr::get($data, 'vendor_email'),
             Arr::get($data, 'billing_address.email'),
+            Arr::get($data, 'invoice.email'),
+            Arr::get($data, 'email'),
             Arr::get($triggerPayload, 'vendor_email'),
             Arr::get($triggerPayload, 'billing_address.email'),
             Arr::get($triggerPayload, 'contact.email'),
+            Arr::get($triggerPayload, 'email'),
+            Arr::get($triggerPayload, 'invoice.email'),
         ];
 
         foreach ((array) Arr::get($data, 'contact_persons', []) as $contact) {
