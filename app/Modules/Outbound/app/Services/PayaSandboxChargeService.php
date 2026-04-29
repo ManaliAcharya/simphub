@@ -29,7 +29,7 @@ class PayaSandboxChargeService
         $settingsXml = (string) ($settingsResult->{$terminalSettingsMethod.'Result'} ?? '');
 
         if (! $this->isCertified($settingsXml)) {
-            throw new RuntimeException('Paya certification terminal settings failed.');
+            throw new RuntimeException($this->certificationFailureMessage($settingsXml));
         }
 
         $processResult = $client->__soapCall($processMethod, [[
@@ -151,19 +151,14 @@ class PayaSandboxChargeService
 
     private function resolveConfig(array $credentials): array
     {
-        $wsdl = (string) ($credentials['wsdl'] ?? '');
-        if ($wsdl === '') {
-            $wsdl = env('PAYA_WSDL_PATH', 'C:\\laragon\\www\\payment-middleware\\paya_payment\\AuthGatewayWSDL-Demo.eftchecks.com.xml');
-        }
-
         return [
-            'wsdl' => $wsdl,
-            'username' => (string) ($credentials['username'] ?? env('PAYA_USERNAME', 'ImpactPaysCert')),
-            'password' => (string) ($credentials['password'] ?? env('PAYA_PASSWORD', '4AA3ZNSk#gpFbe9Z')),
-            'terminal_id' => (string) ($credentials['terminal_id'] ?? env('PAYA_TERMINAL_ID', '1814')),
-            'namespace' => (string) ($credentials['namespace'] ?? env('PAYA_NAMESPACE', 'http://tempuri.org/GETI.eMagnus.WebServices/AuthGateway/GetCertificationTerminalSettings')),
-            'terminal_settings_method' => (string) ($credentials['terminal_settings_method'] ?? env('PAYA_TERMINAL_SETTINGS_METHOD', 'GetCertificationTerminalSettings')),
-            'process_method' => (string) ($credentials['process_method'] ?? env('PAYA_PROCESS_METHOD', 'ProcessSingleCertificationCheck')),
+            'wsdl' => $this->credentialValue($credentials, 'wsdl', 'PAYA_WSDL_PATH', 'C:\\laragon\\www\\payment-middleware\\paya_payment\\AuthGatewayWSDL-Demo.eftchecks.com.xml'),
+            'username' => $this->credentialValue($credentials, 'username', 'PAYA_USERNAME', 'ImpactPaysCert'),
+            'password' => $this->credentialValue($credentials, 'password', 'PAYA_PASSWORD', '4AA3ZNSk#gpFbe9Z'),
+            'terminal_id' => $this->credentialValue($credentials, 'terminal_id', 'PAYA_TERMINAL_ID', '1814'),
+            'namespace' => $this->credentialValue($credentials, 'namespace', 'PAYA_NAMESPACE', 'http://tempuri.org/GETI.eMagnus.WebServices/AuthGateway/GetCertificationTerminalSettings'),
+            'terminal_settings_method' => $this->credentialValue($credentials, 'terminal_settings_method', 'PAYA_TERMINAL_SETTINGS_METHOD', 'GetCertificationTerminalSettings'),
+            'process_method' => $this->credentialValue($credentials, 'process_method', 'PAYA_PROCESS_METHOD', 'ProcessSingleCertificationCheck'),
         ];
     }
 
@@ -185,5 +180,38 @@ class PayaSandboxChargeService
             'DLNumber' => env('PAYA_DL_NUMBER', '12345'),
             'Identifier' => env('PAYA_IDENTIFIER', 'A'),
         ];
+    }
+
+    private function credentialValue(array $credentials, string $key, string $envKey, string $default): string
+    {
+        $value = $credentials[$key] ?? null;
+
+        if (is_string($value) && trim($value) !== '') {
+            return $value;
+        }
+
+        return (string) env($envKey, $default);
+    }
+
+    private function certificationFailureMessage(string $settingsXml): string
+    {
+        if ($settingsXml === '') {
+            return 'Paya certification terminal settings failed: empty response from gateway.';
+        }
+
+        $parsed = simplexml_load_string($settingsXml);
+
+        if ($parsed === false) {
+            return 'Paya certification terminal settings failed: invalid XML returned by gateway.';
+        }
+
+        $message = (string) ($parsed->EXCEPTION->MESSAGE ?? $parsed->EXCEPTION->ERROR_MESSAGE ?? '');
+        $code = (string) ($parsed->EXCEPTION->CODE ?? '');
+
+        if ($message !== '') {
+            return 'Paya certification terminal settings failed: '.$message.($code !== '' ? " ({$code})" : '');
+        }
+
+        return 'Paya certification terminal settings failed.';
     }
 }
