@@ -147,7 +147,7 @@ class ZohoInvoiceIngestionService
 
     private function extractClientEmails(array $invoicePayload, array $triggerPayload): array
     {
-        $data = Arr::get($invoicePayload, 'bill', []);
+        $data = Arr::get($invoicePayload, 'invoice', []);
         $emails = [
             Arr::get($data, 'vendor_email'),
             Arr::get($data, 'billing_address.email'),
