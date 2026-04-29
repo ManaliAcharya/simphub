@@ -3,11 +3,11 @@
 namespace Modules\Outbound\Services;
 
 use DOMDocument;
+use Illuminate\Support\Facades\Log;
 use Modules\Outbound\DTOs\ChargeRequest;
 use RuntimeException;
 use SoapClient;
 use SoapHeader;
-use stdClass;
 
 class PayaSandboxChargeService
 {
@@ -27,6 +27,12 @@ class PayaSandboxChargeService
 
         $settingsResult = $client->__soapCall($terminalSettingsMethod, []);
         $settingsXml = (string) ($settingsResult->{$terminalSettingsMethod.'Result'} ?? '');
+        $this->logSoapExchange('Paya certification request', $client, $config, [
+            'method' => $terminalSettingsMethod,
+            'amount' => $amount,
+            'request_id' => $paymentInfo->RequestID,
+            'transaction_id' => $paymentInfo->TransactionID,
+        ]);
 
         if (! $this->isCertified($settingsXml)) {
             throw new RuntimeException($this->certificationFailureMessage($settingsXml));
@@ -35,6 +41,13 @@ class PayaSandboxChargeService
         $processResult = $client->__soapCall($processMethod, [[
             'DataPacket' => $xml,
         ]]);
+        $this->logSoapExchange('Paya process request', $client, $config, [
+            'method' => $processMethod,
+            'amount' => $amount,
+            'request_id' => $paymentInfo->RequestID,
+            'transaction_id' => $paymentInfo->TransactionID,
+            'data_packet' => $xml,
+        ]);
 
         $rawXml = (string) ($processResult->{$processMethod.'Result'} ?? '');
         if ($rawXml === '') {
@@ -161,6 +174,15 @@ class PayaSandboxChargeService
             ),
             'terminal_settings_method' => $this->credentialValue($credentials, 'terminal_settings_method', 'PAYA_TERMINAL_SETTINGS_METHOD', 'GetCertificationTerminalSettings'),
             'process_method' => $this->credentialValue($credentials, 'process_method', 'PAYA_PROCESS_METHOD', 'ProcessSingleCertificationCheck'),
+            'sources' => [
+                'wsdl' => $this->credentialSource($credentials, 'wsdl'),
+                'username' => $this->credentialSource($credentials, 'username'),
+                'password' => $this->credentialSource($credentials, 'password'),
+                'terminal_id' => $this->credentialSource($credentials, 'terminal_id'),
+                'namespace' => $this->credentialSource($credentials, 'namespace'),
+                'terminal_settings_method' => $this->credentialSource($credentials, 'terminal_settings_method'),
+                'process_method' => $this->credentialSource($credentials, 'process_method'),
+            ],
         ];
     }
 
@@ -195,6 +217,17 @@ class PayaSandboxChargeService
         return (string) env($envKey, $default);
     }
 
+    private function credentialSource(array $credentials, string $key): string
+    {
+        $value = $credentials[$key] ?? null;
+
+        if (is_string($value) && trim($value) !== '') {
+            return 'mid_credentials';
+        }
+
+        return 'env';
+    }
+
     private function certificationFailureMessage(string $settingsXml): string
     {
         if ($settingsXml === '') {
@@ -215,6 +248,36 @@ class PayaSandboxChargeService
         }
 
         return 'Paya certification terminal settings failed.';
+    }
+
+    private function logSoapExchange(string $label, SoapClient $client, array $config, array $context = []): void
+    {
+        Log::info($label, [
+            ...$context,
+            'wsdl' => $config['wsdl'],
+            'namespace' => $config['namespace'],
+            'username' => $config['username'],
+            'password' => $this->maskSecret($config['password']),
+            'terminal_id' => $config['terminal_id'],
+            'sources' => $config['sources'] ?? [],
+            'soap_request_headers' => method_exists($client, '__getLastRequestHeaders') ? $client->__getLastRequestHeaders() : null,
+            'soap_request_xml' => method_exists($client, '__getLastRequest') ? $client->__getLastRequest() : null,
+            'soap_response_headers' => method_exists($client, '__getLastResponseHeaders') ? $client->__getLastResponseHeaders() : null,
+            'soap_response_xml' => method_exists($client, '__getLastResponse') ? $client->__getLastResponse() : null,
+        ]);
+    }
+
+    private function maskSecret(string $secret): string
+    {
+        if ($secret === '') {
+            return '[empty]';
+        }
+
+        if (strlen($secret) <= 4) {
+            return str_repeat('*', strlen($secret));
+        }
+
+        return substr($secret, 0, 2).str_repeat('*', max(0, strlen($secret) - 4)).substr($secret, -2);
     }
 
     private function normalizeNamespace(string $namespace): string
