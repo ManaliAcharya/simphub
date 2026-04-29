@@ -7,6 +7,7 @@ use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Models\Transaction;
 use Modules\Billing\States\SessionStateMachine;
+use Modules\Inbound\Models\Client;
 use Modules\Outbound\DTOs\ChargeRequest;
 use Modules\Outbound\Factory\GatewayAdapterFactory;
 use Modules\Payment\Events\PaymentApproved;
@@ -26,7 +27,10 @@ class PaymentCheckoutService
     public function details(PaymentSession $session): array
     {
         $invoice = $session->invoice()->firstOrFail();
-        $options = $this->routing->candidates($this->makeRoutingContext($session, 'CARD'));
+        $options = $this->filterAllowedGateways(
+            $this->routingCandidates($session),
+            $invoice->pms_client_id,
+        );
 
         if ($options->isEmpty()) {
             throw new RuntimeException('No routing rule available for this payment session.');
@@ -58,6 +62,7 @@ class PaymentCheckoutService
                     'routing_rule_id' => $decision->routingRuleId,
                     'gateway' => $decision->gateway,
                     'mid' => $decision->mid,
+                    'payment_method' => $decision->ruleMatches['payment_method'] ?? 'CARD',
                     'rule_matches' => $decision->ruleMatches,
                     'hosted_fields' => [
                         'gateway' => $hostedFields->gateway,
@@ -121,6 +126,7 @@ class PaymentCheckoutService
             amountInCents: (int) $invoice->amount_cents,
             currency: (string) $invoice->currency,
             idempotencyKey: (string) $session->idempotency_key,
+            midCredentials: $decision->midCredentials,
             metadata: [
                 'invoice_id' => $invoice->id,
                 'payment_session_id' => $session->id,
@@ -130,6 +136,10 @@ class PaymentCheckoutService
 
         if (! $response->approved) {
             $session->forceFill(['status' => 'FAILED'])->save();
+            $invoice->forceFill([
+                'status' => 'FAILED',
+                'pms_sync_status' => 'FAILED',
+            ])->save();
             $this->idempotency->fail((string) $session->idempotency_key);
             AuditLogger::log('PAYMENT_DECLINED', 'payment_session', $session->id, [
                 'message' => $response->message,
@@ -198,5 +208,37 @@ class PaymentCheckoutService
             (string) $invoice->currency,
             [],
         );
+    }
+
+    private function filterAllowedGateways($options, ?string $pmsClientId)
+    {
+        if (! $pmsClientId) {
+            return $options;
+        }
+
+        $client = Client::query()
+            ->where('pms_client_id', $pmsClientId)
+            ->first();
+
+        $allowedGateways = collect($client?->allowed_payment_gateways ?? [])
+            ->map(fn ($gateway) => strtolower((string) $gateway))
+            ->filter()
+            ->values();
+
+        if ($allowedGateways->isEmpty()) {
+            return $options;
+        }
+
+        return $options
+            ->filter(fn ($decision) => $allowedGateways->contains(strtolower((string) $decision->gateway)))
+            ->values();
+    }
+
+    private function routingCandidates(PaymentSession $session)
+    {
+        return collect(['CARD', 'ACH'])
+            ->flatMap(fn ($paymentMethod) => $this->routing->candidates($this->makeRoutingContext($session, $paymentMethod)))
+            ->unique(fn ($decision) => $decision->routingRuleId)
+            ->values();
     }
 }

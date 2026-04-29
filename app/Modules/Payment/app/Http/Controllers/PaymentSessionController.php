@@ -55,6 +55,7 @@ class PaymentSessionController extends Controller
             'status' => 'APPROVED',
             'transaction_id' => $transaction->id,
             'gateway_txn_id' => $transaction->gateway_txn_id,
+            'invoice_status' => optional($paymentSession->invoice()->first())->status,
         ]);
     }
 }

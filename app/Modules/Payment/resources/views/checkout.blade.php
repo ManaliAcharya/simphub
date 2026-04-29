@@ -64,6 +64,13 @@
                     <p class="muted">A hosted tokenizer is not configured in this environment, so a gateway token can be entered directly for testing.</p>
                 </div>
 
+                <div id="direct-pay-panel" class="mock-panel hidden">
+                    <p class="muted">This gateway charges the invoice amount directly in sandbox mode without collecting form fields on this page.</p>
+                    <div class="actions">
+                        <button id="direct-pay-button" class="primary-button" type="button">Pay invoice amount now</button>
+                    </div>
+                </div>
+
                 <div class="actions">
                     <button id="submit-button" class="primary-button" type="button" disabled>Submit payment</button>
                     <span id="submit-status" class="muted"></span>
@@ -96,6 +103,8 @@
             fluidpayForm: document.getElementById('fluidpay-payment-form'),
             fluidpayTokenizeButton: document.getElementById('fluidpay-tokenize-button'),
             mockTokenPanel: document.getElementById('mock-token-panel'),
+            directPayPanel: document.getElementById('direct-pay-panel'),
+            directPayButton: document.getElementById('direct-pay-button'),
             tokenInput: document.getElementById('token-input'),
             submitButton: document.getElementById('submit-button'),
             submitStatus: document.getElementById('submit-status'),
@@ -184,6 +193,10 @@
                 return `Gateway-hosted Collect.js fields are ready for ${option.gateway.toUpperCase()}.`;
             }
 
+            if (mode === 'direct') {
+                return `${option.gateway.toUpperCase()} will run a direct sandbox charge for the invoice amount when you confirm.`;
+            }
+
             return `${option.gateway.toUpperCase()} is in test mode, so a gateway token can be entered directly.`;
         }
 
@@ -191,9 +204,11 @@
             els.hostedFields.classList.add('hidden');
             els.fluidpayPanel.classList.add('hidden');
             els.mockTokenPanel.classList.add('hidden');
+            els.directPayPanel.classList.add('hidden');
             els.tokenInput.value = '';
             els.tokenizeButton.disabled = false;
             els.fluidpayTokenizeButton.disabled = false;
+            els.directPayButton.disabled = false;
         }
 
         function handleTokenizerResponse(resp) {
@@ -290,6 +305,12 @@
                 return;
             }
 
+            if (mode === 'direct') {
+                els.directPayPanel.classList.remove('hidden');
+                els.submitButton.disabled = true;
+                return;
+            }
+
             if (mode === 'collectjs' && option.hosted_fields.fields.script_url) {
                 try {
                     await loadScript(option.hosted_fields.fields.script_url);
@@ -355,6 +376,40 @@
             if (!response.ok) {
                 els.submitStatus.textContent = payload.message || 'Payment failed.';
                 els.submitButton.disabled = false;
+                return;
+            }
+
+            els.submitStatus.textContent = `Payment approved. Gateway reference: ${payload.gateway_txn_id}`;
+            els.status.textContent = 'COMPLETED';
+        });
+
+        els.directPayButton.addEventListener('click', async () => {
+            if (!state.selectedOption) {
+                return;
+            }
+
+            els.directPayButton.disabled = true;
+            els.submitStatus.textContent = `Submitting ${state.selectedOption.gateway.toUpperCase()} sandbox payment...`;
+
+            const response = await fetch(`/api/v1/payment/sessions/${sessionToken}/submit`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                },
+                body: JSON.stringify({
+                    token: '__DIRECT_PAY__',
+                    routing_rule_id: state.selectedOption.routing_rule_id,
+                    payment_method: state.selectedOption.payment_method || state.selectedOption.hosted_fields.metadata.payment_method || 'ACH',
+                }),
+            });
+
+            const payload = await response.json();
+
+            if (!response.ok) {
+                els.submitStatus.textContent = payload.message || 'Payment failed.';
+                els.status.textContent = 'FAILED';
+                els.directPayButton.disabled = false;
                 return;
             }
 
