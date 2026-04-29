@@ -63,18 +63,32 @@ class ZohoConnector implements PmsConnectorInterface
         if ($client?->pms_client_id) {
             $webhookUrl .= '?pms_client_id='.$client->pms_client_id;
         }
+        $rawJson = '
+{
+    "pms_client_id": "'.$client->pms_client_id.'",
+    "invoice_id": "${invoice.invoice_id}",
+    "total_amount": "${invoice.total}",
+    "status": "${invoice.status}",
+    "source": "zoho"
+}';
 
+        $webhook_instructions = [
+            'steps' => [
+                'Log in to <strong>Zoho Books</strong>, click the <strong>Gear icon (Settings)</strong> in the top right corner, and select <strong>Automation</strong>.',
+                'Select <strong>Workflow Actions</strong>, then click <strong>Webhooks</strong> and click the <strong>+ New Webhook</strong> button.',
+                'Fill out the webhook details exactly as shown in the box below.',
+                'To make the webhook trigger automatically, go to <strong>Settings > Automation > Workflow Rules</strong>.',
+                'Click <strong>+ New Workflow Rule</strong> and define the criteria (e.g., <em>When an invoice is created</em>).',
+                'Under the action section, choose <strong>Webhook</strong> and select the webhook you just created.'
+            ],
+            'url' => $webhookUrl,
+            'json' => $rawJson
+        ];
         return [
             'heading' => 'Connect Zoho for a configured client',
-            'copy' => 'After Zoho authentication, copy the webhook URL below into the client\'s Zoho organization so bill-created notifications reach this middleware.',
+            'copy' => 'After Zoho authentication, follow below instructions to setup webhook into the client\'s Zoho organization so invoice-created notifications reach to the middleware.',
             'webhook_url' => $webhookUrl,
-            'webhook_instructions' => [
-                'Go to Settings > Automation > Webhooks in the client\'s Zoho organization.',
-                'Create a webhook for Bill > When a Bill is Created.',
-                'Use POST as the HTTP method.',
-                'Use the webhook URL shown on this page as the target endpoint.',
-                'Include payload fields such as Bill ID, Vendor Name, and Amount so the middleware can identify the bill event.',
-            ],
+            'webhook_instructions' => $webhook_instructions,
             'organization_name' => data_get($connection?->meta, 'default_organization_name'),
             'organization_id' => data_get($connection?->meta, 'default_organization_id'),
         ];

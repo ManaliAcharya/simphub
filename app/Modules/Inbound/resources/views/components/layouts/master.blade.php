@@ -51,6 +51,7 @@
             border: 1px solid rgba(19, 34, 56, 0.1);
             border-radius: 18px;
             padding: 14px 16px;
+            word-break: break-all;
         }
         .summary-card span, .field span, .client-row span { display: block; color: #6b7c93; font-size: 0.95rem; }
         .summary-card strong, .client-row strong, .client-row code { display: block; margin-top: 6px; }
@@ -113,7 +114,7 @@
         }
         .checkbox.gateway-option {
             align-items: flex-start;
-            min-height: 74px;
+            /*min-height: 74px;*/
         }
         .checkbox.gateway-option strong {
             display: block;

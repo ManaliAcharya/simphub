@@ -2,7 +2,7 @@
     <div class="shell">
         <section class="panel">
             <p class="eyebrow">Client Setup</p>
-            <h1>{{ $heading }}</h1>
+            <h2>{{ $heading }}</h2>
             <p class="copy">{{ $copy }}</p>
 
             @if ($success)
@@ -18,14 +18,14 @@
                     <span>Selected client</span>
                     <strong>{{ $client?->client_name ?? 'No client selected' }}</strong>
                 </div>
-                <div class="summary-card">
+                <!-- <div class="summary-card">
                     <span>PMS client id</span>
                     <strong>{{ $client?->pms_client_id ?? '--' }}</strong>
                 </div>
                 <div class="summary-card">
                     <span>{{ $providerLabel }} webhook URL</span>
                     <strong>{{ $webhook_url ?? '--' }}</strong>
-                </div>
+                </div> -->
                 @if (! empty($organization_name) || ! empty($organization_id))
                     <div class="summary-card">
                         <span>Zoho organization</span>
@@ -36,25 +36,76 @@
             </div>
 
             <div class="actions">
-                <a class="button secondary" href="{{ route('inbound.clients.create') }}">Create Client</a>
+                <!-- <a class="button secondary" href="{{ route('inbound.clients.create') }}">Create New Client</a> -->
                 @if ($connectUrl)
                     <a class="button primary" href="{{ $connectUrl }}">Connect {{ $providerLabel }}</a>
                 @endif
             </div>
 
-            @if (! empty($webhook_instructions))
-                <div class="notice success" style="margin-top: 18px;">
-                    <strong>Webhook setup instructions</strong>
-                    <ul style="margin: 10px 0 0 18px; padding: 0;">
-                        @foreach ($webhook_instructions as $instruction)
-                            <li style="margin-bottom: 8px;">{{ $instruction }}</li>
-                        @endforeach
-                    </ul>
+            @if (!empty($webhook_instructions))
+            <div class="webhook-card" style="margin-top: 18px; padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; font-family: sans-serif;">
+                <div style="display: flex; align-items: center; margin-bottom: 15px;">
+                    <span style="font-size: 20px; margin-right: 8px;">🔗</span>
+                    <strong style="font-size: 16px; color: #111827;">Zoho Books Webhook Setup Instructions</strong>
                 </div>
-            @endif
+
+                <!-- Step-by-Step Guide -->
+                <ol style="margin: 0 0 20px 20px; padding: 0; color: #374151; line-height: 1.6;">
+                    @foreach ($webhook_instructions['steps'] as $index => $instruction)
+                        <li style="margin-bottom: 10px;">{!! $instruction !!}</li>
+                        
+                        {{-- Inject the detail cards after Step 3 --}}
+                        @if ($index === 2)
+                            <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 15px; margin: 15px 0; font-size: 14px;">
+                                <div style="margin-bottom: 8px;"><strong>Name:</strong> Invoice Create</div>
+                                <div style="margin-bottom: 12px;"><strong>Module:</strong> Invoices</div>
+                                
+                                <!-- URL Field -->
+                                <div style="margin-bottom: 12px;">
+                                    <label style="font-weight: 600; display: block; margin-bottom: 4px;">URL to Notify:</label>
+                                    <div style="display: flex; gap: 8px;">
+                                        <input type="text" id="webhook-url-input" value="{{ $webhook_instructions['url'] }}" readonly style="flex: 1; padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; background: #f3f4f6; color: #4b5563;">
+                                        <button onclick="copyToClipboard('webhook-url-input', this)" style="padding: 0 12px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Copy</button>
+                                    </div>
+                                </div>
+
+                                <!-- JSON Field -->
+                                <div>
+                                    <label style="font-weight: 600; display: block; margin-bottom: 4px;">Body (Choose Raw JSON and paste this):</label>
+                                    <div style="position: relative;">
+                                        <textarea id="webhook-json-input" rows="7" readonly style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 4px; background: #1f2937; color: #f9fafb; font-family: monospace; font-size: 13px; box-sizing: border-box;">{{ $webhook_instructions['json'] }}</textarea>
+                                        <button onclick="copyToClipboard('webhook-json-input', this)" style="position: absolute; top: 8px; right: 8px; padding: 6px 10px; background: #4b5563; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Copy JSON</button>
+                                    </div>
+                                </div>
+                            </div>
+                        @endif
+                    @endforeach
+                </ol>
+            </div>
+
+            <!-- Clipboard JS Script -->
+            <script>
+                function copyToClipboard(elementId, button) {
+                    const copyText = document.getElementById(elementId);
+                    copyText.select();
+                    copyText.setSelectionRange(0, 99999); /* For mobile devices */
+                    navigator.clipboard.writeText(copyText.value);
+
+                    // Visual feedback
+                    const originalText = button.innerText;
+                    button.innerText = 'Copied! ✅';
+                    button.style.background = '#059669';
+                    
+                    setTimeout(() => {
+                        button.innerText = originalText;
+                        button.style.background = elementId === 'webhook-json-input' ? '#4b5563' : '#2563eb';
+                    }, 1500);
+                }
+            </script>
+        @endif
         </section>
 
-        <section class="panel list-panel">
+        <!-- <section class="panel list-panel">
             <p class="eyebrow">Configured {{ $providerLabel }} Clients</p>
             <div class="client-list">
                 @forelse ($clients as $configuredClient)
@@ -67,6 +118,6 @@
                     <p class="empty">No {{ $providerLabel }} clients configured yet.</p>
                 @endforelse
             </div>
-        </section>
+        </section> -->
     </div>
 </x-inbound::layouts.master>
