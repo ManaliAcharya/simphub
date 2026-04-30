@@ -78,9 +78,43 @@
             flex-wrap: wrap;
         }
         .gateway-options {
-            display: flex;
+            display: grid;
             gap: 12px;
-            flex-wrap: wrap;
+            width: 100%;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        }
+        .gateway-choice {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 14px 16px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: rgba(255,255,255,0.82);
+            cursor: pointer;
+            transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+        }
+        .gateway-choice:hover {
+            transform: translateY(-1px);
+            border-color: rgba(239, 131, 84, 0.5);
+        }
+        .gateway-choice input {
+            width: 18px;
+            height: 18px;
+            margin: 2px 0 0;
+            accent-color: var(--accent);
+            flex: 0 0 auto;
+        }
+        .gateway-choice-copy {
+            display: grid;
+            gap: 4px;
+        }
+        .gateway-choice-copy strong {
+            font-size: 1rem;
+        }
+        .gateway-choice-copy small {
+            color: var(--muted);
+            font-size: 0.88rem;
         }
         .primary-button {
             border: 0;
@@ -93,9 +127,10 @@
         }
         .primary-button:hover { background: var(--accent-dark); }
         .primary-button:disabled { opacity: 0.55; cursor: not-allowed; }
-        .gateway-options .primary-button.is-selected {
-            background: var(--accent);
-            box-shadow: 0 0 0 3px rgba(239, 131, 84, 0.22);
+        .gateway-choice.is-selected {
+            border-color: rgba(239, 131, 84, 0.8);
+            box-shadow: 0 0 0 3px rgba(239, 131, 84, 0.18);
+            background: rgba(255, 245, 239, 0.96);
         }
         .card-panel { margin-top: 22px; }
         .hidden { display: none; }

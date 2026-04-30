@@ -19,14 +19,12 @@
         <section class="panel checkout">
             <div class="checkout-header">
                 <div>
-                    <p class="step">Step 1</p>
                     <h2>Choose how you want to pay</h2>
                 </div>
                 <div id="gateway-options" class="gateway-options"></div>
             </div>
 
             <div id="card-panel" class="card-panel hidden">
-                <p class="step">Step 2</p>
                 <h3>Enter card details in the secure gateway fields</h3>
                 <p id="gateway-mode" class="muted"></p>
 
@@ -65,10 +63,7 @@
                 </div>
 
                 <div id="direct-pay-panel" class="mock-panel hidden">
-                    <p class="muted">This gateway charges the invoice amount directly in sandbox mode.</p>
-                    <div class="actions">
-                        <button id="direct-pay-button" class="primary-button" type="button">Pay invoice amount now</button>
-                    </div>
+                    <p class="muted">This gateway charges the invoice amount directly in sandbox mode when you submit the payment.</p>
                 </div>
 
                 <div class="actions">
@@ -104,7 +99,6 @@
             fluidpayTokenizeButton: document.getElementById('fluidpay-tokenize-button'),
             mockTokenPanel: document.getElementById('mock-token-panel'),
             directPayPanel: document.getElementById('direct-pay-panel'),
-            directPayButton: document.getElementById('direct-pay-button'),
             tokenInput: document.getElementById('token-input'),
             submitButton: document.getElementById('submit-button'),
             submitStatus: document.getElementById('submit-status'),
@@ -140,25 +134,46 @@
             els.gatewayOptions.innerHTML = '';
 
             options.forEach((option, index) => {
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'primary-button';
-                button.textContent = `Pay with ${option.gateway.toUpperCase()}`;
-                button.addEventListener('click', () => selectOption(option, button));
-                els.gatewayOptions.appendChild(button);
+                const label = document.createElement('label');
+                label.className = 'gateway-choice';
+                label.innerHTML = `
+                    <input type="radio" name="payment_gateway" value="${option.routing_rule_id}">
+                    <span class="gateway-choice-copy">
+                        <strong>Pay with ${option.gateway.toUpperCase()}</strong>
+                        <small>${describeOption(option)}</small>
+                    </span>
+                `;
+
+                const input = label.querySelector('input');
+                input.addEventListener('change', () => {
+                    if (input.checked) {
+                        selectOption(option, label);
+                    }
+                });
+
+                els.gatewayOptions.appendChild(label);
 
                 if (index === 0) {
-                    selectOption(option, button);
+                    input.checked = true;
+                    selectOption(option, label);
                 }
             });
         }
 
-        function selectOption(option, button) {
+        function describeOption(option) {
+            const paymentMethod = option.payment_method || option.hosted_fields.metadata.payment_method || 'CARD';
+
+            if (option.hosted_fields.metadata.mode === 'direct') {
+                return `${paymentMethod} sandbox payment`;
+            }
+
+            return `${paymentMethod} secure tokenization`;
+        }
+
+        function selectOption(option, choice) {
             state.selectedOption = option;
             Array.from(els.gatewayOptions.children).forEach((child) => child.classList.remove('is-selected'));
-            if (button) {
-                button.classList.add('is-selected');
-            }
+            choice?.classList.add('is-selected');
 
             resetToken('');
             setupCardEntry();
@@ -208,7 +223,6 @@
             els.tokenInput.value = '';
             els.tokenizeButton.disabled = false;
             els.fluidpayTokenizeButton.disabled = false;
-            els.directPayButton.disabled = false;
         }
 
         function handleTokenizerResponse(resp) {
@@ -307,7 +321,9 @@
 
             if (mode === 'direct') {
                 els.directPayPanel.classList.remove('hidden');
-                els.submitButton.disabled = true;
+                state.token = '__DIRECT_PAY__';
+                els.submitButton.disabled = false;
+                els.submitStatus.textContent = 'Ready to submit the invoice amount.';
                 return;
             }
 
@@ -354,9 +370,12 @@
         });
 
         els.submitButton.addEventListener('click', async () => {
-            if (!state.token) return;
+            if (!state.token || !state.selectedOption) return;
             els.submitButton.disabled = true;
-            els.submitStatus.textContent = 'Submitting payment...';
+            const isDirect = state.selectedOption.hosted_fields.metadata.mode === 'direct';
+            els.submitStatus.textContent = isDirect
+                ? `Submitting ${state.selectedOption.gateway.toUpperCase()} sandbox payment...`
+                : 'Submitting payment...';
 
             const response = await fetch(`/api/v1/payment/sessions/${sessionToken}/submit`, {
                 method: 'POST',
@@ -367,7 +386,7 @@
                 body: JSON.stringify({
                     token: state.token,
                     routing_rule_id: state.selectedOption.routing_rule_id,
-                    payment_method: 'CARD',
+                    payment_method: state.selectedOption.payment_method || state.selectedOption.hosted_fields.metadata.payment_method || 'CARD',
                 }),
             });
 
@@ -376,40 +395,6 @@
             if (!response.ok) {
                 els.submitStatus.textContent = payload.message || 'Payment failed.';
                 els.submitButton.disabled = false;
-                return;
-            }
-
-            els.submitStatus.textContent = `Payment approved. Gateway reference: ${payload.gateway_txn_id}`;
-            els.status.textContent = 'COMPLETED';
-        });
-
-        els.directPayButton.addEventListener('click', async () => {
-            if (!state.selectedOption) {
-                return;
-            }
-
-            els.directPayButton.disabled = true;
-            els.submitStatus.textContent = `Submitting ${state.selectedOption.gateway.toUpperCase()} sandbox payment...`;
-
-            const response = await fetch(`/api/v1/payment/sessions/${sessionToken}/submit`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                },
-                body: JSON.stringify({
-                    token: '__DIRECT_PAY__',
-                    routing_rule_id: state.selectedOption.routing_rule_id,
-                    payment_method: state.selectedOption.payment_method || state.selectedOption.hosted_fields.metadata.payment_method || 'ACH',
-                }),
-            });
-
-            const payload = await response.json();
-
-            if (!response.ok) {
-                els.submitStatus.textContent = payload.message || 'Payment failed.';
-                els.status.textContent = 'FAILED';
-                els.directPayButton.disabled = false;
                 return;
             }
 
