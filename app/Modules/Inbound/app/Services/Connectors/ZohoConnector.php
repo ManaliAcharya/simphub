@@ -82,7 +82,8 @@ class ZohoConnector implements PmsConnectorInterface
                 'Under the action section, choose <strong>Webhook</strong> and select the webhook you just created.'
             ],
             'url' => $webhookUrl,
-            'json' => $rawJson
+            'json' => $rawJson,
+            'demo_video_url' => config('services.zoho.webhook_demo_video_url'),
         ];
         return [
             'heading' => 'Connect Zoho for a configured client',

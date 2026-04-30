@@ -60,6 +60,7 @@ return [
         'scope' => env('ZOHO_SCOPE', 'ZohoBooks.fullaccess.all'),
         'organization_id' => env('ZOHO_ORGANIZATION_ID'),
         'organization_name' => env('ZOHO_ORGANIZATION_NAME'),
+        'webhook_demo_video_url' => env('ZOHO_WEBHOOK_DEMO_VIDEO_URL'),
         'webhook_callback_url' => env('ZOHO_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/zoho'),
     ],
 

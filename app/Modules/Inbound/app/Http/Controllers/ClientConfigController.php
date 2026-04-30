@@ -9,11 +9,12 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Modules\Inbound\Models\Client;
+use Modules\Inbound\Services\ZohoRegionResolver;
 use Modules\Routing\Models\RoutingRule;
 
 class ClientConfigController extends Controller
 {
-    public function create(): View
+    public function create(ZohoRegionResolver $zohoRegions): View
     {
         $availableGateways = RoutingRule::query()
             ->where('is_active', true)
@@ -28,10 +29,11 @@ class ClientConfigController extends Controller
         return view('inbound::clients.create', [
             'clients' => Client::query()->latest('created_at')->get(),
             'availableGateways' => $availableGateways,
+            'zohoRegions' => $zohoRegions->options(),
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, ZohoRegionResolver $zohoRegions): RedirectResponse
     {
         $availableGateways = RoutingRule::query()
             ->where('is_active', true)
@@ -45,6 +47,7 @@ class ClientConfigController extends Controller
         $validated = $request->validate([
             'client_name' => ['required', 'string', 'max:255'],
             'client_pms' => ['required', 'string', 'max:50'],
+            'zoho_region' => ['nullable', 'string', Rule::in(array_keys($zohoRegions->options()))],
             'allowed_payment_gateways' => $availableGateways === [] ? ['nullable', 'array'] : ['required', 'array', 'min:1'],
             'allowed_payment_gateways.*' => ['string', Rule::in($availableGateways)],
             'webhook_flow_enabled' => ['nullable', 'boolean'],
@@ -52,11 +55,20 @@ class ClientConfigController extends Controller
             'client_calls_our_api' => ['nullable', 'boolean'],
         ]);
 
+        if (strtoupper($validated['client_pms']) === 'ZOHO' && empty($validated['zoho_region'])) {
+            return back()
+                ->withErrors(['zoho_region' => 'Zoho region is required when PMS is Zoho.'])
+                ->withInput();
+        }
+
         $client = Client::query()->create([
             'pms_client_id' => (string) Str::uuid(),
             'setup_token' => strtolower(Str::random(12)),
             'client_name' => $validated['client_name'],
             'client_pms' => strtoupper($validated['client_pms']),
+            'zoho_region' => strtoupper($validated['client_pms']) === 'ZOHO'
+                ? $zohoRegions->normalize($validated['zoho_region'] ?? 'US')
+                : null,
             'allowed_payment_gateways' => collect($validated['allowed_payment_gateways'] ?? [])
                 ->map(fn ($gateway) => strtoupper((string) $gateway))
                 ->unique()

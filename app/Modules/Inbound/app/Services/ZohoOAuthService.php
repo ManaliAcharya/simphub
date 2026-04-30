@@ -12,11 +12,12 @@ class ZohoOAuthService
     public function __construct(
         private readonly PmsOAuthStateService $state,
         private readonly ZohoApiClient $client,
+        private readonly ZohoRegionResolver $regions,
     ) {}
 
     public function authorizationUrl(string $pmsClientId): string
     {
-        return rtrim(config('services.zoho.accounts_base_url'), '/').'/oauth/v2/auth?'.http_build_query([
+        return rtrim($this->regions->accountsBaseUrlForClientId($pmsClientId), '/').'/oauth/v2/auth?'.http_build_query([
             'response_type' => 'code',
             'client_id' => $this->clientId(),
             'redirect_uri' => $this->redirectUri(),
@@ -31,7 +32,7 @@ class ZohoOAuthService
     {
         $response = Http::asForm()
             ->acceptJson()
-            ->post(rtrim(config('services.zoho.accounts_base_url'), '/').'/oauth/v2/token', [
+            ->post(rtrim($this->regions->accountsBaseUrlForClientId($pmsClientId), '/').'/oauth/v2/token', [
                 'grant_type' => 'authorization_code',
                 'client_id' => $this->clientId(),
                 'client_secret' => $this->clientSecret(),
@@ -85,7 +86,7 @@ class ZohoOAuthService
 
         $response = Http::asForm()
             ->acceptJson()
-            ->post(rtrim(config('services.zoho.accounts_base_url'), '/').'/oauth/v2/token', [
+            ->post(rtrim($this->regions->accountsBaseUrlForConnection($connection), '/').'/oauth/v2/token', [
                 'grant_type' => 'refresh_token',
                 'client_id' => $this->clientId(),
                 'client_secret' => $this->clientSecret(),

@@ -14,10 +14,20 @@
 
                 <label class="field">
                     <span>Client PMS</span>
-                    <select name="client_pms" required>
+                    <select id="client-pms-select" name="client_pms" required>
                         <option value="CLIO" @selected(old('client_pms') === 'CLIO')>Clio</option>
                         <option value="ZOHO" @selected(old('client_pms') === 'ZOHO')>Zoho</option>
                         <!-- <option value="LAWCUS" @selected(old('client_pms') === 'LAWCUS')>Lawcus</option> -->
+                    </select>
+                </label>
+
+                <label class="field" id="zoho-region-field" style="{{ old('client_pms') === 'ZOHO' ? '' : 'display:none;' }}">
+                    <span>Zoho account region</span>
+                    <select name="zoho_region">
+                        <option value="">Select region</option>
+                        @foreach ($zohoRegions as $code => $label)
+                            <option value="{{ $code }}" @selected(old('zoho_region') === $code)>{{ $label }}</option>
+                        @endforeach
                     </select>
                 </label>
 
@@ -70,6 +80,20 @@
                     <!-- <a class="button secondary" href="{{ route('inbound.clio.page') }}">Back to Clio</a> -->
                 </div>
             </form>
+
+            <script>
+                (function () {
+                    const pmsSelect = document.getElementById('client-pms-select');
+                    const zohoRegionField = document.getElementById('zoho-region-field');
+
+                    function toggleZohoRegion() {
+                        zohoRegionField.style.display = pmsSelect.value === 'ZOHO' ? '' : 'none';
+                    }
+
+                    pmsSelect.addEventListener('change', toggleZohoRegion);
+                    toggleZohoRegion();
+                }());
+            </script>
 
             @if ($errors->any())
                 <div class="notice error">

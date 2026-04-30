@@ -67,6 +67,20 @@
                     <strong style="font-size: 16px; color: #111827;">Zoho Books Webhook Setup Instructions</strong>
                 </div>
 
+                @if (!empty($webhook_instructions['demo_video_url']))
+                    <div style="margin-bottom: 18px; padding: 14px 16px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px;">
+                        <div style="font-weight: 600; color: #1d4ed8; margin-bottom: 6px;">Need a walkthrough?</div>
+                        <a
+                            href="{{ $webhook_instructions['demo_video_url'] }}"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style="display: inline-block; padding: 10px 14px; background: #2563eb; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 600;"
+                        >
+                            View webhook setup demo
+                        </a>
+                    </div>
+                @endif
+
                 <!-- Step-by-Step Guide -->
                 <ol style="margin: 0 0 20px 20px; padding: 0; color: #374151; line-height: 1.6;">
                     @foreach ($webhook_instructions['steps'] as $index => $instruction)
