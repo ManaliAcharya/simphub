@@ -66,9 +66,9 @@ class ZohoConnector implements PmsConnectorInterface
         $rawJson = '
 {
     "pms_client_id": "'.$client->pms_client_id.'",
-    "invoice_id": "${invoice.invoice_id}",
-    "total_amount": "${invoice.total}",
-    "status": "${invoice.status}",
+    "invoice_id": "${INVOICE.INVOICE_ID}",
+    "total_amount": "${INVOICE.INVOICE_TOTAL}",
+    "status": "${INVOICE.STATUS}",
     "source": "zoho"
 }';
 
