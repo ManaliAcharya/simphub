@@ -25,8 +25,8 @@
             </div>
 
             <div id="card-panel" class="card-panel hidden">
-                <h3>Enter card details in the secure gateway fields</h3>
-                <p id="gateway-mode" class="muted"></p>
+                <!-- <h3>Enter card details in the secure gateway fields</h3> -->
+                <!-- <p id="gateway-mode" class="muted"></p> -->
 
                 <div id="hosted-fields" class="hosted-fields hidden">
                     <div class="field">
@@ -62,9 +62,9 @@
                     <p class="muted">A hosted tokenizer is not configured in this environment, so a gateway token can be entered directly for testing.</p>
                 </div>
 
-                <div id="direct-pay-panel" class="mock-panel hidden">
+                <!-- <div id="direct-pay-panel" class="mock-panel hidden">
                     <p class="muted">This gateway charges the invoice amount directly in sandbox mode when you submit the payment.</p>
-                </div>
+                </div> -->
 
                 <div class="actions">
                     <button id="submit-button" class="primary-button" type="button" disabled>Submit payment</button>
@@ -98,11 +98,11 @@
             fluidpayForm: document.getElementById('fluidpay-payment-form'),
             fluidpayTokenizeButton: document.getElementById('fluidpay-tokenize-button'),
             mockTokenPanel: document.getElementById('mock-token-panel'),
-            directPayPanel: document.getElementById('direct-pay-panel'),
+            //directPayPanel: document.getElementById('direct-pay-panel'),
             tokenInput: document.getElementById('token-input'),
             submitButton: document.getElementById('submit-button'),
             submitStatus: document.getElementById('submit-status'),
-            gatewayMode: document.getElementById('gateway-mode'),
+            //gatewayMode: document.getElementById('gateway-mode'),
             tokenizeButton: document.getElementById('tokenize-button'),
         };
 
@@ -219,7 +219,7 @@
             els.hostedFields.classList.add('hidden');
             els.fluidpayPanel.classList.add('hidden');
             els.mockTokenPanel.classList.add('hidden');
-            els.directPayPanel.classList.add('hidden');
+            //els.directPayPanel.classList.add('hidden');
             els.tokenInput.value = '';
             els.tokenizeButton.disabled = false;
             els.fluidpayTokenizeButton.disabled = false;
@@ -312,7 +312,7 @@
             const option = state.selectedOption;
             const mode = option.hosted_fields.metadata.mode;
             hideAllEntryModes();
-            els.gatewayMode.textContent = describeMode(option);
+            //els.gatewayMode.textContent = describeMode(option);
 
             if (mode === 'tokenizer') {
                 await initializeFluidPay(option);
@@ -320,7 +320,7 @@
             }
 
             if (mode === 'direct') {
-                els.directPayPanel.classList.remove('hidden');
+                //els.directPayPanel.classList.remove('hidden');
                 state.token = '__DIRECT_PAY__';
                 els.submitButton.disabled = false;
                 els.submitStatus.textContent = 'Ready to submit the invoice amount.';
