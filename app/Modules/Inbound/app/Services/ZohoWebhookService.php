@@ -27,6 +27,7 @@ class ZohoWebhookService
         $invoiceId = (string) (
             Arr::get($payloadData, 'bill_id')
             ?? Arr::get($payloadData, 'data.bill_id')
+            ?? Arr::get($payloadData, 'invoice_id')
             ?? Arr::get($payloadData, 'data.invoice_id')
             ?? Arr::get($payloadData, 'data.bill.bill_id')
             ?? Arr::get($payloadData, 'bill.bill_id')
