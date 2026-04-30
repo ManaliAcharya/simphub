@@ -2,7 +2,7 @@
     <div class="shell">
         <section class="panel hero">
             <p class="eyebrow">Secure Invoice Payment</p>
-            <h1 id="invoice-title">Loading invoice...</h1>
+            <h2 id="invoice-title">Loading invoice...</h2>
             <p id="invoice-copy">We are preparing your secure payment session.</p>
             <div class="summary">
                 <div>

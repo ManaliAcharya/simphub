@@ -61,7 +61,7 @@ class ZohoConnector implements PmsConnectorInterface
     {
         $webhookUrl = rtrim((string) config('services.zoho.webhook_callback_url'), '/');
         if ($client?->pms_client_id) {
-            $webhookUrl .= '?pms_client_id='.$client->pms_client_id;
+            //$webhookUrl .= '?pms_client_id='.$client->pms_client_id;
         }
         $rawJson = '
 {
