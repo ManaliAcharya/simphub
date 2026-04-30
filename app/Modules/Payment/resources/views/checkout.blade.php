@@ -65,7 +65,7 @@
                 </div>
 
                 <div id="direct-pay-panel" class="mock-panel hidden">
-                    <p class="muted">This gateway charges the invoice amount directly in sandbox mode without collecting form fields on this page.</p>
+                    <p class="muted">This gateway charges the invoice amount directly in sandbox mode.</p>
                     <div class="actions">
                         <button id="direct-pay-button" class="primary-button" type="button">Pay invoice amount now</button>
                     </div>

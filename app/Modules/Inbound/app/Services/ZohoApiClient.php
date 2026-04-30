@@ -37,7 +37,7 @@ class ZohoApiClient
     public function fetchBill(PmsConnection $connection, string $billId, string $organizationId): array
     {
         return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
-            ->get("/bills/{$billId}", [
+            ->get("/invoices/{$billId}", [
                 'organization_id' => $organizationId,
             ])
             ->throw()
