@@ -18,6 +18,28 @@ class ZohoRegionResolver
         'CA' => 'https://accounts.zohocloud.ca',
     ];
 
+    public const BOOKS_API_BASE_URLS = [
+        'US' => 'https://www.zohoapis.com/books/v3',
+        'AU' => 'https://www.zohoapis.com.au/books/v3',
+        'EU' => 'https://www.zohoapis.eu/books/v3',
+        'IN' => 'https://www.zohoapis.in/books/v3',
+        'CN' => 'https://www.zohoapis.com.cn/books/v3',
+        'JP' => 'https://www.zohoapis.jp/books/v3',
+        'SA' => 'https://www.zohoapis.sa/books/v3',
+        'CA' => 'https://www.zohoapis.ca/books/v3',
+    ];
+
+    public const INVOICE_API_BASE_URLS = [
+        'US' => 'https://www.zohoapis.com/invoice/v3',
+        'AU' => 'https://www.zohoapis.com.au/invoice/v3',
+        'EU' => 'https://www.zohoapis.eu/invoice/v3',
+        'IN' => 'https://www.zohoapis.in/invoice/v3',
+        'CN' => 'https://www.zohoapis.com.cn/invoice/v3',
+        'JP' => 'https://www.zohoapis.jp/invoice/v3',
+        'SA' => 'https://www.zohoapis.sa/invoice/v3',
+        'CA' => 'https://www.zohoapis.ca/invoice/v3',
+    ];
+
     public function options(): array
     {
         return [
@@ -48,6 +70,28 @@ class ZohoRegionResolver
             ->first();
 
         return $this->accountsBaseUrlForClient($client);
+    }
+
+    public function booksApiBaseUrlForConnection(PmsConnection $connection): string
+    {
+        $client = Client::query()
+            ->where('pms_client_id', $connection->pms_client_id)
+            ->first();
+
+        $region = $this->normalize($client?->zoho_region);
+
+        return self::BOOKS_API_BASE_URLS[$region];
+    }
+
+    public function invoiceApiBaseUrlForConnection(PmsConnection $connection): string
+    {
+        $client = Client::query()
+            ->where('pms_client_id', $connection->pms_client_id)
+            ->first();
+
+        $region = $this->normalize($client?->zoho_region);
+
+        return self::INVOICE_API_BASE_URLS[$region];
     }
 
     public function normalize(?string $region): string

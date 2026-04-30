@@ -105,8 +105,8 @@ class ZohoInvoiceIngestionService
 
     private function normalizeInvoice(array $invoicePayload, array $triggerPayload, string $organizationId): array
     {
-        $data = Arr::get($invoicePayload, 'invoice', $invoicePayload);
-        $billId = Arr::get($data, 'invoice_id');
+        $data = $this->invoiceData($invoicePayload);
+        $billId = Arr::get($data, 'bill_id', Arr::get($data, 'invoice_id'));
 
         if (! $billId) {
             throw new RuntimeException('Zoho invoice response did not include a invoice id.');
@@ -147,7 +147,7 @@ class ZohoInvoiceIngestionService
 
     private function extractClientEmails(array $invoicePayload, array $triggerPayload): array
     {
-        $data = Arr::get($invoicePayload, 'invoice', []);
+        $data = $this->invoiceData($invoicePayload);
         $emails = [
             Arr::get($data, 'vendor_email'),
             Arr::get($data, 'billing_address.email'),
@@ -168,6 +168,15 @@ class ZohoInvoiceIngestionService
             static fn ($email) => is_string($email) ? trim($email) : null,
             $emails
         ))));
+    }
+
+    private function invoiceData(array $invoicePayload): array
+    {
+        $data = Arr::get($invoicePayload, 'bill')
+            ?? Arr::get($invoicePayload, 'invoice')
+            ?? $invoicePayload;
+
+        return is_array($data) ? $data : [];
     }
 
     private function resolvePmsClientId(array $triggerPayload): string

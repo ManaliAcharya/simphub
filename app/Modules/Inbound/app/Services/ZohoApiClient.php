@@ -8,17 +8,19 @@ use Modules\Inbound\Models\PmsConnection;
 
 class ZohoApiClient
 {
-    public function baseRequest(?string $url = null): PendingRequest
-    {
-        $baseUrl = $url ?? config('services.zoho.api_base_url');
+    public function __construct(
+        private readonly ZohoRegionResolver $regions,
+    ) {}
 
+    public function baseRequest(string $url): PendingRequest
+    {
         return Http::acceptJson()
             ->asJson()
-            ->baseUrl($baseUrl);
+            ->baseUrl($url);
     }
 
-    public function authenticatedRequest(PmsConnection $connection, ?string $url = null): PendingRequest
-    {        
+    public function authenticatedRequest(PmsConnection $connection, string $url): PendingRequest
+    {
         return $this->baseRequest($url)->withHeaders([
             'Authorization' => 'Zoho-oauthtoken '.$connection->access_token,
         ]);
@@ -26,19 +28,16 @@ class ZohoApiClient
 
     public function fetchOrganizations(PmsConnection $connection): array
     {
-        $invoiceUrl = config('services.zoho.book_base_url');
-        return $this->authenticatedRequest($connection, $invoiceUrl)
+        return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
             ->get('/organizations')
             ->throw()
-            ->json();    
+            ->json();
     }
 
     public function fetchBill(PmsConnection $connection, string $billId, string $organizationId): array
     {
-        $invoiceUrl = config('services.zoho.invoice_base_url');
-
-        return $this->authenticatedRequest($connection, $invoiceUrl)
-            ->get("/invoices/{$billId}", [
+        return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
+            ->get("/bills/{$billId}", [
                 'organization_id' => $organizationId,
             ])
             ->throw()
