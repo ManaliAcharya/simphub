@@ -3,6 +3,9 @@
 namespace Modules\Payment\Providers;
 
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
+use Modules\Payment\Events\PaymentApproved;
+use Modules\Payment\Listeners\SyncInvoicePaidListener;
+use Modules\Payment\Listeners\TrustAccountingListener;
 
 class EventServiceProvider extends ServiceProvider
 {
@@ -11,7 +14,12 @@ class EventServiceProvider extends ServiceProvider
      *
      * @var array<string, array<int, string>>
      */
-    protected $listen = [];
+    protected $listen = [
+        PaymentApproved::class => [
+            SyncInvoicePaidListener::class,
+            TrustAccountingListener::class,
+        ],
+    ];
 
     /**
      * Indicates if events should be discovered.
