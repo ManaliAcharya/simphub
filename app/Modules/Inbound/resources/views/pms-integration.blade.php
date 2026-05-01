@@ -42,7 +42,7 @@
                 @endif
             </div>
 
-            @if ($shareUrl && ! $openedViaShareLink || ( empty($organization_name) ||  empty($organization_id)))
+            @if ($shareUrl && ! $openedViaShareLink && ( empty($organization_name) ||  empty($organization_id)))
                 <div class="summary-card" style="margin-top: 18px;">
                     <span>Share this setup link with client</span>
                     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px;">
