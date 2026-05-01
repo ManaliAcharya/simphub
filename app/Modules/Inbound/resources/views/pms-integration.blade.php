@@ -71,21 +71,24 @@
                     @endif
 
                     @if (! empty($zoho_payment_accounts))
-                        <form method="POST" action="{{ route('inbound.zoho.default-account') }}" style="margin-top: 10px; display: grid; gap: 8px;">
+                        <form method="POST" action="{{ route('inbound.zoho.default-account') }}" class="form-grid" style="margin-top: 10px;">
                             @csrf
                             <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
-                            <select id="zoho-default-account-select" name="zoho_default_account_id" required>
-                                <option value="">Select account</option>
-                                @foreach ($zoho_payment_accounts as $account)
-                                    <option
-                                        value="{{ $account['account_id'] }}"
-                                        @selected((string) $client->zoho_default_account_id === (string) $account['account_id'])
-                                    >
-                                        {{ $account['account_name'] }} ({{ $account['account_type'] ?: 'Account' }})
-                                    </option>
-                                @endforeach
-                            </select>
-                            <button type="submit" class="button secondary">Save default account</button>
+                            <label class="field">
+                                <span>Default Zoho deposit account</span>
+                                <select id="zoho-default-account-select" name="zoho_default_account_id" required>
+                                    <option value="">Select account</option>
+                                    @foreach ($zoho_payment_accounts as $account)
+                                        <option
+                                            value="{{ $account['account_id'] }}"
+                                            @selected((string) $client->zoho_default_account_id === (string) $account['account_id'])
+                                        >
+                                            {{ $account['account_name'] }} ({{ $account['account_type'] ?: 'Account' }})
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </label>
+                            <button type="submit" class="button primary">Save default account</button>
                         </form>
                     @else
                         <div class="notice error" style="margin-top: 8px;">
