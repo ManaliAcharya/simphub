@@ -47,13 +47,11 @@ class ZohoApiClient
     public function recordInvoicePayment(
         PmsConnection $connection,
         string $organizationId,
-        string $invoiceId,
         array $payload
     ): array {
         return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
             ->post('/customerpayments', [
                 ...$payload,
-                'invoice_id' => $invoiceId,
                 'organization_id' => $organizationId,
             ])
             ->throw()

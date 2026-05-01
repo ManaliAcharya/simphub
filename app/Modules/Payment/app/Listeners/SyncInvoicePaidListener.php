@@ -54,13 +54,19 @@ class SyncInvoicePaidListener
             $connection = $this->zohoOAuth->ensureValidAccessToken($connection);
             $organizationId = $this->resolveOrganizationId($connection, (array) $invoice->raw_payload);
 
-            $this->zohoApi->recordInvoicePayment($connection, $organizationId, (string) $invoice->external_invoice_id, [
+            $amount = round(((int) $transaction->amount_cents) / 100, 2);
+
+            $this->zohoApi->recordInvoicePayment($connection, $organizationId, [
                 'customer_id' => (string) $invoice->external_client_id,
                 'payment_mode' => 'Paya',
-                'amount' => round(((int) $transaction->amount_cents) / 100, 2),
+                'amount' => $amount,
                 'date' => now()->toDateString(),
                 'reference_number' => (string) $transaction->gateway_txn_id,
                 'description' => 'Payment recorded from Payment Middleware checkout',
+                'invoices' => [[
+                    'invoice_id' => (string) $invoice->external_invoice_id,
+                    'amount_applied' => $amount,
+                ]],
             ]);
 
             $invoice->forceFill([
