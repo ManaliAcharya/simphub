@@ -60,6 +60,41 @@
                 </script>
             @endif
 
+            @if ($provider === 'zoho' && $client && $connection)
+                <div class="summary-card" style="margin-top: 18px;">
+                    <span>Default Zoho deposit account</span>
+                    <strong>{{ $client->zoho_default_account_name ?: 'Not selected' }}</strong>
+                    <span>{{ $client->zoho_default_account_id ?: '--' }}</span>
+
+                    @if (! empty($zoho_account_load_error))
+                        <div class="notice error" style="margin-top: 8px;">{{ $zoho_account_load_error }}</div>
+                    @endif
+
+                    @if (! empty($zoho_payment_accounts))
+                        <form method="POST" action="{{ route('inbound.zoho.default-account') }}" style="margin-top: 10px; display: grid; gap: 8px;">
+                            @csrf
+                            <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                            <select id="zoho-default-account-select" name="zoho_default_account_id" required>
+                                <option value="">Select account</option>
+                                @foreach ($zoho_payment_accounts as $account)
+                                    <option
+                                        value="{{ $account['account_id'] }}"
+                                        @selected((string) $client->zoho_default_account_id === (string) $account['account_id'])
+                                    >
+                                        {{ $account['account_name'] }} ({{ $account['account_type'] ?: 'Account' }})
+                                    </option>
+                                @endforeach
+                            </select>
+                            <button type="submit" class="button secondary">Save default account</button>
+                        </form>
+                    @else
+                        <div class="notice error" style="margin-top: 8px;">
+                            No Zoho accounts were returned for this organization. Reconnect Zoho or verify the connected user has access to chart of accounts.
+                        </div>
+                    @endif
+                </div>
+            @endif
+
             @if (!empty($webhook_instructions))
             <div class="webhook-card" style="margin-top: 18px; padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; font-family: sans-serif;">
                 <div style="display: flex; align-items: center; margin-bottom: 15px;">

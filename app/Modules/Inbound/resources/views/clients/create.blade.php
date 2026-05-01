@@ -31,6 +31,10 @@
                     </select>
                 </label>
 
+                <!-- <p class="copy" id="zoho-account-help" style="{{ old('client_pms') === 'ZOHO' ? '' : 'display:none;' }}">
+                    Default deposit account will be selected from Zoho account dropdown after Zoho connection is completed.
+                </p> -->
+
                 <fieldset class="fieldset">
                     <legend>Allowed payment gateways</legend>
                     @if (! empty($availableGateways))
@@ -85,9 +89,12 @@
                 (function () {
                     const pmsSelect = document.getElementById('client-pms-select');
                     const zohoRegionField = document.getElementById('zoho-region-field');
+                    //const zohoAccountHelp = document.getElementById('zoho-account-help');
 
                     function toggleZohoRegion() {
-                        zohoRegionField.style.display = pmsSelect.value === 'ZOHO' ? '' : 'none';
+                        const showZohoFields = pmsSelect.value === 'ZOHO';
+                        zohoRegionField.style.display = showZohoFields ? '' : 'none';
+                        //zohoAccountHelp.style.display = showZohoFields ? '' : 'none';
                     }
 
                     pmsSelect.addEventListener('change', toggleZohoRegion);

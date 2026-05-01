@@ -6,12 +6,15 @@ use Modules\Inbound\Contracts\PmsConnectorInterface;
 use Modules\Inbound\DTOs\PmsCallbackResult;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\PmsConnection;
+use Modules\Inbound\Services\ZohoApiClient;
 use Modules\Inbound\Services\ZohoOAuthService;
+use Throwable;
 
 class ZohoConnector implements PmsConnectorInterface
 {
     public function __construct(
         private readonly ZohoOAuthService $oauth,
+        private readonly ZohoApiClient $api,
     ) {}
 
     public function key(): string
@@ -85,6 +88,19 @@ class ZohoConnector implements PmsConnectorInterface
             'json' => $rawJson,
             'demo_video_url' => config('services.zoho.webhook_demo_video_url'),
         ];
+        $paymentAccounts = [];
+        $accountLoadError = null;
+        $organizationId = (string) data_get($connection?->meta, 'default_organization_id', '');
+
+        if ($connection && $organizationId !== '') {
+            try {
+                $connection = $this->oauth->ensureValidAccessToken($connection);
+                $paymentAccounts = $this->api->fetchPaymentAccounts($connection, $organizationId);
+            } catch (Throwable $exception) {
+                $accountLoadError = $exception->getMessage();
+            }
+        }
+
         return [
             'heading' => 'Connect Zoho for a configured client',
             'copy' => 'After Zoho authentication, follow below instructions to setup webhook into the client\'s Zoho organization so invoice-created notifications reach to the middleware.',
@@ -92,6 +108,8 @@ class ZohoConnector implements PmsConnectorInterface
             'webhook_instructions' => $webhook_instructions,
             'organization_name' => data_get($connection?->meta, 'default_organization_name'),
             'organization_id' => data_get($connection?->meta, 'default_organization_id'),
+            'zoho_payment_accounts' => $paymentAccounts,
+            'zoho_account_load_error' => $accountLoadError,
         ];
     }
 }

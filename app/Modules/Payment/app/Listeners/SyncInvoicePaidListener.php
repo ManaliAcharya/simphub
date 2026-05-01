@@ -56,7 +56,7 @@ class SyncInvoicePaidListener
 
             $amount = round(((int) $transaction->amount_cents) / 100, 2);
 
-            $this->zohoApi->recordInvoicePayment($connection, $organizationId, [
+            $payload = [
                 'customer_id' => (string) $invoice->external_client_id,
                 'payment_mode' => 'Paya',
                 'amount' => $amount,
@@ -67,7 +67,13 @@ class SyncInvoicePaidListener
                     'invoice_id' => (string) $invoice->external_invoice_id,
                     'amount_applied' => $amount,
                 ]],
-            ]);
+            ];
+
+            if (is_string($client->zoho_default_account_id) && trim($client->zoho_default_account_id) !== '') {
+                $payload['account_id'] = $client->zoho_default_account_id;
+            }
+
+            $this->zohoApi->recordInvoicePayment($connection, $organizationId, $payload);
 
             $invoice->forceFill([
                 'pms_sync_status' => 'SYNCED',

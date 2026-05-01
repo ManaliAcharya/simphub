@@ -57,4 +57,31 @@ class ZohoApiClient
             ->throw()
             ->json();
     }
+
+    public function fetchPaymentAccounts(PmsConnection $connection, string $organizationId): array
+    {
+        $response = $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
+            ->get('/chartofaccounts', [
+                'organization_id' => $organizationId,
+            ])
+            ->throw()
+            ->json();
+
+        $accounts = $response['chartofaccounts'] ?? [];
+        if (! is_array($accounts)) {
+            return [];
+        }
+
+        return collect($accounts)
+            ->filter(fn ($account) => is_array($account))
+            ->map(fn (array $account): array => [
+                'account_id' => (string) ($account['account_id'] ?? ''),
+                'account_name' => (string) ($account['account_name'] ?? 'Unknown account'),
+                'account_type' => (string) ($account['account_type'] ?? ''),
+            ])
+            ->filter(fn (array $account): bool => $account['account_id'] !== '')
+            ->sortBy(fn (array $account) => strtolower($account['account_name']))
+            ->values()
+            ->all();
+    }
 }

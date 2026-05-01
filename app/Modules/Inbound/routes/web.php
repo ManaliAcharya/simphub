@@ -15,6 +15,9 @@ Route::middleware('web')->group(function (): void {
         Route::post('/', [ClientConfigController::class, 'store'])->name('store');
     });
 
+    Route::post('/inbound/zoho/default-account', [PmsIntegrationController::class, 'saveZohoDefaultAccount'])
+        ->name('inbound.zoho.default-account');
+
     foreach (['clio', 'zoho'] as $provider) {
         Route::prefix("inbound/{$provider}")->name("inbound.{$provider}.")->group(function () use ($provider): void {
             Route::get('/', [PmsIntegrationController::class, 'show'])->defaults('provider', $provider)->name('page');
