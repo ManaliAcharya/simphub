@@ -270,7 +270,7 @@ class PaymentCheckoutService
         if ($details['missing'] !== []) {
             return [
                 'available' => false,
-                'reason' => 'Missing account number / routing number in invoice custom fields.',
+                'reason' => 'Missing account number / routing number in customer custom fields.',
             ];
         }
 

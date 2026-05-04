@@ -1,10 +1,10 @@
 <x-inbound::layouts.master>
     <style>
-        body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#f7f8fa; padding:40px; margin:0; }
+        body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#f7f8fa; margin:0; }
           .card { background:#fff; max-width:820px; margin:auto; border:1px solid #e5e7eb; border-radius:12px; padding:32px; }
           h1 { font-size:12px; color:#6b7280; text-transform:uppercase; letter-spacing:.08em; margin:0 0 6px; }
           h2 { font-size:22px; margin:0 0 6px; color:#111827; }
-          p.sub { color:#6b7280; margin:0 0 24px; font-size:14px; line-height:1.5; }
+          p.sub { color:#6b7280; margin:0 0 0px; font-size:14px; line-height:1.5; }
           label { display:block; font-weight:600; font-size:13px; margin:18px 0 8px; color:#374151; }
           input[type=text]{ width:100%; padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; box-sizing:border-box; }
           input[type=text]:focus{ outline:none; border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,.15); }
