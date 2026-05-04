@@ -4,6 +4,7 @@ namespace Modules\Payment\Services;
 
 use Illuminate\Support\Facades\DB;
 use Modules\Audit\Services\AuditLogger;
+use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Models\Transaction;
 use Modules\Billing\States\SessionStateMachine;
@@ -52,7 +53,10 @@ class PaymentCheckoutService
                 'status' => $invoice->status,
                 'client_emails' => array_values(array_filter((array) $invoice->recipient_emails)),
             ],
-            'payment_options' => $options->map(function ($decision) {
+            'payment_options' => $options->map(function ($decision) use ($invoice) {
+                $availability = strtolower((string) $decision->gateway) === 'paya'
+                    ? $this->payaAvailability($invoice)
+                    : ['available' => true, 'reason' => null];
                 $hostedFields = $this->gateways->make($decision->gateway)->hostedFieldsConfig(
                     $decision->mid,
                     $decision->midCredentials,
@@ -69,6 +73,8 @@ class PaymentCheckoutService
                         'fields' => $hostedFields->fields,
                         'metadata' => $hostedFields->metadata,
                     ],
+                    'is_available' => $availability['available'],
+                    'unavailable_reason' => $availability['reason'],
                 ];
             })->values()->all(),
         ];
@@ -121,12 +127,27 @@ class PaymentCheckoutService
             'routing_rule_id' => $decision->routingRuleId,
         ]);
 
+        $billing = [];
+        if (strtolower((string) $decision->gateway) === 'paya') {
+            $bankDetails = $this->resolvePayaBankDetails($invoice);
+
+            if ($bankDetails['missing'] !== []) {
+                throw new RuntimeException('Payment cannot be done because account number and routing number are missing in invoice custom fields.');
+            }
+
+            $billing = [
+                'account_number' => $bankDetails['account_number'],
+                'routing_number' => $bankDetails['routing_number'],
+            ];
+        }
+
         $response = $this->gateways->make($decision->gateway)->charge(new ChargeRequest(
             token: $token,
             amountInCents: (int) $invoice->amount_cents,
             currency: (string) $invoice->currency,
             idempotencyKey: (string) $session->idempotency_key,
             midCredentials: $decision->midCredentials,
+            billing: $billing,
             metadata: [
                 'invoice_id' => $invoice->id,
                 'payment_session_id' => $session->id,
@@ -240,5 +261,129 @@ class PaymentCheckoutService
             ->flatMap(fn ($paymentMethod) => $this->routing->candidates($this->makeRoutingContext($session, $paymentMethod)))
             ->unique(fn ($decision) => $decision->routingRuleId)
             ->values();
+    }
+
+    private function payaAvailability(Invoice $invoice): array
+    {
+        $details = $this->resolvePayaBankDetails($invoice);
+
+        if ($details['missing'] !== []) {
+            return [
+                'available' => false,
+                'reason' => 'Missing account number / routing number in invoice custom fields.',
+            ];
+        }
+
+        return [
+            'available' => true,
+            'reason' => null,
+        ];
+    }
+
+    private function resolvePayaBankDetails(Invoice $invoice): array
+    {
+        $flatPairs = [];
+        $rawPayload = (array) ($invoice->raw_payload ?? []);
+        $this->collectFlatPairs($rawPayload, $flatPairs);
+        $this->collectLabeledValuePairs($rawPayload, $flatPairs);
+
+        $account = '';
+        $routing = '';
+
+        foreach ($flatPairs as $pair) {
+            $key = strtolower((string) ($pair['key'] ?? ''));
+            $value = trim((string) ($pair['value'] ?? ''));
+
+            if ($value === '') {
+                continue;
+            }
+
+            if ($account === '' && str_contains($key, 'account') && str_contains($key, 'number')) {
+                $account = preg_replace('/\s+/', '', $value) ?? '';
+            }
+
+            if ($routing === '' && str_contains($key, 'routing') && str_contains($key, 'number')) {
+                $routing = preg_replace('/\s+/', '', $value) ?? '';
+            }
+        }
+
+        $missing = [];
+        if ($account === '') {
+            $missing[] = 'account_number';
+        }
+        if ($routing === '') {
+            $missing[] = 'routing_number';
+        }
+
+        return [
+            'account_number' => $account,
+            'routing_number' => $routing,
+            'missing' => $missing,
+        ];
+    }
+
+    private function collectFlatPairs(array $payload, array &$pairs): void
+    {
+        foreach ($payload as $key => $value) {
+            if (is_array($value)) {
+                $this->collectFlatPairs($value, $pairs);
+                continue;
+            }
+
+            if (! is_scalar($value) && $value !== null) {
+                continue;
+            }
+
+            $pairs[] = [
+                'key' => (string) $key,
+                'value' => (string) ($value ?? ''),
+            ];
+        }
+    }
+
+    private function collectLabeledValuePairs(array $payload, array &$pairs): void
+    {
+        $label = $this->firstNonEmptyString([
+            $payload['label'] ?? null,
+            $payload['name'] ?? null,
+            $payload['field_name'] ?? null,
+            $payload['api_name'] ?? null,
+            $payload['title'] ?? null,
+        ]);
+        $value = $this->firstNonEmptyString([
+            $payload['value'] ?? null,
+            $payload['field_value'] ?? null,
+            $payload['content'] ?? null,
+            $payload['text'] ?? null,
+        ]);
+
+        if ($label !== null && $value !== null) {
+            $pairs[] = [
+                'key' => $label,
+                'value' => $value,
+            ];
+        }
+
+        foreach ($payload as $node) {
+            if (is_array($node)) {
+                $this->collectLabeledValuePairs($node, $pairs);
+            }
+        }
+    }
+
+    private function firstNonEmptyString(array $candidates): ?string
+    {
+        foreach ($candidates as $candidate) {
+            if (! is_string($candidate)) {
+                continue;
+            }
+
+            $trimmed = trim($candidate);
+            if ($trimmed !== '') {
+                return $trimmed;
+            }
+        }
+
+        return null;
     }
 }

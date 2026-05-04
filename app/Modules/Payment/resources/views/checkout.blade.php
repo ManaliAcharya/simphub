@@ -132,15 +132,16 @@
 
         function renderOptions(options) {
             els.gatewayOptions.innerHTML = '';
+            const availableOptions = options.filter((option) => option.is_available !== false);
 
             options.forEach((option, index) => {
                 const label = document.createElement('label');
-                label.className = 'gateway-choice';
+                label.className = `gateway-choice ${option.is_available === false ? 'is-disabled' : ''}`;
                 label.innerHTML = `
-                    <input type="radio" name="payment_gateway" value="${option.routing_rule_id}">
+                    <input type="radio" name="payment_gateway" value="${option.routing_rule_id}" ${option.is_available === false ? 'disabled' : ''}>
                     <span class="gateway-choice-copy">
                         <strong>Pay with ${option.gateway.toUpperCase()}</strong>
-                        <small>${describeOption(option)}</small>
+                        <small>${option.is_available === false ? (option.unavailable_reason || 'This payment option is unavailable.') : describeOption(option)}</small>
                     </span>
                 `;
 
@@ -153,11 +154,16 @@
 
                 els.gatewayOptions.appendChild(label);
 
-                if (index === 0) {
+                if (option.is_available !== false && availableOptions.length > 0 && option.routing_rule_id === availableOptions[0].routing_rule_id) {
                     input.checked = true;
                     selectOption(option, label);
                 }
             });
+
+            if (availableOptions.length === 0) {
+                els.submitButton.disabled = true;
+                els.submitStatus.textContent = 'Payment cannot be done because required bank details are missing from invoice custom fields.';
+            }
         }
 
         function describeOption(option) {

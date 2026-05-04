@@ -28,9 +28,14 @@ class ZohoInvoiceIngestionService
         $organizationId = $this->resolveOrganizationId($connection, $triggerPayload);
         $invoicePayload = $this->client->fetchBill($connection, $externalInvoiceId, $organizationId);
         $normalized = $this->normalizeInvoice($invoicePayload, $triggerPayload, $organizationId);
+        $customerPayload = $this->fetchCustomerPayload(
+            $connection,
+            (string) $normalized['external_client_id'],
+            $organizationId
+        );
         $recipientEmails = $this->extractClientEmails($invoicePayload, $triggerPayload);
 
-        $result = DB::transaction(function () use ($normalized, $invoicePayload, $triggerPayload, $recipientEmails, $pmsClientId) {
+        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $pmsClientId) {
             $invoice = Invoice::query()->updateOrCreate(
                 [
                     'pms_source' => 'zoho',
@@ -49,6 +54,7 @@ class ZohoInvoiceIngestionService
                     'raw_payload' => [
                         'trigger' => $triggerPayload,
                         'invoice' => $invoicePayload,
+                        'customer' => $customerPayload,
                     ],
                     'recipient_emails' => $recipientEmails,
                     'synced_at' => now(),
@@ -101,6 +107,19 @@ class ZohoInvoiceIngestionService
         $result['emails_sent'] = $emailsSent;
 
         return $result;
+    }
+
+    private function fetchCustomerPayload(PmsConnection $connection, string $externalClientId, string $organizationId): array
+    {
+        if (trim($externalClientId) === '') {
+            return [];
+        }
+
+        try {
+            return $this->client->fetchContact($connection, $externalClientId, $organizationId);
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     private function normalizeInvoice(array $invoicePayload, array $triggerPayload, string $organizationId): array

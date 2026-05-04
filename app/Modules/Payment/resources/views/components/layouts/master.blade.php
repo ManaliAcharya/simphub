@@ -132,6 +132,15 @@
             box-shadow: 0 0 0 3px rgba(239, 131, 84, 0.18);
             background: rgba(255, 245, 239, 0.96);
         }
+        .gateway-choice.is-disabled {
+            opacity: 0.62;
+            cursor: not-allowed;
+            background: rgba(241, 244, 248, 0.92);
+        }
+        .gateway-choice.is-disabled:hover {
+            transform: none;
+            border-color: var(--line);
+        }
         .card-panel { margin-top: 22px; }
         .hidden { display: none; }
         #fluidpay-payment-form {

@@ -14,7 +14,19 @@ class PayaSandboxChargeService
     public function charge(ChargeRequest $request, array $credentials = []): array
     {
         $config = $this->resolveConfig($credentials);
-        $paymentInfo = (object) array_merge($this->defaultPaymentInfo(), $credentials['payment_info'] ?? []);
+        $paymentInfo = (object) array_merge(
+            $this->defaultPaymentInfo(),
+            $credentials['payment_info'] ?? [],
+            [
+                'RoutingNumber' => (string) ($request->billing['routing_number'] ?? ''),
+                'AccountNumber' => (string) ($request->billing['account_number'] ?? ''),
+            ]
+        );
+
+        if (trim((string) $paymentInfo->RoutingNumber) === '' || trim((string) $paymentInfo->AccountNumber) === '') {
+            throw new RuntimeException('Payment cannot be done because account number and routing number are missing in invoice custom fields.');
+        }
+
         $paymentInfo->RequestID = 'R'.now()->format('ymdHis').random_int(111, 999);
         $paymentInfo->TransactionID = 'T'.now()->format('ymdHis').random_int(111, 999);
         $amount = '-'.number_format($request->amountInCents / 100, 2, '.', '');
@@ -167,8 +179,8 @@ class PayaSandboxChargeService
     private function defaultPaymentInfo(): array
     {
         return [
-            'RoutingNumber' => env('PAYA_ROUTING_NUMBER', '490000018'),
-            'AccountNumber' => env('PAYA_ACCOUNT_NUMBER', '123456789'),
+            'RoutingNumber' => '',
+            'AccountNumber' => '',
             'CheckNumber' => env('PAYA_CHECK_NUMBER', '11111'),
             'FirstName' => env('PAYA_FIRST_NAME', 'Sandbox'),
             'LastName' => env('PAYA_LAST_NAME', 'Payer'),

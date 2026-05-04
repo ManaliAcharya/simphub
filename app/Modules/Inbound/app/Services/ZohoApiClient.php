@@ -44,6 +44,16 @@ class ZohoApiClient
             ->json();
     }
 
+    public function fetchContact(PmsConnection $connection, string $contactId, string $organizationId): array
+    {
+        return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
+            ->get("/contacts/{$contactId}", [
+                'organization_id' => $organizationId,
+            ])
+            ->throw()
+            ->json();
+    }
+
     public function recordInvoicePayment(
         PmsConnection $connection,
         string $organizationId,
