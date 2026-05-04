@@ -12,6 +12,7 @@ use Modules\Inbound\Models\Client;
 use Modules\Outbound\DTOs\ChargeRequest;
 use Modules\Outbound\Factory\GatewayAdapterFactory;
 use Modules\Payment\Events\PaymentApproved;
+use Modules\Inbound\Services\ZohoCustomerRefreshService;
 use Modules\Routing\DTOs\RoutingContext;
 use Modules\Routing\Services\RoutingEngine;
 use RuntimeException;
@@ -23,6 +24,7 @@ class PaymentCheckoutService
         private readonly GatewayAdapterFactory $gateways,
         private readonly RoutingEngine $routing,
         private readonly SessionStateMachine $stateMachine,
+        private readonly ZohoCustomerRefreshService $zohoCustomerRefresh,
     ) {}
 
     public function details(PaymentSession $session): array
@@ -130,7 +132,18 @@ class PaymentCheckoutService
         $billing = [];
         if (strtolower((string) $decision->gateway) === 'paya') {
             $bankDetails = $this->resolvePayaBankDetails($invoice);
-
+            if ($bankDetails['missing'] !== []) {
+                // One last chance: re-fetch the Zoho customer in case the
+                // details were added after the invoice was originally ingested.
+                $refreshed = $this->zohoCustomerRefresh->refreshCustomerPayload($invoice);
+ 
+                if ($refreshed !== null) {
+                    $refreshed->save();
+                    // Re-resolve against the freshly saved invoice.
+                    $invoice     = $refreshed->fresh();
+                    $bankDetails = $this->resolvePayaBankDetails($invoice);
+                }
+            }
             if ($bankDetails['missing'] !== []) {
                 throw new RuntimeException('Payment cannot be done because account number and routing number are missing in invoice custom fields.');
             }
@@ -266,7 +279,14 @@ class PaymentCheckoutService
     private function payaAvailability(Invoice $invoice): array
     {
         $details = $this->resolvePayaBankDetails($invoice);
+        if ($details['missing'] !== []) {
+            $refreshed = $this->zohoCustomerRefresh->refreshCustomerPayload($invoice);
 
+            if ($refreshed !== null) {
+                $refreshed->save();
+                $details = $this->resolvePayaBankDetails($refreshed);
+            }
+        }
         if ($details['missing'] !== []) {
             return [
                 'available' => false,
