@@ -27,9 +27,10 @@ class ClioInvoiceIngestionService
         $connection = $this->oauth->ensureValidAccessToken($this->resolveConnection($pmsClientId));
         $invoicePayload = $this->client->fetchBill($connection, $externalInvoiceId);
         $normalized = $this->normalizeInvoice($invoicePayload, $triggerPayload);
+        $customerPayload = $this->fetchCustomerPayload($connection, (string) $normalized['external_client_id']);
         $recipientEmails = $this->extractClientEmails($invoicePayload);
 
-        $result = DB::transaction(function () use ($normalized, $invoicePayload, $triggerPayload, $recipientEmails, $pmsClientId) {
+        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $pmsClientId) {
             $invoice = Invoice::query()->updateOrCreate(
                 [
                     'pms_source' => 'clio',
@@ -48,6 +49,7 @@ class ClioInvoiceIngestionService
                     'raw_payload' => [
                         'trigger' => $triggerPayload,
                         'invoice' => $invoicePayload,
+                        'customer' => $customerPayload,
                     ],
                     'recipient_emails' => $recipientEmails,
                     'synced_at' => now(),
@@ -106,6 +108,19 @@ class ClioInvoiceIngestionService
         $result['emails_sent'] = $emailsSent;
 
         return $result;
+    }
+
+    private function fetchCustomerPayload(ClioConnection $connection, string $externalClientId): array
+    {
+        if (trim($externalClientId) === '') {
+            return [];
+        }
+
+        try {
+            return $this->client->fetchContact($connection, $externalClientId);
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     private function normalizeInvoice(array $invoicePayload, array $triggerPayload): array
