@@ -12,6 +12,7 @@ use Modules\Inbound\Models\Client;
 use Modules\Outbound\DTOs\ChargeRequest;
 use Modules\Outbound\Factory\GatewayAdapterFactory;
 use Modules\Payment\Events\PaymentApproved;
+use Modules\Inbound\Services\ClioCustomerRefreshService;
 use Modules\Inbound\Services\ZohoCustomerRefreshService;
 use Modules\Routing\DTOs\RoutingContext;
 use Modules\Routing\Services\RoutingEngine;
@@ -25,6 +26,7 @@ class PaymentCheckoutService
         private readonly RoutingEngine $routing,
         private readonly SessionStateMachine $stateMachine,
         private readonly ZohoCustomerRefreshService $zohoCustomerRefresh,
+        private readonly ClioCustomerRefreshService $clioCustomerRefresh,
     ) {}
 
     public function details(PaymentSession $session): array
@@ -132,18 +134,19 @@ class PaymentCheckoutService
         $billing = [];
         if (strtolower((string) $decision->gateway) === 'paya') {
             $bankDetails = $this->resolvePayaBankDetails($invoice);
+
             if ($bankDetails['missing'] !== []) {
-                // One last chance: re-fetch the Zoho customer in case the
-                // details were added after the invoice was originally ingested.
-                $refreshed = $this->zohoCustomerRefresh->refreshCustomerPayload($invoice);
- 
+                // One last chance: re-fetch the customer from the invoice's PMS
+                // in case bank details were added after the invoice was ingested.
+                $refreshed = $this->refreshCustomerPayload($invoice);
+
                 if ($refreshed !== null) {
                     $refreshed->save();
-                    // Re-resolve against the freshly saved invoice.
                     $invoice     = $refreshed->fresh();
                     $bankDetails = $this->resolvePayaBankDetails($invoice);
                 }
             }
+
             if ($bankDetails['missing'] !== []) {
                 throw new RuntimeException('Payment cannot be done because account number and routing number are missing in invoice custom fields.');
             }
@@ -279,39 +282,64 @@ class PaymentCheckoutService
     private function payaAvailability(Invoice $invoice): array
     {
         $details = $this->resolvePayaBankDetails($invoice);
+
         if ($details['missing'] !== []) {
-            $refreshed = $this->zohoCustomerRefresh->refreshCustomerPayload($invoice);
+            $refreshed = $this->refreshCustomerPayload($invoice);
 
             if ($refreshed !== null) {
                 $refreshed->save();
                 $details = $this->resolvePayaBankDetails($refreshed);
             }
         }
+
         if ($details['missing'] !== []) {
             return [
                 'available' => false,
-                'reason' => 'Missing account number / routing number in customer custom fields.',
+                'reason'    => 'Missing account number / routing number in customer custom fields.',
             ];
         }
 
         return [
             'available' => true,
-            'reason' => null,
+            'reason'    => null,
         ];
+    }
+
+    /**
+     * Route the customer-payload refresh to the correct PMS service based on
+     * the invoice's pms_source. Returns the unsaved patched invoice on success,
+     * or null when the PMS is unsupported / refresh fails / no data found.
+     */
+    private function refreshCustomerPayload(Invoice $invoice): ?Invoice
+    {
+        return match ((string) $invoice->pms_source) {
+            'zoho'  => $this->zohoCustomerRefresh->refreshCustomerPayload($invoice),
+            'clio'  => $this->clioCustomerRefresh->refreshCustomerPayload($invoice),
+            default => null,
+        };
     }
 
     private function resolvePayaBankDetails(Invoice $invoice): array
     {
-        $flatPairs = [];
         $rawPayload = (array) ($invoice->raw_payload ?? []);
-        $this->collectFlatPairs($rawPayload, $flatPairs);
-        $this->collectLabeledValuePairs($rawPayload, $flatPairs);
+
+        // Scope extraction to the customer block only.
+        // Both Zoho and Clio store the refreshed contact under this key.
+        // Falling back to the full payload ensures backwards-compatibility
+        // with invoices ingested before the customer block existed.
+        $customerBlock = isset($rawPayload['customer']) && is_array($rawPayload['customer'])
+            ? $rawPayload['customer']
+            : $rawPayload;
+
+        $flatPairs = [];
+        $this->collectLabeledValuePairs($customerBlock, $flatPairs);
+        $this->collectFlatPairs($customerBlock, $flatPairs);
 
         $account = '';
         $routing = '';
 
         foreach ($flatPairs as $pair) {
-            $key = strtolower((string) ($pair['key'] ?? ''));
+            $key   = strtolower((string) ($pair['key'] ?? ''));
             $value = trim((string) ($pair['value'] ?? ''));
 
             if ($value === '') {
@@ -338,48 +366,52 @@ class PaymentCheckoutService
         return [
             'account_number' => $account,
             'routing_number' => $routing,
-            'missing' => $missing,
+            'missing'        => $missing,
         ];
     }
 
-    private function collectFlatPairs(array $payload, array &$pairs): void
-    {
-        foreach ($payload as $key => $value) {
-            if (is_array($value)) {
-                $this->collectFlatPairs($value, $pairs);
-                continue;
-            }
-
-            if (! is_scalar($value) && $value !== null) {
-                continue;
-            }
-
-            $pairs[] = [
-                'key' => (string) $key,
-                'value' => (string) ($value ?? ''),
-            ];
-        }
-    }
-
+    /**
+     * Walk every node in $payload. When a node has a human-readable label key
+     * paired with a value key, emit that as a { key, value } pair.
+     *
+     * Handles both PMS shapes:
+     *
+     *   Zoho custom_fields:
+     *     { "label": "Account Number", "value": "123456789" }
+     *
+     *   Clio custom_field_values:
+     *     { "field_name": "Account Number", "value": "123456789" }
+     *
+     * Label candidates are tried in priority order so the most descriptive
+     * name wins. Value candidates cover every spelling either API uses.
+     * Nodes whose value resolves to null/empty are skipped — the caller's
+     * loop already guards on empty string, but skipping early avoids noise.
+     */
     private function collectLabeledValuePairs(array $payload, array &$pairs): void
     {
         $label = $this->firstNonEmptyString([
-            $payload['label'] ?? null,
-            $payload['name'] ?? null,
-            $payload['field_name'] ?? null,
-            $payload['api_name'] ?? null,
-            $payload['title'] ?? null,
+            $payload['label']      ?? null,   // Zoho custom_fields
+            $payload['field_name'] ?? null,   // Clio custom_field_values
+            $payload['api_name']   ?? null,   // Zoho alt shape
+            $payload['name']       ?? null,
+            $payload['title']      ?? null,
         ]);
-        $value = $this->firstNonEmptyString([
-            $payload['value'] ?? null,
-            $payload['field_value'] ?? null,
-            $payload['content'] ?? null,
-            $payload['text'] ?? null,
-        ]);
+
+        // Accept the value only when it is a non-null, non-empty scalar.
+        // Clio sends null for unfilled fields — we must not emit those.
+        $rawValue = $payload['value']       // Zoho + Clio primary key
+            ?? $payload['field_value']      // Zoho alt
+            ?? $payload['content']
+            ?? $payload['text']
+            ?? null;
+
+        $value = (is_scalar($rawValue) && $rawValue !== null)
+            ? $this->firstNonEmptyString([(string) $rawValue])
+            : null;
 
         if ($label !== null && $value !== null) {
             $pairs[] = [
-                'key' => $label,
+                'key'   => $label,
                 'value' => $value,
             ];
         }
@@ -388,6 +420,42 @@ class PaymentCheckoutService
             if (is_array($node)) {
                 $this->collectLabeledValuePairs($node, $pairs);
             }
+        }
+    }
+
+    /**
+     * Recursively emit scalar leaf nodes as { key, value } pairs using their
+     * array key as the label.
+     *
+     * This is the fallback for payloads that store values as flat key-value
+     * maps (e.g. Zoho's custom_field_hash) rather than labeled-value objects.
+     * Numeric keys (from sequential arrays) are skipped because they carry no
+     * semantic meaning and would never match "account"+"number".
+     * Null values are also skipped — an empty slot is not a found value.
+     */
+    private function collectFlatPairs(array $payload, array &$pairs): void
+    {
+        foreach ($payload as $key => $value) {
+            if (is_array($value)) {
+                $this->collectFlatPairs($value, $pairs);
+                continue;
+            }
+
+            // Skip numeric keys — they come from sequential arrays and the
+            // index number is never a meaningful field name.
+            if (is_int($key)) {
+                continue;
+            }
+
+            // Skip null and non-scalar values.
+            if (! is_scalar($value) || $value === null) {
+                continue;
+            }
+
+            $pairs[] = [
+                'key'   => (string) $key,
+                'value' => (string) $value,
+            ];
         }
     }
 

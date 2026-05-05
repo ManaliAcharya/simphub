@@ -57,7 +57,7 @@ class ClioApiClient
     {
         $response = $this->authenticatedRequest($connection)
             ->get("/api/v4/contacts/{$externalClientId}.json", [
-                'fields' => 'id,name,first_name,last_name,primary_email_address,custom_field_values',
+                'fields' => 'id,name,first_name,last_name,primary_email_address,custom_field_values{field_name,value}',
             ]);
 
         if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
