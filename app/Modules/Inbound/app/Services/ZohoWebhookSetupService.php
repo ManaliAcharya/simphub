@@ -38,6 +38,7 @@ class ZohoWebhookSetupService
             'description' => 'Notifies the payment middleware when an invoice is created or updated.',
             'url' => $webhookUrl,
             'method' => 'POST',
+            'content_type' => 'application/json',
             'entity' => 'invoice',
             'raw_data' => $rawBody,
         ]);
