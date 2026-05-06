@@ -98,10 +98,38 @@
                 </div>
             @endif
 
+            @if ($provider === 'zoho' && $connection)
+                @if (($webhook_auto_setup_status ?? null) === 'success')
+                    <div style="margin-top: 18px; padding: 16px 20px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; display: flex; align-items: flex-start; gap: 12px;">
+                        <span style="font-size: 20px; flex-shrink: 0;">&#10003;</span>
+                        <div>
+                            <strong style="color: #15803d; display: block; margin-bottom: 4px;">Webhook configured automatically</strong>
+                            <span style="color: #166534; font-size: 14px;">
+                                Zoho Books has been configured to notify this middleware when invoices are created.
+                                @if (!empty($webhook_id))
+                                    Webhook ID: <code style="background: #dcfce7; padding: 1px 5px; border-radius: 3px;">{{ $webhook_id }}</code>
+                                @endif
+                                @if (!empty($workflow_id))
+                                    &nbsp;&middot;&nbsp; Workflow ID: <code style="background: #dcfce7; padding: 1px 5px; border-radius: 3px;">{{ $workflow_id }}</code>
+                                @endif
+                            </span>
+                        </div>
+                    </div>
+                @elseif (($webhook_auto_setup_status ?? null) === 'failed')
+                    <div style="margin-top: 18px; padding: 16px 20px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px;">
+                        <strong style="color: #dc2626; display: block; margin-bottom: 4px;">Automatic webhook setup failed</strong>
+                        @if (!empty($webhook_auto_setup_error))
+                            <p style="color: #991b1b; font-size: 14px; margin: 0 0 8px;">{{ $webhook_auto_setup_error }}</p>
+                        @endif
+                        <p style="color: #7f1d1d; font-size: 13px; margin: 0;">Please configure the webhook manually using the instructions below, or reconnect Zoho to retry.</p>
+                    </div>
+                @endif
+            @endif
+
             @if (!empty($webhook_instructions))
             <div class="webhook-card" style="margin-top: 18px; padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; font-family: sans-serif;">
                 <div style="display: flex; align-items: center; margin-bottom: 15px;">
-                    <span style="font-size: 20px; margin-right: 8px;">🔗</span>
+                    <span style="font-size: 20px; margin-right: 8px;">&#128279;</span>
                     <strong style="font-size: 16px; color: #111827;">Zoho Books Webhook Setup Instructions</strong>
                 </div>
 
@@ -123,13 +151,13 @@
                 <ol style="margin: 0 0 20px 20px; padding: 0; color: #374151; line-height: 1.6;">
                     @foreach ($webhook_instructions['steps'] as $index => $instruction)
                         <li style="margin-bottom: 10px;">{!! $instruction !!}</li>
-                        
+
                         {{-- Inject the detail cards after Step 3 --}}
                         @if ($index === 2)
                             <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; padding: 15px; margin: 15px 0; font-size: 14px;">
                                 <div style="margin-bottom: 8px;"><strong>Name:</strong> Invoice Create</div>
                                 <div style="margin-bottom: 12px;"><strong>Module:</strong> Invoices</div>
-                                
+
                                 <!-- URL Field -->
                                 <div style="margin-bottom: 12px;">
                                     <label style="font-weight: 600; display: block; margin-bottom: 4px;">URL to Notify:</label>
@@ -158,14 +186,13 @@
                 function copyToClipboard(elementId, button) {
                     const copyText = document.getElementById(elementId);
                     copyText.select();
-                    copyText.setSelectionRange(0, 99999); /* For mobile devices */
+                    copyText.setSelectionRange(0, 99999);
                     navigator.clipboard.writeText(copyText.value);
 
-                    // Visual feedback
                     const originalText = button.innerText;
-                    button.innerText = 'Copied! ✅';
+                    button.innerText = 'Copied!';
                     button.style.background = '#059669';
-                    
+
                     setTimeout(() => {
                         button.innerText = originalText;
                         button.style.background = elementId === 'webhook-json-input' ? '#4b5563' : '#2563eb';

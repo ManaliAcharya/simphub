@@ -54,6 +54,28 @@ class ZohoApiClient
             ->json();
     }
 
+    public function createWebhook(PmsConnection $connection, string $organizationId, array $payload): array
+    {
+        return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
+            ->post('/settings/webhooks', [
+                ...$payload,
+                'organization_id' => $organizationId,
+            ])
+            ->throw()
+            ->json();
+    }
+
+    public function createWorkflow(PmsConnection $connection, string $organizationId, array $payload): array
+    {
+        return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
+            ->post('/settings/workflows', [
+                ...$payload,
+                'organization_id' => $organizationId,
+            ])
+            ->throw()
+            ->json();
+    }
+
     public function recordInvoicePayment(
         PmsConnection $connection,
         string $organizationId,
