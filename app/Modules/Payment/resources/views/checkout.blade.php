@@ -51,9 +51,6 @@
                         <label>Card details</label>
                         <div id="fluidpay-payment-form"></div>
                     </div>
-                    <div class="actions">
-                        <button id="fluidpay-tokenize-button" class="primary-button" type="button">Securely tokenize card with FluidPay</button>
-                    </div>
                 </div>
 
                 <div id="mock-token-panel" class="mock-panel hidden">
@@ -96,7 +93,6 @@
             hostedFields: document.getElementById('hosted-fields'),
             fluidpayPanel: document.getElementById('fluidpay-panel'),
             fluidpayForm: document.getElementById('fluidpay-payment-form'),
-            fluidpayTokenizeButton: document.getElementById('fluidpay-tokenize-button'),
             mockTokenPanel: document.getElementById('mock-token-panel'),
             //directPayPanel: document.getElementById('direct-pay-panel'),
             tokenInput: document.getElementById('token-input'),
@@ -228,24 +224,27 @@
             //els.directPayPanel.classList.add('hidden');
             els.tokenInput.value = '';
             els.tokenizeButton.disabled = false;
-            els.fluidpayTokenizeButton.disabled = false;
         }
 
         function handleTokenizerResponse(resp) {
             if (!resp || typeof resp !== 'object') {
-                resetToken('Unable to read the gateway response.');
+                els.submitButton.disabled = false;
+                els.submitStatus.textContent = 'Unable to read the gateway response.';
                 return;
             }
 
             switch (resp.status) {
                 case 'success':
-                    enableSubmit(resp.token || '');
+                    state.token = resp.token || '';
+                    submitPayment();
                     return;
                 case 'validation':
-                    resetToken('Please complete the highlighted gateway fields before continuing.');
+                    els.submitButton.disabled = false;
+                    els.submitStatus.textContent = 'Please complete the highlighted gateway fields before continuing.';
                     return;
                 default:
-                    resetToken(resp.msg || 'The gateway could not tokenize this card.');
+                    els.submitButton.disabled = false;
+                    els.submitStatus.textContent = resp.msg || 'The gateway could not tokenize this card.';
             }
         }
 
@@ -305,8 +304,9 @@
                 },
             });
 
-            els.fluidpayTokenizeButton.textContent = fields.button_label || 'Securely tokenize card';
             els.fluidpayPanel.classList.remove('hidden');
+            els.submitButton.disabled = false;
+            els.submitStatus.textContent = 'Enter your card details and click Submit payment.';
         }
 
         async function setupCardEntry() {
@@ -361,22 +361,7 @@
             }
         });
 
-        els.fluidpayTokenizeButton.addEventListener('click', () => {
-            if (!state.fluidpayTokenizer || typeof state.fluidpayTokenizer.submit !== 'function') {
-                resetToken('FluidPay tokenizer is not ready yet.');
-                return;
-            }
-
-            resetToken('Requesting a secure payment token from FluidPay...');
-            els.fluidpayTokenizeButton.disabled = true;
-            state.fluidpayTokenizer.submit();
-            window.setTimeout(() => {
-                els.fluidpayTokenizeButton.disabled = false;
-            }, 1200);
-        });
-
-        els.submitButton.addEventListener('click', async () => {
-            if (!state.token || !state.selectedOption) return;
+        async function submitPayment() {
             els.submitButton.disabled = true;
             const isDirect = state.selectedOption.hosted_fields.metadata.mode === 'direct';
             els.submitStatus.textContent = isDirect
@@ -406,6 +391,26 @@
 
             els.submitStatus.textContent = `Payment approved. Gateway reference: ${payload.gateway_txn_id}`;
             els.status.textContent = 'COMPLETED';
+        }
+
+        els.submitButton.addEventListener('click', async () => {
+            if (!state.selectedOption) return;
+
+            const mode = state.selectedOption.hosted_fields.metadata.mode;
+
+            if (mode === 'tokenizer') {
+                if (!state.fluidpayTokenizer || typeof state.fluidpayTokenizer.submit !== 'function') {
+                    els.submitStatus.textContent = 'FluidPay tokenizer is not ready yet.';
+                    return;
+                }
+                els.submitButton.disabled = true;
+                els.submitStatus.textContent = 'Securing card details with FluidPay...';
+                state.fluidpayTokenizer.submit();
+                return;
+            }
+
+            if (!state.token) return;
+            await submitPayment();
         });
 
         loadDetails().catch(() => {
