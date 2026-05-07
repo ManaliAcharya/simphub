@@ -59,11 +59,12 @@ class ZohoWebhookSetupService
             'rule_type' => 'add',
             'instant_actions' => [[
                 'action_type' => 'webhook',
-                'webhook_id' => $webhookId,
                 'webhook_name' => 'Payment Middleware – Invoice Notify',
                 'method' => 'POST',
                 'url' => $webhookUrl,
                 'entity' => 'invoice',
+                'body_type' => 'application/json',
+                'raw_data' => $rawBody,
             ]],
         ]);
 
