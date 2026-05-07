@@ -8,7 +8,10 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
 use Modules\Inbound\Models\Client;
+use Modules\Inbound\Models\ClioConnection;
 use Modules\Inbound\Models\PmsConnection;
+use Modules\Inbound\Services\ClioApiClient;
+use Modules\Inbound\Services\ClioOAuthService;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Modules\Inbound\Services\ZohoApiClient;
 use Modules\Inbound\Services\ZohoOAuthService;
@@ -84,6 +87,46 @@ class PmsIntegrationController extends Controller
         return redirect()->route('inbound.zoho.page', [
             'pms_client_id' => $client->pms_client_id,
             'success' => 'Default Zoho deposit account saved.',
+        ]);
+    }
+
+    public function saveClioDefaultBankAccount(
+        Request $request,
+        ClioOAuthService $clioOAuth,
+        ClioApiClient $clioApi,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'pms_client_id'                => ['required', 'string'],
+            'clio_default_bank_account_id' => ['required', 'string', 'max:100'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'CLIO', 422, 'Default bank account is only supported for Clio clients.');
+
+        $connection = ClioConnection::query()
+            ->where('provider', 'clio')
+            ->where('pms_client_id', $client->pms_client_id)
+            ->firstOrFail();
+
+        $connection = $clioOAuth->ensureValidAccessToken($connection);
+        $accounts = $clioApi->fetchBankAccounts($connection);
+
+        $selected = collect($accounts)
+            ->first(fn (array $a): bool => (string) ($a['account_id'] ?? '') === (string) $validated['clio_default_bank_account_id']);
+
+        abort_unless(is_array($selected), 422, 'Selected bank account is invalid. Please choose from the dropdown.');
+
+        $client->forceFill([
+            'clio_default_bank_account_id'   => (string) $selected['account_id'],
+            'clio_default_bank_account_name' => (string) ($selected['account_name'] ?? ''),
+        ])->save();
+
+        return redirect()->route('inbound.clio.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => 'Default Clio bank account saved.',
         ]);
     }
 

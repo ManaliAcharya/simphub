@@ -45,7 +45,7 @@ class SyncInvoicePaidListener
 
         match (strtolower((string) $invoice->pms_source)) {
             'zoho' => $this->syncToZoho($transaction, $invoice, $client),
-            'clio' => $this->syncToClio($transaction, $invoice),
+            'clio' => $this->syncToClio($transaction, $invoice, $client),
             default => null,
         };
     }
@@ -104,7 +104,7 @@ class SyncInvoicePaidListener
         }
     }
 
-    private function syncToClio(Transaction $transaction, mixed $invoice): void
+    private function syncToClio(Transaction $transaction, mixed $invoice, mixed $client): void
     {
         try {
             $connection = ClioConnection::query()
@@ -114,25 +114,45 @@ class SyncInvoicePaidListener
 
             $connection = $this->clioOAuth->ensureValidAccessToken($connection);
 
-            $this->clioApi->markBillPaid($connection, (string) $invoice->external_invoice_id);
+            $bankAccountId = is_string($client->clio_default_bank_account_id) && trim($client->clio_default_bank_account_id) !== ''
+                ? (int) $client->clio_default_bank_account_id
+                : null;
+
+            if ($bankAccountId === null) {
+                throw new \RuntimeException('No default Clio bank account configured for this client.');
+            }
+
+            $amount = round(((int) $transaction->amount_cents) / 100, 2);
+
+            $this->clioApi->recordPayment($connection, [
+                'date'            => now()->toDateString(),
+                'payment_type'    => $this->clioPaymentType((string) $transaction->gateway),
+                'reference'       => (string) $transaction->gateway_txn_id,
+                'bank_account'    => ['id' => $bankAccountId],
+                'bill_payments'   => [[
+                    'bill'   => ['id' => (int) $invoice->external_invoice_id],
+                    'amount' => $amount,
+                ]],
+            ]);
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
 
             AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
-                'pms_source' => 'clio',
-                'transaction_id' => $transaction->id,
-                'gateway' => $transaction->gateway,
-                'gateway_txn_id' => $transaction->gateway_txn_id,
+                'pms_source'          => 'clio',
+                'transaction_id'      => $transaction->id,
+                'gateway'             => $transaction->gateway,
+                'gateway_txn_id'      => $transaction->gateway_txn_id,
                 'external_invoice_id' => $invoice->external_invoice_id,
+                'bank_account_id'     => $bankAccountId,
             ]);
         } catch (\Throwable $exception) {
             $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
 
             AuditLogger::log('PMS_PAYMENT_RECORD_FAILED', 'invoice', $invoice->id, [
-                'pms_source' => 'clio',
+                'pms_source'     => 'clio',
                 'transaction_id' => $transaction->id,
-                'gateway' => $transaction->gateway,
-                'error' => $exception->getMessage(),
+                'gateway'        => $transaction->gateway,
+                'error'          => $exception->getMessage(),
             ]);
         }
     }
@@ -146,12 +166,12 @@ class SyncInvoicePaidListener
         };
     }
 
-    private function clioPaymentSource(string $gateway): string
+    private function clioPaymentType(string $gateway): string
     {
         return match (strtolower($gateway)) {
-            'paya' => 'bank_transfer',
-            'fluidpay' => 'credit_card',
-            default => 'credit_card',
+            'paya'     => 'Check',
+            'fluidpay' => 'Credit Card',
+            default    => 'Credit Card',
         };
     }
 

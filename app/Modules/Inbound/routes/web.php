@@ -18,6 +18,9 @@ Route::middleware('web')->group(function (): void {
     Route::post('/inbound/zoho/default-account', [PmsIntegrationController::class, 'saveZohoDefaultAccount'])
         ->name('inbound.zoho.default-account');
 
+    Route::post('/inbound/clio/default-bank-account', [PmsIntegrationController::class, 'saveClioDefaultBankAccount'])
+        ->name('inbound.clio.default-bank-account');
+
     foreach (['clio', 'zoho'] as $provider) {
         Route::prefix("inbound/{$provider}")->name("inbound.{$provider}.")->group(function () use ($provider): void {
             Route::get('/', [PmsIntegrationController::class, 'show'])->defaults('provider', $provider)->name('page');

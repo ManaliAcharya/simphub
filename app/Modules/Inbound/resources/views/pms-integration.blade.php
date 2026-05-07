@@ -60,6 +60,44 @@
                 </script>
             @endif
 
+            @if ($provider === 'clio' && $client && $connection)
+                <div class="summary-card" style="margin-top: 18px;">
+                    <span>Default Clio bank account</span>
+                    <strong>{{ $client->clio_default_bank_account_name ?: 'Not selected' }}</strong>
+                    <span>{{ $client->clio_default_bank_account_id ?: '--' }}</span>
+
+                    @if (! empty($clio_bank_account_load_error))
+                        <div class="notice error" style="margin-top: 8px;">{{ $clio_bank_account_load_error }}</div>
+                    @endif
+
+                    @if (! empty($clio_bank_accounts))
+                        <form method="POST" action="{{ route('inbound.clio.default-bank-account') }}" class="form-grid" style="margin-top: 10px;">
+                            @csrf
+                            <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                            <label class="field">
+                                <span>Default Clio bank account</span>
+                                <select name="clio_default_bank_account_id" required>
+                                    <option value="">Select account</option>
+                                    @foreach ($clio_bank_accounts as $account)
+                                        <option
+                                            value="{{ $account['account_id'] }}"
+                                            @selected((string) $client->clio_default_bank_account_id === (string) $account['account_id'])
+                                        >
+                                            {{ $account['account_name'] }}{{ $account['account_type'] ? ' ('.$account['account_type'].')' : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </label>
+                            <button type="submit" class="button primary">Save default account</button>
+                        </form>
+                    @else
+                        <div class="notice error" style="margin-top: 8px;">
+                            No Clio bank accounts were returned. Reconnect Clio or verify the connected user has access to bank accounts.
+                        </div>
+                    @endif
+                </div>
+            @endif
+
             @if ($provider === 'zoho' && $client && $connection)
                 <div class="summary-card" style="margin-top: 18px;">
                     <span>Default Zoho deposit account</span>

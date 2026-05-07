@@ -73,10 +73,35 @@ class ClioApiClient
         return $response->throw()->json();
     }
 
-    public function markBillPaid(ClioConnection $connection, string $billId): array
+    public function fetchBankAccounts(ClioConnection $connection): array
+    {
+        $response = $this->authenticatedRequest($connection)
+            ->get('/api/v4/bank_accounts.json', ['fields' => 'id,name,type'])
+            ->throw()
+            ->json();
+
+        $accounts = $response['data'] ?? [];
+        if (! is_array($accounts)) {
+            return [];
+        }
+
+        return collect($accounts)
+            ->filter(fn ($account) => is_array($account))
+            ->map(fn (array $account): array => [
+                'account_id'   => (string) ($account['id']   ?? ''),
+                'account_name' => (string) ($account['name'] ?? 'Unknown'),
+                'account_type' => (string) ($account['type'] ?? ''),
+            ])
+            ->filter(fn (array $account): bool => $account['account_id'] !== '')
+            ->sortBy(fn (array $account) => strtolower($account['account_name']))
+            ->values()
+            ->all();
+    }
+
+    public function recordPayment(ClioConnection $connection, array $payload): array
     {
         return $this->authenticatedRequest($connection)
-            ->patch("/api/v4/bills/{$billId}.json", ['data' => ['status' => 'paid']])
+            ->post('/api/v4/payments.json', ['data' => $payload])
             ->throw()
             ->json();
     }
