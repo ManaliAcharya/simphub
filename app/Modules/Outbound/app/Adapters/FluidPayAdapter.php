@@ -2,7 +2,7 @@
 
 namespace Modules\Outbound\Adapters;
 
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Http;
 use Modules\Outbound\Contracts\GatewayAdapterInterface;
 use Modules\Outbound\DTOs\ChargeRequest;
 use Modules\Outbound\DTOs\GatewayResponse;
@@ -21,9 +21,44 @@ class FluidPayAdapter implements GatewayAdapterInterface
             return GatewayResponse::declined('Missing payment token.');
         }
 
-        return GatewayResponse::approved('fluidpay_'.Str::lower((string) Str::uuid()), $request->token, [
-            'gateway' => 'fluidpay',
-        ]);
+        $midCredentials = $request->midCredentials;
+
+        $apiKey  = (string) ($midCredentials['api_key']  ?? env('FLUIDPAY_API_KEY', ''));
+        $baseUrl = rtrim((string) ($midCredentials['base_url'] ?? env('FLUIDPAY_BASE_URL', 'https://sandbox.fluidpay.com')), '/');
+
+        if ($apiKey === '') {
+            return GatewayResponse::declined('FluidPay API key is not configured.');
+        }
+
+        $raw = Http::withHeaders(['Authorization' => $apiKey])
+            ->timeout(180)
+            ->post("{$baseUrl}/api/transaction", [
+                'type'           => 'sale',
+                'amount'         => $request->amountInCents,
+                'currency'       => $request->currency ?: 'USD',
+                'payment_method' => [
+                    'token' => $request->token,
+                ],
+            ])
+            ->throw()
+            ->json();
+
+        // Response shape: { status, msg, data: { id, response, response_code, ... } }
+        $data         = $raw['data'] ?? $raw;
+        $transactionId = (string) ($data['id'] ?? '');
+        $responseCode  = (int)    ($data['response_code'] ?? 0);
+        $responseText  = (string) ($data['response'] ?? $raw['msg'] ?? 'Unknown error');
+
+        // response_code 100–199 are approvals per FluidPay docs
+        if ($responseCode >= 100 && $responseCode <= 199) {
+            return GatewayResponse::approved($transactionId, $request->token, $raw);
+        }
+
+        return GatewayResponse::declined(
+            $responseText ?: "Transaction declined (code: {$responseCode})",
+            null,
+            $raw,
+        );
     }
 
     public function hostedFieldsConfig(string $mid, array $midCredentials = []): HostedFieldsConfig
