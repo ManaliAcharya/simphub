@@ -73,10 +73,10 @@ class ClioApiClient
         return $response->throw()->json();
     }
 
-    public function recordPayment(ClioConnection $connection, array $payload): array
+    public function markBillPaid(ClioConnection $connection, string $billId): array
     {
         return $this->authenticatedRequest($connection)
-            ->post('/api/v4/bill_payments.json', ['data' => $payload])
+            ->patch("/api/v4/bills/{$billId}.json", ['data' => ['status' => 'paid']])
             ->throw()
             ->json();
     }

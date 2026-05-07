@@ -114,16 +114,7 @@ class SyncInvoicePaidListener
 
             $connection = $this->clioOAuth->ensureValidAccessToken($connection);
 
-            $amount = round(((int) $transaction->amount_cents) / 100, 2);
-
-            $this->clioApi->recordPayment($connection, [
-                'date' => now()->toDateString(),
-                'amount' => $amount,
-                'bill' => ['id' => (int) $invoice->external_invoice_id],
-                'source' => $this->clioPaymentSource((string) $transaction->gateway),
-                'reference_no' => (string) $transaction->gateway_txn_id,
-                'note' => 'Payment recorded from Payment Middleware checkout',
-            ]);
+            $this->clioApi->markBillPaid($connection, (string) $invoice->external_invoice_id);
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
 
