@@ -65,6 +65,26 @@ class ZohoApiClient
             ->json();
     }
 
+    public function fetchWorkflows(PmsConnection $connection, string $organizationId): array
+    {
+        return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
+            ->get('/settings/workflows', [
+                'organization_id' => $organizationId,
+            ])
+            ->throw()
+            ->json();
+    }
+
+    public function fetchWorkflow(PmsConnection $connection, string $workflowId, string $organizationId): array
+    {
+        return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
+            ->get("/settings/workflows/{$workflowId}", [
+                'organization_id' => $organizationId,
+            ])
+            ->throw()
+            ->json();
+    }
+
     public function createWorkflow(PmsConnection $connection, string $organizationId, array $payload): array
     {
         return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
