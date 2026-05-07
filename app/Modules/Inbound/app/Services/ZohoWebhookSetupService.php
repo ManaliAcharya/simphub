@@ -11,11 +11,6 @@ class ZohoWebhookSetupService
         private readonly ZohoApiClient $api,
     ) {}
 
-    /**
-     * Creates a Zoho Books workflow with an inline webhook action.
-     * The webhook is embedded directly in instant_actions so Zoho creates and
-     * binds it in one step — no separate webhook creation call needed.
-     */
     public function setup(PmsConnection $connection, string $pmsClientId): array
     {
         $organizationId = (string) data_get($connection->meta, 'default_organization_id', '');
@@ -34,26 +29,45 @@ class ZohoWebhookSetupService
             'source'        => 'zoho',
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
-        // Build the webhook action using the reference workflow's structure as a base.
-        $webhookAction = $this->buildWebhookAction($connection, $organizationId, $webhookUrl, $rawBody);
+        // Step 1: Create the webhook.
+        $webhookResponse = $this->api->createWebhook($connection, $organizationId, [
+            'webhook_name' => 'Payment Middleware – Invoice Notify',
+            'description'  => 'Notifies the payment middleware when an invoice is created.',
+            'url'          => $webhookUrl,
+            'method'       => 'POST',
+            'body_type'    => 'application/json',
+            'entity'       => 'invoice',
+            'raw_data'     => $rawBody,
+        ]);
 
+        $webhookId = (string) (
+            data_get($webhookResponse, 'webhook.webhook_id')
+            ?? data_get($webhookResponse, 'webhook_id')
+            ?? ''
+        );
+
+        if ($webhookId === '') {
+            throw new RuntimeException('Zoho did not return a webhook ID. Response: ' . json_encode($webhookResponse));
+        }
+
+        // Step 2: Build the instant_action that references OUR webhook by its ID.
+        // Fetch the reference workflow to learn the exact field names/structure
+        // Zoho requires — then substitute only action_id with our webhook_id.
+        // Inline body fields (url, method, body_type, raw_data) are intentionally
+        // omitted so Zoho binds the existing webhook rather than creating a new one.
+        $instantAction = $this->buildInstantAction($connection, $organizationId, $webhookId);
+
+        // Step 3: Create the workflow and bind our webhook to it.
         $workflowResponse = $this->api->createWorkflow($connection, $organizationId, [
             'workflow_name'   => 'Payment Middleware – Invoice Created',
             'entity'          => 'invoice',
             'rule_type'       => 'add',
-            'instant_actions' => [$webhookAction],
+            'instant_actions' => [$instantAction],
         ]);
 
         $workflowId = (string) (
             data_get($workflowResponse, 'workflow.workflow_id')
             ?? data_get($workflowResponse, 'workflow_id')
-            ?? ''
-        );
-
-        // Zoho assigns an action_id to the inline webhook — extract it from the response.
-        $webhookId = (string) (
-            data_get($workflowResponse, 'workflow.instant_actions.0.action_id')
-            ?? data_get($workflowResponse, 'workflow.instant_actions.0.webhook_id')
             ?? ''
         );
 
@@ -64,23 +78,35 @@ class ZohoWebhookSetupService
     }
 
     /**
-     * Fetches the existing "When an invoice is created" workflow to obtain the
-     * exact instant_actions shape Zoho accepts, then merges our webhook details in.
-     * Falls back to a plain default if the reference workflow cannot be fetched.
+     * Fetch the existing "When an invoice is created" workflow, find its webhook
+     * instant_action, copy only the structural fields (action_type + any metadata
+     * Zoho requires), then replace action_id with our newly created webhook's ID.
+     *
+     * Inline fields (url, method, body_type, raw_data, webhook_name, description)
+     * are stripped — they would cause Zoho to create a brand-new webhook instead
+     * of binding the one we already created.
      */
-    private function buildWebhookAction(
+    private function buildInstantAction(
         PmsConnection $connection,
         string $organizationId,
-        string $webhookUrl,
-        string $rawBody,
+        string $webhookId,
     ): array {
-        $base = [];
+        // Fields that describe webhook content — keeping them causes Zoho to create
+        // a new webhook inline instead of referencing the existing one by action_id.
+        $inlineFields = [
+            'url', 'method', 'body_type', 'raw_data',
+            'webhook_name', 'description', 'headers',
+            'entity_parameters', 'query_parameters', 'form_data',
+            'additional_parameters', 'secret',
+            'user_defined_format_name', 'user_defined_format_value',
+            'is_new_response_format',
+        ];
 
         try {
-            $list = $this->api->fetchWorkflows($connection, $organizationId);
+            $listResponse = $this->api->fetchWorkflows($connection, $organizationId);
 
             $referenceId = '';
-            foreach ((array) data_get($list, 'workflows', []) as $wf) {
+            foreach ((array) data_get($listResponse, 'workflows', []) as $wf) {
                 if (stripos((string) data_get($wf, 'workflow_name'), 'invoice is created') !== false) {
                     $referenceId = (string) data_get($wf, 'workflow_id', '');
                     break;
@@ -91,24 +117,40 @@ class ZohoWebhookSetupService
                 $detail     = $this->api->fetchWorkflow($connection, $referenceId, $organizationId);
                 $refActions = (array) data_get($detail, 'workflow.instant_actions', []);
 
-                if (! empty($refActions)) {
-                    // Use the reference action as a base — keeps any fields Zoho requires
-                    // that are not documented. Remove action_id so Zoho assigns a new one.
-                    $base = (array) $refActions[0];
-                    unset($base['action_id'], $base['webhook_id']);
+                // Find the webhook-type action in the reference workflow.
+                $refAction = null;
+                foreach ($refActions as $a) {
+                    if (strtolower((string) data_get($a, 'action_type', '')) === 'webhook') {
+                        $refAction = (array) $a;
+                        break;
+                    }
+                }
+
+                // Fall back to first action if none is explicitly typed as webhook.
+                if ($refAction === null && ! empty($refActions)) {
+                    $refAction = (array) $refActions[0];
+                }
+
+                if ($refAction !== null) {
+                    // Strip inline body fields — keep only structural metadata.
+                    foreach ($inlineFields as $f) {
+                        unset($refAction[$f]);
+                    }
+
+                    // Bind our webhook by replacing the action_id.
+                    $refAction['action_id']   = $webhookId;
+                    $refAction['action_type'] = $refAction['action_type'] ?? 'webhook';
+
+                    return $refAction;
                 }
             }
         } catch (\Throwable) {
-            // Non-fatal — fall through to plain defaults
+            // Non-fatal — fall through to minimal default below.
         }
 
-        return array_merge($base, [
-            'action_type'  => 'webhook',
-            'webhook_name' => 'Payment Middleware – Invoice Notify',
-            'method'       => 'POST',
-            'url'          => $webhookUrl,
-            'body_type'    => 'application/json',
-            'raw_data'     => $rawBody,
-        ]);
+        return [
+            'action_type' => 'webhook',
+            'action_id'   => $webhookId,
+        ];
     }
 }
