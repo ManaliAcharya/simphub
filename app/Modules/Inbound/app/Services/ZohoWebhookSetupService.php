@@ -102,7 +102,7 @@ class ZohoWebhookSetupService
             'is_new_response_format',
         ];
 
-        try {
+        /*try {
             $listResponse = $this->api->fetchWorkflows($connection, $organizationId);
 
             $referenceId = '';
@@ -147,7 +147,7 @@ class ZohoWebhookSetupService
         } catch (\Throwable) {
             // Non-fatal — fall through to minimal default below.
         }
-
+*/
         return [
             'action_type' => 'webhook',
             'action_id'   => $webhookId,
