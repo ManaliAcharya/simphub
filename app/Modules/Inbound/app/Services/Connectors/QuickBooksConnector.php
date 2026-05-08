@@ -72,16 +72,7 @@ class QuickBooksConnector implements PmsConnectorInterface
             'copy'        => 'Authenticate with QuickBooks Online to enable invoice webhooks and payment sync.',
             'webhook_url' => $webhookUrl,
             'realm_id'    => $realmId,
-            'webhook_instructions' => [
-                'steps' => [
-                    'Log in to the <strong>Intuit Developer Portal</strong> at developer.intuit.com and open your app.',
-                    'Go to <strong>Production Keys</strong> (or Sandbox Keys) → <strong>Webhooks</strong>.',
-                    'Click <strong>+ Add endpoint</strong> and paste the webhook URL shown below.',
-                    'Under <strong>Entities</strong> select <strong>Invoice</strong> and check <strong>Create</strong> and <strong>Update</strong>.',
-                    'Save — Intuit will display a <strong>Verifier Token</strong>. Copy it and set <code>QB_WEBHOOK_VERIFIER_TOKEN</code> in your <code>.env</code>.',
-                ],
-                'url' => $webhookUrl,
-            ],
+            'webhook_instructions' => [],
         ];
     }
 }

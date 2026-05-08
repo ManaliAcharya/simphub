@@ -138,7 +138,7 @@ class ZohoConnector implements PmsConnectorInterface
             'heading' => 'Connect Zoho for a configured client',
             'copy' => 'After Zoho authentication, the webhook and workflow rule are configured automatically so invoice-created notifications reach the middleware.',
             'webhook_url' => $webhookUrl,
-            'webhook_instructions' => $webhookInstructions,
+            'webhook_instructions' => [],
             'webhook_auto_setup_status' => $autoSetupStatus,
             'webhook_auto_setup_error' => $autoSetupError,
             'webhook_id' => data_get($connection?->meta, 'webhook_id'),
