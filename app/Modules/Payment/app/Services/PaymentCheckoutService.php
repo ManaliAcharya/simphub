@@ -405,7 +405,7 @@ class PaymentCheckoutService
         // Clio sends null for unfilled fields — we must not emit those.
         $rawValue = $payload['value']       // Zoho + Clio primary key
             ?? $payload['field_value']      // Zoho alt
-            ?? $payload['StringVal']        // QuickBooks custom field (string type)
+            ?? $payload['StringValue']      // QuickBooks custom field (string type)
             ?? $payload['content']
             ?? $payload['text']
             ?? null;
