@@ -41,6 +41,7 @@ return [
         'client_id' => env('CLIO_CLIENT_ID'),
         'client_secret' => env('CLIO_CLIENT_SECRET'),
         'redirect_uri' => env('CLIO_REDIRECT_URI', rtrim(env('APP_URL', 'http://localhost'), '/').'/inbound/clio/callback'),
+        'scope' => env('CLIO_SCOPE', 'openid'),
         'webhook_callback_url' => env('CLIO_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/clio'),
         'api_version' => env('CLIO_API_VERSION', '4'),
         'webhook_model' => env('CLIO_WEBHOOK_MODEL', 'bill'),

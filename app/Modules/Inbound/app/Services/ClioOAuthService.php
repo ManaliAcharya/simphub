@@ -17,9 +17,10 @@ class ClioOAuthService
     {
         return config('services.clio.base_url').'/oauth/authorize?'.http_build_query([
             'response_type' => 'code',
-            'client_id' => $this->clientId(),
-            'redirect_uri' => $this->redirectUri(),
-            'state' => $this->state->make('clio', $pmsClientId),
+            'client_id'     => $this->clientId(),
+            'redirect_uri'  => $this->redirectUri(),
+            'scope'         => config('services.clio.scope', 'openid'),
+            'state'         => $this->state->make('clio', $pmsClientId),
         ]);
     }
 
