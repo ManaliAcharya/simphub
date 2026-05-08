@@ -124,16 +124,29 @@ class SyncInvoicePaidListener
 
             $amount = round(((int) $transaction->amount_cents) / 100, 2);
 
-            $this->clioApi->recordPayment($connection, [
-                'date'            => now()->toDateString(),
-                'payment_type'    => $this->clioPaymentType((string) $transaction->gateway),
-                'reference'       => (string) $transaction->gateway_txn_id,
-                'bank_account'    => ['id' => $bankAccountId],
-                'bill_payments'   => [[
-                    'bill'   => ['id' => (int) $invoice->external_invoice_id],
-                    'amount' => $amount,
-                ]],
-            ]);
+            $paymentRecorded = false;
+
+            try {
+                $this->clioApi->recordPayment($connection, [
+                    'date'          => now()->toDateString(),
+                    'payment_type'  => $this->clioPaymentType((string) $transaction->gateway),
+                    'reference'     => (string) $transaction->gateway_txn_id,
+                    'bank_account'  => ['id' => $bankAccountId],
+                    'bill_payments' => [[
+                        'bill'   => ['id' => (int) $invoice->external_invoice_id],
+                        'amount' => $amount,
+                    ]],
+                ]);
+                $paymentRecorded = true;
+            } catch (\Illuminate\Http\Client\RequestException $e) {
+                $status = $e->response->status();
+                if ($status !== 401 && $status !== 403) {
+                    throw $e;
+                }
+                // Fall back to marking bill paid when the account lacks payment-recording permission.
+                // Requires Clio Payments enabled + Administrator role on the connected user.
+                $this->clioApi->markBillPaid($connection, (string) $invoice->external_invoice_id);
+            }
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
 
@@ -144,6 +157,8 @@ class SyncInvoicePaidListener
                 'gateway_txn_id'      => $transaction->gateway_txn_id,
                 'external_invoice_id' => $invoice->external_invoice_id,
                 'bank_account_id'     => $bankAccountId,
+                'method'              => $paymentRecorded ? 'payment_record' : 'bill_state_patch',
+                'note'                => $paymentRecorded ? null : 'Payment record creation returned 401/403 — bill marked paid via PATCH. Check: connected user must be Administrator and Clio Payments must be active on the account.',
             ]);
         } catch (\Throwable $exception) {
             $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
