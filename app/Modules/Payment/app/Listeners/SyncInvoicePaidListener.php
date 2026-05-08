@@ -191,9 +191,11 @@ class SyncInvoicePaidListener
             $amount = round(((int) $transaction->amount_cents) / 100, 2);
 
             $this->qbApi->recordPayment($connection, [
-                'TotalAmt'    => $amount,
-                'CustomerRef' => ['value' => (string) $invoice->external_client_id],
-                'Line'        => [[
+                'TotalAmt'       => $amount,
+                'CustomerRef'    => ['value' => (string) $invoice->external_client_id],
+                'TxnDate'        => now()->toDateString(),
+                'PaymentRefNum'  => (string) $transaction->gateway_txn_id,
+                'Line'           => [[
                     'Amount'    => $amount,
                     'LinkedTxn' => [[
                         'TxnId'   => (string) $invoice->external_invoice_id,

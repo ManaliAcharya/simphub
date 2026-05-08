@@ -47,7 +47,8 @@ class QuickBooksApiClient
     public function recordPayment(QuickBooksConnection $connection, array $payload): array
     {
         return $this->request($connection)
-            ->post('/payment', array_merge($payload, $this->minorVersion()))
+            ->withQueryParameters($this->minorVersion())
+            ->post('/payment', $payload)
             ->throw()
             ->json();
     }
