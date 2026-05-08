@@ -13,6 +13,7 @@ use Modules\Outbound\DTOs\ChargeRequest;
 use Modules\Outbound\Factory\GatewayAdapterFactory;
 use Modules\Payment\Events\PaymentApproved;
 use Modules\Inbound\Services\ClioCustomerRefreshService;
+use Modules\Inbound\Services\QuickBooksCustomerRefreshService;
 use Modules\Inbound\Services\ZohoCustomerRefreshService;
 use Modules\Routing\DTOs\RoutingContext;
 use Modules\Routing\Services\RoutingEngine;
@@ -27,6 +28,7 @@ class PaymentCheckoutService
         private readonly SessionStateMachine $stateMachine,
         private readonly ZohoCustomerRefreshService $zohoCustomerRefresh,
         private readonly ClioCustomerRefreshService $clioCustomerRefresh,
+        private readonly QuickBooksCustomerRefreshService $quickBooksCustomerRefresh,
     ) {}
 
     public function details(PaymentSession $session): array
@@ -313,9 +315,10 @@ class PaymentCheckoutService
     private function refreshCustomerPayload(Invoice $invoice): ?Invoice
     {
         return match ((string) $invoice->pms_source) {
-            'zoho'  => $this->zohoCustomerRefresh->refreshCustomerPayload($invoice),
-            'clio'  => $this->clioCustomerRefresh->refreshCustomerPayload($invoice),
-            default => null,
+            'zoho'        => $this->zohoCustomerRefresh->refreshCustomerPayload($invoice),
+            'clio'        => $this->clioCustomerRefresh->refreshCustomerPayload($invoice),
+            'quickbooks'  => $this->quickBooksCustomerRefresh->refreshCustomerPayload($invoice),
+            default       => null,
         };
     }
 
@@ -393,6 +396,7 @@ class PaymentCheckoutService
             $payload['label']      ?? null,   // Zoho custom_fields
             $payload['field_name'] ?? null,   // Clio custom_field_values
             $payload['api_name']   ?? null,   // Zoho alt shape
+            $payload['Name']       ?? null,   // QuickBooks custom fields
             $payload['name']       ?? null,
             $payload['title']      ?? null,
         ]);
@@ -401,6 +405,7 @@ class PaymentCheckoutService
         // Clio sends null for unfilled fields — we must not emit those.
         $rawValue = $payload['value']       // Zoho + Clio primary key
             ?? $payload['field_value']      // Zoho alt
+            ?? $payload['StringVal']        // QuickBooks custom field (string type)
             ?? $payload['content']
             ?? $payload['text']
             ?? null;
