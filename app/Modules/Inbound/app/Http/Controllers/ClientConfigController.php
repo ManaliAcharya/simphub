@@ -80,8 +80,9 @@ class ClientConfigController extends Controller
         ]);
 
         $providerRoute = match ($client->client_pms) {
-            'ZOHO' => 'inbound.zoho.page',
-            default => 'inbound.clio.page',
+            'ZOHO'       => 'inbound.zoho.page',
+            'QUICKBOOKS' => 'inbound.quickbooks.page',
+            default      => 'inbound.clio.page',
         };
 
         return redirect()->route($providerRoute, [

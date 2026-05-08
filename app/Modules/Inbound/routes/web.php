@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Inbound\Http\Controllers\ClientConfigController;
 use Modules\Inbound\Http\Controllers\PmsAuthController;
 use Modules\Inbound\Http\Controllers\PmsIntegrationController;
+use Modules\Inbound\Http\Controllers\QuickBooksAuthController;
 
 Route::middleware('web')->group(function (): void {
     Route::get('/setup/{provider}/{token}', [PmsIntegrationController::class, 'showByToken'])
@@ -29,4 +30,13 @@ Route::middleware('web')->group(function (): void {
             Route::get('/callback', [PmsAuthController::class, 'callback'])->defaults('provider', $provider)->name('callback');
         });
     }
+
+    Route::prefix('inbound/quickbooks')->name('inbound.quickbooks.')->group(function (): void {
+        Route::get('/', [PmsIntegrationController::class, 'show'])->defaults('provider', 'quickbooks')->name('page');
+        Route::get('/share/{token}', [PmsIntegrationController::class, 'showByToken'])->defaults('provider', 'quickbooks')->name('share');
+        Route::get('/connect', [PmsAuthController::class, 'redirect'])->defaults('provider', 'quickbooks')->name('connect');
+        Route::get('/callback', [QuickBooksAuthController::class, 'callback'])->name('callback');
+        Route::get('/select-company', [QuickBooksAuthController::class, 'selectCompany'])->name('select-company');
+        Route::post('/confirm-company', [QuickBooksAuthController::class, 'confirmCompany'])->name('confirm-company');
+    });
 });

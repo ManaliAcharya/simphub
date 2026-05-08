@@ -3,6 +3,7 @@
 namespace Modules\Inbound\Providers;
 
 use Modules\Inbound\Services\Connectors\ClioConnector;
+use Modules\Inbound\Services\Connectors\QuickBooksConnector;
 use Modules\Inbound\Services\Connectors\ZohoConnector;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Nwidart\Modules\Support\ModuleServiceProvider;
@@ -45,6 +46,7 @@ class InboundServiceProvider extends ModuleServiceProvider
             return new PmsConnectorRegistry([
                 $app->make(ClioConnector::class),
                 $app->make(ZohoConnector::class),
+                $app->make(QuickBooksConnector::class),
             ]);
         });
     }

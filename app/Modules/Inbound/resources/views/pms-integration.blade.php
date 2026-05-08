@@ -60,6 +60,13 @@
                 </script>
             @endif
 
+            @if ($provider === 'quickbooks' && $connection)
+                <div class="summary-card" style="margin-top: 18px;">
+                    <span>QuickBooks Company (Realm) ID</span>
+                    <strong>{{ $realm_id ?: 'Not connected yet' }}</strong>
+                </div>
+            @endif
+
             @if ($provider === 'clio' && $client && $connection)
                 <div class="summary-card" style="margin-top: 18px;">
                     <span>Default Clio bank account</span>
@@ -209,7 +216,7 @@
                                 <div>
                                     <label style="font-weight: 600; display: block; margin-bottom: 4px;">Body (Choose Raw JSON and paste this):</label>
                                     <div style="position: relative;">
-                                        <textarea id="webhook-json-input" rows="7" readonly style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 4px; background: #1f2937; color: #f9fafb; font-family: monospace; font-size: 13px; box-sizing: border-box;">{{ $webhook_instructions['json'] }}</textarea>
+                                        <textarea id="webhook-json-input" rows="7" readonly style="width: 100%; padding: 10px; border: 1px solid #d1d5db; border-radius: 4px; background: #1f2937; color: #f9fafb; font-family: monospace; font-size: 13px; box-sizing: border-box;">{{ @$webhook_instructions['json'] }}</textarea>
                                         <button onclick="copyToClipboard('webhook-json-input', this)" style="position: absolute; top: 8px; right: 8px; padding: 6px 10px; background: #4b5563; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px;">Copy JSON</button>
                                     </div>
                                 </div>

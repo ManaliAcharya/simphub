@@ -65,6 +65,19 @@ return [
         'webhook_callback_url' => env('ZOHO_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/zoho'),
     ],
 
+    'quickbooks' => [
+        'client_id'              => env('QB_CLIENT_ID'),
+        'client_secret'          => env('QB_CLIENT_SECRET'),
+        'redirect_uri'           => env('QB_REDIRECT_URI', rtrim(env('APP_URL', 'http://localhost'), '/').'/inbound/quickbooks/callback'),
+        'scope'                  => env('QB_SCOPE', 'com.intuit.quickbooks.accounting'),
+        'base_url'               => rtrim(env('QB_BASE_URL', 'https://sandbox-quickbooks.api.intuit.com'), '/'),
+        'oauth_base_url'         => rtrim(env('QB_OAUTH_BASE_URL', 'https://appcenter.intuit.com'), '/'),
+        'token_url'              => rtrim(env('QB_TOKEN_URL', 'https://oauth.platform.intuit.com'), '/'),
+        'webhook_callback_url'   => env('QB_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/quickbooks'),
+        'webhook_verifier_token' => env('QB_WEBHOOK_VERIFIER_TOKEN'),
+        'minor_version'          => env('QB_MINOR_VERSION', '65'),
+    ],
+
     'payment' => [
         'host_url' => rtrim(env('PAYMENT_HOST_URL', env('APP_URL', 'http://localhost')), '/'),
     ],

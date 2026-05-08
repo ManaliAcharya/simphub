@@ -8,8 +8,11 @@ use Modules\Billing\Models\Transaction;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClioConnection;
 use Modules\Inbound\Models\PmsConnection;
+use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
+use Modules\Inbound\Services\QuickBooksApiClient;
+use Modules\Inbound\Services\QuickBooksOAuthService;
 use Modules\Inbound\Services\ZohoApiClient;
 use Modules\Inbound\Services\ZohoOAuthService;
 use Modules\Payment\Events\PaymentApproved;
@@ -21,6 +24,8 @@ class SyncInvoicePaidListener
         private readonly ZohoApiClient $zohoApi,
         private readonly ClioOAuthService $clioOAuth,
         private readonly ClioApiClient $clioApi,
+        private readonly QuickBooksOAuthService $qbOAuth,
+        private readonly QuickBooksApiClient $qbApi,
     ) {}
 
     public function handle(PaymentApproved $event): void
@@ -44,9 +49,10 @@ class SyncInvoicePaidListener
         }
 
         match (strtolower((string) $invoice->pms_source)) {
-            'zoho' => $this->syncToZoho($transaction, $invoice, $client),
-            'clio' => $this->syncToClio($transaction, $invoice, $client),
-            default => null,
+            'zoho'       => $this->syncToZoho($transaction, $invoice, $client),
+            'clio'       => $this->syncToClio($transaction, $invoice, $client),
+            'quickbooks' => $this->syncToQuickBooks($transaction, $invoice),
+            default      => null,
         };
     }
 
@@ -165,6 +171,51 @@ class SyncInvoicePaidListener
 
             AuditLogger::log('PMS_PAYMENT_RECORD_FAILED', 'invoice', $invoice->id, [
                 'pms_source'     => 'clio',
+                'transaction_id' => $transaction->id,
+                'gateway'        => $transaction->gateway,
+                'error'          => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function syncToQuickBooks(Transaction $transaction, mixed $invoice): void
+    {
+        try {
+            $connection = QuickBooksConnection::query()
+                ->where('provider', 'quickbooks')
+                ->where('pms_client_id', $invoice->pms_client_id)
+                ->first();
+
+            $connection = $this->qbOAuth->ensureValidAccessToken($connection);
+
+            $amount = round(((int) $transaction->amount_cents) / 100, 2);
+
+            $this->qbApi->recordPayment($connection, [
+                'TotalAmt'    => $amount,
+                'CustomerRef' => ['value' => (string) $invoice->external_client_id],
+                'Line'        => [[
+                    'Amount'    => $amount,
+                    'LinkedTxn' => [[
+                        'TxnId'   => (string) $invoice->external_invoice_id,
+                        'TxnType' => 'Invoice',
+                    ]],
+                ]],
+            ]);
+
+            $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
+
+            AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
+                'pms_source'          => 'quickbooks',
+                'transaction_id'      => $transaction->id,
+                'gateway'             => $transaction->gateway,
+                'gateway_txn_id'      => $transaction->gateway_txn_id,
+                'external_invoice_id' => $invoice->external_invoice_id,
+            ]);
+        } catch (\Throwable $exception) {
+            $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
+
+            AuditLogger::log('PMS_PAYMENT_RECORD_FAILED', 'invoice', $invoice->id, [
+                'pms_source'     => 'quickbooks',
                 'transaction_id' => $transaction->id,
                 'gateway'        => $transaction->gateway,
                 'error'          => $exception->getMessage(),
