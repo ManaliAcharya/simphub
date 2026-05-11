@@ -100,18 +100,24 @@ class ClioApiClient
 
     public function fetchBillWithLineItems(ClioConnection $connection, string $billId): array
     {
-        $response = $this->authenticatedRequest($connection)
-            ->get("/api/v4/bills/{$billId}.json");
+        // Try each candidate field name for bill line items until one works.
+        $candidates = [
+            'id,number,total,balance,state,services{id,total,balance,description,type}',
+            'id,number,total,balance,state,entries{id,total,balance,description,type}',
+            'id,number,total,balance,state',
+        ];
 
-        $body = $response->throw()->json();
+        $response = null;
+        foreach ($candidates as $fields) {
+            $response = $this->authenticatedRequest($connection)
+                ->get("/api/v4/bills/{$billId}.json", ['fields' => $fields]);
 
-        Log::debug('Clio bill response for line item allocation', [
-            'bill_id' => $billId,
-            'keys'    => array_keys((array) ($body['data'] ?? [])),
-            'data'    => $body['data'] ?? null,
-        ]);
+            if (! ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields')) {
+                break;
+            }
+        }
 
-        return $body;
+        return $response->throw()->json();
     }
 
     public function recordLineItemPayment(ClioConnection $connection, array $payload): array
