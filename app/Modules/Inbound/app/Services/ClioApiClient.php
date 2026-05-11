@@ -100,12 +100,22 @@ class ClioApiClient
 
     public function fetchBillWithLineItems(ClioConnection $connection, string $billId): array
     {
-        return $this->authenticatedRequest($connection)
+        $response = $this->authenticatedRequest($connection)
             ->get("/api/v4/bills/{$billId}.json", [
-                'fields' => 'id,total,balance,state,line_items{id,total,balance,description,type}',
-            ])
-            ->throw()
-            ->json();
+                'fields' => 'id,total,balance,state,entries{id,total,balance,description,type}',
+            ]);
+
+        if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
+            Log::warning('Clio bill+entries fetch rejected requested fields, retrying without field filter.', [
+                'bill_id' => $billId,
+                'error'   => $response->json(),
+            ]);
+
+            $response = $this->authenticatedRequest($connection)
+                ->get("/api/v4/bills/{$billId}.json");
+        }
+
+        return $response->throw()->json();
     }
 
     public function recordLineItemPayment(ClioConnection $connection, array $payload): array

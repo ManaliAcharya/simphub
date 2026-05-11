@@ -133,8 +133,9 @@ class SyncInvoicePaidListener
             $note          = 'Externally processed via Third-Party Processor';
 
             $bill      = $this->clioApi->fetchBillWithLineItems($connection, $billId);
-            $lineItems = collect(Arr::get($bill, 'data.line_items', []))
-                ->filter(fn (array $li): bool => (float) ($li['balance'] ?? 0) > 0)
+            $rawItems  = Arr::get($bill, 'data.entries', Arr::get($bill, 'data.line_items', []));
+            $lineItems = collect(is_array($rawItems) ? $rawItems : [])
+                ->filter(fn (array $li): bool => (float) ($li['balance'] ?? $li['total'] ?? 0) > 0)
                 ->values();
 
             $remaining   = $amount;
@@ -144,7 +145,7 @@ class SyncInvoicePaidListener
                 if ($remaining <= 0) {
                     break;
                 }
-                $lineBalance   = (float) ($lineItem['balance'] ?? 0);
+                $lineBalance   = (float) ($lineItem['balance'] ?? $lineItem['total'] ?? 0);
                 $allocated     = min($remaining, $lineBalance);
                 $remaining     = round($remaining - $allocated, 2);
                 $allocations[] = [
