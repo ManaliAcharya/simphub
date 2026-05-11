@@ -136,9 +136,16 @@ class SyncInvoicePaidListener
             $billData = $bill['data'] ?? [];
 
             if (($billData['state'] ?? '') === 'draft') {
-                $this->clioApi->transitionBillToOutstanding($connection, $billId);
-                $bill     = $this->clioApi->fetchBillWithLineItems($connection, $billId);
-                $billData = $bill['data'] ?? [];
+                try {
+                    $this->clioApi->approveBill($connection, $billId);
+                    $bill     = $this->clioApi->fetchBillWithLineItems($connection, $billId);
+                    $billData = $bill['data'] ?? [];
+                } catch (\Throwable $transitionException) {
+                    AuditLogger::log('CLIO_BILL_TRANSITION_FAILED', 'invoice', $invoice->id, [
+                        'bill_id' => $billId,
+                        'error'   => $transitionException->getMessage(),
+                    ]);
+                }
             }
 
             AuditLogger::log('CLIO_BILL_DEBUG', 'invoice', $invoice->id, [

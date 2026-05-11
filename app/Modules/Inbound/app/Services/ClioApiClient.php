@@ -136,10 +136,10 @@ class ClioApiClient
             ->json();
     }
 
-    public function transitionBillToOutstanding(ClioConnection $connection, string $billId): array
+    public function approveBill(ClioConnection $connection, string $billId): array
     {
         return $this->authenticatedRequest($connection)
-            ->patch("/api/v4/bills/{$billId}.json", ['data' => ['state' => 'outstanding']])
+            ->patch("/api/v4/bills/{$billId}.json", ['data' => ['state' => 'approved']])
             ->throw()
             ->json();
     }
