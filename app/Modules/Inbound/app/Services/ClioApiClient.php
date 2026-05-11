@@ -118,12 +118,15 @@ class ClioApiClient
         $response = $this->authenticatedRequest($connection)
             ->get('/api/v4/line_items.json', [
                 'bill_id' => $billId,
-                'fields'  => 'id,total,balance,description,type',
-            ])
-            ->throw()
-            ->json();
+                'fields'  => 'id,total,description,type',
+            ]);
 
-        return $response['data'] ?? [];
+        if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
+            $response = $this->authenticatedRequest($connection)
+                ->get('/api/v4/line_items.json', ['bill_id' => $billId]);
+        }
+
+        return $response->throw()->json()['data'] ?? [];
     }
 
     public function recordLineItemPayment(ClioConnection $connection, array $payload): array

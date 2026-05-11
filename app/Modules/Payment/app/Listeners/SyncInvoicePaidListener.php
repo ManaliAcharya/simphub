@@ -143,7 +143,7 @@ class SyncInvoicePaidListener
             }
 
             $lineItems = collect($this->clioApi->fetchLineItems($connection, $billId))
-                ->filter(fn (array $li): bool => (float) ($li['balance'] ?? $li['total'] ?? 0) > 0)
+                ->filter(fn (array $li): bool => (float) ($li['total'] ?? 0) > 0)
                 ->values();
 
             AuditLogger::log('CLIO_BILL_DEBUG', 'invoice', $invoice->id, [
@@ -162,7 +162,7 @@ class SyncInvoicePaidListener
                 if ($remaining <= 0) {
                     break;
                 }
-                $lineBalance   = (float) ($lineItem['balance'] ?? $lineItem['total'] ?? 0);
+                $lineBalance   = (float) ($lineItem['total'] ?? 0);
                 $allocated     = min($remaining, $lineBalance);
                 $remaining     = round($remaining - $allocated, 2);
                 $allocations[] = [
