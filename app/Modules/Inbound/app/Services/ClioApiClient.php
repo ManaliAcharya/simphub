@@ -98,26 +98,32 @@ class ClioApiClient
             ->all();
     }
 
-    public function fetchBillWithLineItems(ClioConnection $connection, string $billId): array
+    public function fetchBillForSync(ClioConnection $connection, string $billId): array
     {
-        // Try each candidate field name for bill line items until one works.
-        $candidates = [
-            'id,number,total,balance,state,services{id,total,balance,description,type}',
-            'id,number,total,balance,state,entries{id,total,balance,description,type}',
-            'id,number,total,balance,state',
-        ];
+        $response = $this->authenticatedRequest($connection)
+            ->get("/api/v4/bills/{$billId}.json", [
+                'fields' => 'id,number,total,balance,state,available_state_transitions',
+            ]);
 
-        $response = null;
-        foreach ($candidates as $fields) {
+        if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
             $response = $this->authenticatedRequest($connection)
-                ->get("/api/v4/bills/{$billId}.json", ['fields' => $fields]);
-
-            if (! ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields')) {
-                break;
-            }
+                ->get("/api/v4/bills/{$billId}.json");
         }
 
         return $response->throw()->json();
+    }
+
+    public function fetchLineItems(ClioConnection $connection, string $billId): array
+    {
+        $response = $this->authenticatedRequest($connection)
+            ->get('/api/v4/line_items.json', [
+                'bill_id' => $billId,
+                'fields'  => 'id,total,balance,description,type',
+            ])
+            ->throw()
+            ->json();
+
+        return $response['data'] ?? [];
     }
 
     public function recordLineItemPayment(ClioConnection $connection, array $payload): array
@@ -136,10 +142,10 @@ class ClioApiClient
             ->json();
     }
 
-    public function approveBill(ClioConnection $connection, string $billId): array
+    public function transitionBillState(ClioConnection $connection, string $billId, string $state): array
     {
         return $this->authenticatedRequest($connection)
-            ->patch("/api/v4/bills/{$billId}.json", ['data' => ['state' => 'approved']])
+            ->patch("/api/v4/bills/{$billId}.json", ['data' => ['state' => $state]])
             ->throw()
             ->json();
     }

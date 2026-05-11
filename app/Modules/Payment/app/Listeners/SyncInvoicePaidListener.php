@@ -132,37 +132,30 @@ class SyncInvoicePaidListener
             $paymentMethod = $this->clioPaymentType((string) $transaction->gateway);
             $note          = 'Externally processed via Third-Party Processor';
 
-            $bill     = $this->clioApi->fetchBillWithLineItems($connection, $billId);
+            $bill     = $this->clioApi->fetchBillForSync($connection, $billId);
             $billData = $bill['data'] ?? [];
+            $state    = (string) ($billData['state'] ?? '');
 
-            if (($billData['state'] ?? '') === 'draft') {
-                try {
-                    $this->clioApi->approveBill($connection, $billId);
-                    $bill     = $this->clioApi->fetchBillWithLineItems($connection, $billId);
-                    $billData = $bill['data'] ?? [];
-                } catch (\Throwable $transitionException) {
-                    AuditLogger::log('CLIO_BILL_TRANSITION_FAILED', 'invoice', $invoice->id, [
-                        'bill_id' => $billId,
-                        'error'   => $transitionException->getMessage(),
-                    ]);
-                }
+            // Advance through Clio's state machine until the bill is payable.
+            // draft → awaiting_approval → approved
+            $transitions = ['draft' => 'awaiting_approval', 'awaiting_approval' => 'approved'];
+            while (isset($transitions[$state])) {
+                $this->clioApi->transitionBillState($connection, $billId, $transitions[$state]);
+                $state = $transitions[$state];
             }
 
-            AuditLogger::log('CLIO_BILL_DEBUG', 'invoice', $invoice->id, [
-                'bill_id'        => $billId,
-                'bill_keys'      => array_keys($billData),
-                'bill_state'     => $billData['state'] ?? null,
-                'bill_total'     => $billData['total'] ?? null,
-                'bill_balance'   => $billData['balance'] ?? null,
-                'services_raw'   => $billData['services'] ?? 'KEY_MISSING',
-                'entries_raw'    => $billData['entries'] ?? 'KEY_MISSING',
-                'line_items_raw' => $billData['line_items'] ?? 'KEY_MISSING',
-            ]);
-
-            $rawItems = $billData['services'] ?? $billData['entries'] ?? $billData['line_items'] ?? [];
-            $lineItems = collect(is_array($rawItems) ? $rawItems : [])
+            $lineItems = collect($this->clioApi->fetchLineItems($connection, $billId))
                 ->filter(fn (array $li): bool => (float) ($li['balance'] ?? $li['total'] ?? 0) > 0)
                 ->values();
+
+            AuditLogger::log('CLIO_BILL_DEBUG', 'invoice', $invoice->id, [
+                'bill_id'          => $billId,
+                'bill_state_final' => $state,
+                'bill_total'       => $billData['total'] ?? null,
+                'bill_balance'     => $billData['balance'] ?? null,
+                'line_items_count' => $lineItems->count(),
+                'line_items'       => $lineItems->all(),
+            ]);
 
             $remaining   = $amount;
             $allocations = [];
