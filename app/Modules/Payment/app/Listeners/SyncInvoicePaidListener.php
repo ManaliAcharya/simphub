@@ -165,22 +165,20 @@ class SyncInvoicePaidListener
                 //         $this->clioApi->markBillPaid($connection, $billId);
                 //     }
                 // } elseif ($status === 401 || $status === 403) {
-                if ($status === 401 || $status === 403) {
-                    // Account lacks payment-recording permission — fall back to state PATCH.
-                    // If the bill somehow ended up in Draft via a different path, handle it here too.
-                    try {
-                        $this->clioApi->markBillPaid($connection, $billId);
-                    } catch (\Illuminate\Http\Client\RequestException $patchException) {
-                        // if ($this->isClioDraftTransitionError($patchException)) {
-                        //     $this->clioApi->transitionBillToOutstanding($connection, $billId);
-                        //     $this->clioApi->markBillPaid($connection, $billId);
-                        // } else {
-                            throw $patchException;
-                        // }
-                    }
-                } else {
+                //     // Account lacks payment-recording permission — fall back to state PATCH.
+                //     try {
+                //         $this->clioApi->markBillPaid($connection, $billId);
+                //     } catch (\Illuminate\Http\Client\RequestException $patchException) {
+                //         // if ($this->isClioDraftTransitionError($patchException)) {
+                //         //     $this->clioApi->transitionBillToOutstanding($connection, $billId);
+                //         //     $this->clioApi->markBillPaid($connection, $billId);
+                //         // } else {
+                //             throw $patchException;
+                //         // }
+                //     }
+                // } else {
                     throw $e;
-                }
+                // }
             }
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
