@@ -78,6 +78,17 @@ return [
         'minor_version'          => env('QB_MINOR_VERSION', '65'),
     ],
 
+    'lawcus' => [
+        'base_url'             => rtrim(env('LAWCUS_BASE_URL', 'https://app.lawcus.com'), '/'),
+        'api_base_url'         => rtrim(env('LAWCUS_API_BASE_URL', env('LAWCUS_BASE_URL', 'https://app.lawcus.com')), '/'),
+        'client_id'            => env('LAWCUS_CLIENT_ID'),
+        'client_secret'        => env('LAWCUS_CLIENT_SECRET'),
+        'redirect_uri'         => env('LAWCUS_REDIRECT_URI', rtrim(env('APP_URL', 'http://localhost'), '/').'/inbound/lawcus/callback'),
+        'scope'                => env('LAWCUS_SCOPE', 'openid'),
+        'webhook_callback_url' => env('LAWCUS_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/lawcus'),
+        'webhook_events'       => array_values(array_filter(array_map('trim', explode(',', env('LAWCUS_WEBHOOK_EVENTS', 'invoice.created'))))),
+    ],
+
     'payment' => [
         'host_url' => rtrim(env('PAYMENT_HOST_URL', env('APP_URL', 'http://localhost')), '/'),
     ],

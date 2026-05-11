@@ -8,7 +8,7 @@ use Modules\Inbound\Http\Controllers\QuickBooksAuthController;
 
 Route::middleware('web')->group(function (): void {
     Route::get('/setup/{provider}/{token}', [PmsIntegrationController::class, 'showByToken'])
-        ->whereIn('provider', ['clio', 'zoho'])
+        ->whereIn('provider', ['clio', 'zoho', 'lawcus'])
         ->name('inbound.setup.share');
 
     Route::prefix('inbound/clients')->name('inbound.clients.')->group(function (): void {
@@ -25,7 +25,10 @@ Route::middleware('web')->group(function (): void {
     Route::post('/inbound/quickbooks/default-account', [PmsIntegrationController::class, 'saveQbDefaultAccount'])
         ->name('inbound.quickbooks.default-account');
 
-    foreach (['clio', 'zoho'] as $provider) {
+    Route::post('/inbound/lawcus/default-bank-account', [PmsIntegrationController::class, 'saveLawcusDefaultBankAccount'])
+        ->name('inbound.lawcus.default-bank-account');
+
+    foreach (['clio', 'zoho', 'lawcus'] as $provider) {
         Route::prefix("inbound/{$provider}")->name("inbound.{$provider}.")->group(function () use ($provider): void {
             Route::get('/', [PmsIntegrationController::class, 'show'])->defaults('provider', $provider)->name('page');
             Route::get('/share/{token}', [PmsIntegrationController::class, 'showByToken'])->defaults('provider', $provider)->name('share');

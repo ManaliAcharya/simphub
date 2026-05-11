@@ -10,6 +10,7 @@ class InboundInvoiceProcessor
         private readonly ClioInvoiceIngestionService $clio,
         private readonly ZohoInvoiceIngestionService $zoho,
         private readonly QuickBooksInvoiceIngestionService $quickbooks,
+        private readonly LawcusInvoiceIngestionService $lawcus,
     ) {}
 
     public function process(string $source, string $externalInvoiceId, array $payload = []): array
@@ -18,6 +19,7 @@ class InboundInvoiceProcessor
             'clio'       => $this->clio->ingest($externalInvoiceId, $payload),
             'zoho'       => $this->zoho->ingest($externalInvoiceId, $payload),
             'quickbooks' => $this->quickbooks->ingest($externalInvoiceId, $payload),
+            'lawcus'     => $this->lawcus->ingest($externalInvoiceId, $payload),
             default      => throw new RuntimeException("Unsupported PMS source [{$source}]."),
         };
     }

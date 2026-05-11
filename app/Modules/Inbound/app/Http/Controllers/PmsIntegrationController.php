@@ -9,10 +9,13 @@ use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClioConnection;
+use Modules\Inbound\Models\LawcusConnection;
 use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
+use Modules\Inbound\Services\LawcusApiClient;
+use Modules\Inbound\Services\LawcusOAuthService;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksOAuthService;
@@ -130,6 +133,46 @@ class PmsIntegrationController extends Controller
         return redirect()->route('inbound.clio.page', [
             'pms_client_id' => $client->pms_client_id,
             'success'       => 'Default Clio bank account saved.',
+        ]);
+    }
+
+    public function saveLawcusDefaultBankAccount(
+        Request $request,
+        LawcusOAuthService $lawcusOAuth,
+        LawcusApiClient $lawcusApi,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'pms_client_id'                   => ['required', 'string'],
+            'lawcus_default_bank_account_id'  => ['required', 'string', 'max:100'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'LAWCUS', 422, 'Default bank account is only supported for Lawcus clients.');
+
+        $connection = LawcusConnection::query()
+            ->where('provider', 'lawcus')
+            ->where('pms_client_id', $client->pms_client_id)
+            ->firstOrFail();
+
+        $connection = $lawcusOAuth->ensureValidAccessToken($connection);
+        $accounts   = $lawcusApi->fetchBankAccounts($connection);
+
+        $selected = collect($accounts)
+            ->first(fn (array $a): bool => (string) ($a['account_id'] ?? '') === (string) $validated['lawcus_default_bank_account_id']);
+
+        abort_unless(is_array($selected), 422, 'Selected bank account is invalid. Please choose from the dropdown.');
+
+        $client->forceFill([
+            'lawcus_default_bank_account_id'   => (string) $selected['account_id'],
+            'lawcus_default_bank_account_name' => (string) ($selected['account_name'] ?? ''),
+        ])->save();
+
+        return redirect()->route('inbound.lawcus.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => 'Default Lawcus bank account saved.',
         ]);
     }
 

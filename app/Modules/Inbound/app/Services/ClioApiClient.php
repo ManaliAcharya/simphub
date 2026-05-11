@@ -98,10 +98,20 @@ class ClioApiClient
             ->all();
     }
 
-    public function recordPayment(ClioConnection $connection, array $payload): array
+    public function fetchBillWithLineItems(ClioConnection $connection, string $billId): array
     {
         return $this->authenticatedRequest($connection)
-            ->post('/api/v4/payments.json', ['data' => $payload])
+            ->get("/api/v4/bills/{$billId}.json", [
+                'fields' => 'id,total,balance,state,line_items{id,total,balance,description,type}',
+            ])
+            ->throw()
+            ->json();
+    }
+
+    public function recordLineItemPayment(ClioConnection $connection, array $payload): array
+    {
+        return $this->authenticatedRequest($connection)
+            ->post('/api/v4/line_item_payments.json', ['data' => $payload])
             ->throw()
             ->json();
     }

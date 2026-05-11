@@ -7,10 +7,13 @@ use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Transaction;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClioConnection;
+use Modules\Inbound\Models\LawcusConnection;
 use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
+use Modules\Inbound\Services\LawcusApiClient;
+use Modules\Inbound\Services\LawcusOAuthService;
 use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksOAuthService;
 use Modules\Inbound\Services\ZohoApiClient;
@@ -26,6 +29,8 @@ class SyncInvoicePaidListener
         private readonly ClioApiClient $clioApi,
         private readonly QuickBooksOAuthService $qbOAuth,
         private readonly QuickBooksApiClient $qbApi,
+        private readonly LawcusOAuthService $lawcusOAuth,
+        private readonly LawcusApiClient $lawcusApi,
     ) {}
 
     public function handle(PaymentApproved $event): void
@@ -52,6 +57,7 @@ class SyncInvoicePaidListener
             'zoho'       => $this->syncToZoho($transaction, $invoice, $client),
             'clio'       => $this->syncToClio($transaction, $invoice, $client),
             'quickbooks' => $this->syncToQuickBooks($transaction, $invoice, $client),
+            'lawcus'     => $this->syncToLawcus($transaction, $invoice, $client),
             default      => null,
         };
     }
@@ -120,65 +126,38 @@ class SyncInvoicePaidListener
 
             $connection = $this->clioOAuth->ensureValidAccessToken($connection);
 
-            $bankAccountId = is_string($client->clio_default_bank_account_id) && trim($client->clio_default_bank_account_id) !== ''
-                ? (int) $client->clio_default_bank_account_id
-                : null;
+            $amount        = round(((int) $transaction->amount_cents) / 100, 2);
+            $billId        = (string) $invoice->external_invoice_id;
+            $date          = now()->toDateString();
+            $paymentMethod = $this->clioPaymentType((string) $transaction->gateway);
+            $note          = 'Externally processed via Third-Party Processor';
 
-            if ($bankAccountId === null) {
-                throw new \RuntimeException('No default Clio bank account configured for this client.');
+            $bill      = $this->clioApi->fetchBillWithLineItems($connection, $billId);
+            $lineItems = collect(Arr::get($bill, 'data.line_items', []))
+                ->filter(fn (array $li): bool => (float) ($li['balance'] ?? 0) > 0)
+                ->values();
+
+            $remaining   = $amount;
+            $allocations = [];
+
+            foreach ($lineItems as $lineItem) {
+                if ($remaining <= 0) {
+                    break;
+                }
+                $lineBalance   = (float) ($lineItem['balance'] ?? 0);
+                $allocated     = min($remaining, $lineBalance);
+                $remaining     = round($remaining - $allocated, 2);
+                $allocations[] = [
+                    'line_item_id'   => (int) $lineItem['id'],
+                    'amount'         => $allocated,
+                    'date'           => $date,
+                    'payment_method' => $paymentMethod,
+                    'note'           => $note,
+                ];
             }
 
-            $amount = round(((int) $transaction->amount_cents) / 100, 2);
-
-            $paymentRecorded = false;
-            $billId          = (string) $invoice->external_invoice_id;
-
-            $paymentPayload = [
-                'date'          => now()->toDateString(),
-                'payment_type'  => $this->clioPaymentType((string) $transaction->gateway),
-                'reference'     => (string) $transaction->gateway_txn_id,
-                'bank_account'  => ['id' => $bankAccountId],
-                'bill_payments' => [[
-                    'bill'   => ['id' => (int) $billId],
-                    'amount' => $amount,
-                ]],
-            ];
-
-            try {
-                $this->clioApi->recordPayment($connection, $paymentPayload);
-                $paymentRecorded = true;
-            } catch (\Illuminate\Http\Client\RequestException $e) {
-                $status = $e->response->status();
-
-                // if ($this->isClioDraftTransitionError($e)) {
-                //     // Bill is in Draft — promote it to Outstanding first, then retry.
-                //     $this->clioApi->transitionBillToOutstanding($connection, $billId);
-                //
-                //     try {
-                //         $this->clioApi->recordPayment($connection, $paymentPayload);
-                //         $paymentRecorded = true;
-                //     } catch (\Illuminate\Http\Client\RequestException $retryException) {
-                //         $retryStatus = $retryException->response->status();
-                //         if ($retryStatus !== 401 && $retryStatus !== 403) {
-                //             throw $retryException;
-                //         }
-                //         $this->clioApi->markBillPaid($connection, $billId);
-                //     }
-                // } elseif ($status === 401 || $status === 403) {
-                //     // Account lacks payment-recording permission — fall back to state PATCH.
-                //     try {
-                //         $this->clioApi->markBillPaid($connection, $billId);
-                //     } catch (\Illuminate\Http\Client\RequestException $patchException) {
-                //         // if ($this->isClioDraftTransitionError($patchException)) {
-                //         //     $this->clioApi->transitionBillToOutstanding($connection, $billId);
-                //         //     $this->clioApi->markBillPaid($connection, $billId);
-                //         // } else {
-                //             throw $patchException;
-                //         // }
-                //     }
-                // } else {
-                    throw $e;
-                // }
+            foreach ($allocations as $allocationPayload) {
+                $this->clioApi->recordLineItemPayment($connection, $allocationPayload);
             }
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
@@ -189,9 +168,7 @@ class SyncInvoicePaidListener
                 'gateway'             => $transaction->gateway,
                 'gateway_txn_id'      => $transaction->gateway_txn_id,
                 'external_invoice_id' => $invoice->external_invoice_id,
-                'bank_account_id'     => $bankAccountId,
-                'method'              => $paymentRecorded ? 'payment_record' : 'bill_state_patch',
-                'note'                => $paymentRecorded ? null : 'Payment record creation returned 401/403 — bill marked paid via PATCH. Check: connected user must be Administrator and Clio Payments must be active on the account.',
+                'line_items_paid'     => count($allocations),
             ]);
         } catch (\Throwable $exception) {
             $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
@@ -259,11 +236,60 @@ class SyncInvoicePaidListener
         }
     }
 
-    private function isClioDraftTransitionError(\Illuminate\Http\Client\RequestException $e): bool
+    private function syncToLawcus(Transaction $transaction, mixed $invoice, mixed $client): void
     {
-        $body = strtolower($e->response->body());
+        try {
+            $connection = LawcusConnection::query()
+                ->where('provider', 'lawcus')
+                ->where('pms_client_id', $invoice->pms_client_id)
+                ->first();
 
-        return str_contains($body, 'draft') && str_contains($body, 'paid');
+            $connection = $this->lawcusOAuth->ensureValidAccessToken($connection);
+
+            $bankAccountId = is_string($client->lawcus_default_bank_account_id) && trim($client->lawcus_default_bank_account_id) !== ''
+                ? (int) $client->lawcus_default_bank_account_id
+                : null;
+
+            if ($bankAccountId === null) {
+                throw new \RuntimeException('No default Lawcus bank account configured for this client.');
+            }
+
+            $amount  = round(((int) $transaction->amount_cents) / 100, 2);
+            $billId  = (string) $invoice->external_invoice_id;
+
+            $paymentPayload = [
+                'date'          => now()->toDateString(),
+                'payment_type'  => $this->lawcusPaymentType((string) $transaction->gateway),
+                'reference'     => (string) $transaction->gateway_txn_id,
+                'bank_account'  => ['id' => $bankAccountId],
+                'bill_payments' => [[
+                    'bill'   => ['id' => (int) $billId],
+                    'amount' => $amount,
+                ]],
+            ];
+
+            $this->lawcusApi->recordPayment($connection, $paymentPayload);
+
+            $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
+
+            AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
+                'pms_source'          => 'lawcus',
+                'transaction_id'      => $transaction->id,
+                'gateway'             => $transaction->gateway,
+                'gateway_txn_id'      => $transaction->gateway_txn_id,
+                'external_invoice_id' => $invoice->external_invoice_id,
+                'bank_account_id'     => $bankAccountId,
+            ]);
+        } catch (\Throwable $exception) {
+            $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
+
+            AuditLogger::log('PMS_PAYMENT_RECORD_FAILED', 'invoice', $invoice->id, [
+                'pms_source'     => 'lawcus',
+                'transaction_id' => $transaction->id,
+                'gateway'        => $transaction->gateway,
+                'error'          => $exception->getMessage(),
+            ]);
+        }
     }
 
     private function zohoPaymentMode(string $gateway): string
@@ -276,6 +302,15 @@ class SyncInvoicePaidListener
     }
 
     private function clioPaymentType(string $gateway): string
+    {
+        return match (strtolower($gateway)) {
+            'paya'     => 'Check',
+            'fluidpay' => 'Credit Card',
+            default    => 'Credit Card',
+        };
+    }
+
+    private function lawcusPaymentType(string $gateway): string
     {
         return match (strtolower($gateway)) {
             'paya'     => 'Check',

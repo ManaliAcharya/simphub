@@ -13,6 +13,7 @@ use Modules\Outbound\DTOs\ChargeRequest;
 use Modules\Outbound\Factory\GatewayAdapterFactory;
 use Modules\Payment\Events\PaymentApproved;
 use Modules\Inbound\Services\ClioCustomerRefreshService;
+use Modules\Inbound\Services\LawcusCustomerRefreshService;
 use Modules\Inbound\Services\QuickBooksCustomerRefreshService;
 use Modules\Inbound\Services\ZohoCustomerRefreshService;
 use Modules\Routing\DTOs\RoutingContext;
@@ -29,6 +30,7 @@ class PaymentCheckoutService
         private readonly ZohoCustomerRefreshService $zohoCustomerRefresh,
         private readonly ClioCustomerRefreshService $clioCustomerRefresh,
         private readonly QuickBooksCustomerRefreshService $quickBooksCustomerRefresh,
+        private readonly LawcusCustomerRefreshService $lawcusCustomerRefresh,
     ) {}
 
     public function details(PaymentSession $session): array
@@ -318,6 +320,7 @@ class PaymentCheckoutService
             'zoho'        => $this->zohoCustomerRefresh->refreshCustomerPayload($invoice),
             'clio'        => $this->clioCustomerRefresh->refreshCustomerPayload($invoice),
             'quickbooks'  => $this->quickBooksCustomerRefresh->refreshCustomerPayload($invoice),
+            'lawcus'      => $this->lawcusCustomerRefresh->refreshCustomerPayload($invoice),
             default       => null,
         };
     }

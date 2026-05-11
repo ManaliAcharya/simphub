@@ -41,20 +41,12 @@ class PaymentLinkService
 
         $paymentUrl = $this->urlForSession($session);
 
-        try {
-            foreach ($emails as $email) {
-                Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl));
-            }
-        } catch (\Throwable $exception) {
-            DB::table('payment_sessions')
-                ->where('id', $session->id)
-                ->update([
-                    'payment_link_sent_at' => null,
-                    'payment_link_last_sent_to' => null,
-                    'updated_at' => now(),
-                ]);
-
-            throw $exception;
+        // Do NOT reset payment_link_sent_at on failure. Resetting it lets a PMS
+        // webhook retry (triggered by a 5xx response) bypass the once-only guard
+        // and send a second email. The claim stays set; if delivery genuinely
+        // failed, an admin can null-out payment_link_sent_at to trigger a resend.
+        foreach ($emails as $email) {
+            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl));
         }
 
         return count($emails);
