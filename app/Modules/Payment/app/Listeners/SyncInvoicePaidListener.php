@@ -150,32 +150,33 @@ class SyncInvoicePaidListener
             } catch (\Illuminate\Http\Client\RequestException $e) {
                 $status = $e->response->status();
 
-                if ($this->isClioDraftTransitionError($e)) {
-                    // Bill is in Draft — promote it to Outstanding first, then retry.
-                    $this->clioApi->transitionBillToOutstanding($connection, $billId);
-
-                    try {
-                        $this->clioApi->recordPayment($connection, $paymentPayload);
-                        $paymentRecorded = true;
-                    } catch (\Illuminate\Http\Client\RequestException $retryException) {
-                        $retryStatus = $retryException->response->status();
-                        if ($retryStatus !== 401 && $retryStatus !== 403) {
-                            throw $retryException;
-                        }
-                        $this->clioApi->markBillPaid($connection, $billId);
-                    }
-                } elseif ($status === 401 || $status === 403) {
+                // if ($this->isClioDraftTransitionError($e)) {
+                //     // Bill is in Draft — promote it to Outstanding first, then retry.
+                //     $this->clioApi->transitionBillToOutstanding($connection, $billId);
+                //
+                //     try {
+                //         $this->clioApi->recordPayment($connection, $paymentPayload);
+                //         $paymentRecorded = true;
+                //     } catch (\Illuminate\Http\Client\RequestException $retryException) {
+                //         $retryStatus = $retryException->response->status();
+                //         if ($retryStatus !== 401 && $retryStatus !== 403) {
+                //             throw $retryException;
+                //         }
+                //         $this->clioApi->markBillPaid($connection, $billId);
+                //     }
+                // } elseif ($status === 401 || $status === 403) {
+                if ($status === 401 || $status === 403) {
                     // Account lacks payment-recording permission — fall back to state PATCH.
                     // If the bill somehow ended up in Draft via a different path, handle it here too.
                     try {
                         $this->clioApi->markBillPaid($connection, $billId);
                     } catch (\Illuminate\Http\Client\RequestException $patchException) {
-                        if ($this->isClioDraftTransitionError($patchException)) {
-                            $this->clioApi->transitionBillToOutstanding($connection, $billId);
-                            $this->clioApi->markBillPaid($connection, $billId);
-                        } else {
+                        // if ($this->isClioDraftTransitionError($patchException)) {
+                        //     $this->clioApi->transitionBillToOutstanding($connection, $billId);
+                        //     $this->clioApi->markBillPaid($connection, $billId);
+                        // } else {
                             throw $patchException;
-                        }
+                        // }
                     }
                 } else {
                     throw $e;
@@ -246,6 +247,7 @@ class SyncInvoicePaidListener
                 'gateway'             => $transaction->gateway,
                 'gateway_txn_id'      => $transaction->gateway_txn_id,
                 'external_invoice_id' => $invoice->external_invoice_id,
+                'deposit_account_id'  => $client->qb_default_account_id ?? null,
             ]);
         } catch (\Throwable $exception) {
             $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();

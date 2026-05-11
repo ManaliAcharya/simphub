@@ -73,11 +73,15 @@ class QuickBooksConnector implements PmsConnectorInterface
         $qbAccountLoadError  = null;
 
         if ($connection instanceof QuickBooksConnection && $client) {
-            try {
-                $freshConnection = $this->oauth->ensureValidAccessToken($connection);
-                $qbAccounts      = $this->api->fetchChartOfAccounts($freshConnection);
-            } catch (\Throwable $e) {
-                $qbAccountLoadError = 'Could not load QuickBooks chart of accounts: '.$e->getMessage();
+            if ($connection->realmId() === '') {
+                $qbAccountLoadError = 'QuickBooks company (Realm ID) is missing on this connection. Please reconnect QuickBooks to fix this.';
+            } else {
+                try {
+                    $freshConnection = $this->oauth->ensureValidAccessToken($connection);
+                    $qbAccounts      = $this->api->fetchChartOfAccounts($freshConnection);
+                } catch (\Throwable $e) {
+                    $qbAccountLoadError = 'Could not load QuickBooks chart of accounts: '.$e->getMessage();
+                }
             }
         }
 
