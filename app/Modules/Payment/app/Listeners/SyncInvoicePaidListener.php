@@ -51,7 +51,7 @@ class SyncInvoicePaidListener
         match (strtolower((string) $invoice->pms_source)) {
             'zoho'       => $this->syncToZoho($transaction, $invoice, $client),
             'clio'       => $this->syncToClio($transaction, $invoice, $client),
-            'quickbooks' => $this->syncToQuickBooks($transaction, $invoice),
+            'quickbooks' => $this->syncToQuickBooks($transaction, $invoice, $client),
             default      => null,
         };
     }
@@ -131,27 +131,55 @@ class SyncInvoicePaidListener
             $amount = round(((int) $transaction->amount_cents) / 100, 2);
 
             $paymentRecorded = false;
+            $billId          = (string) $invoice->external_invoice_id;
+
+            $paymentPayload = [
+                'date'          => now()->toDateString(),
+                'payment_type'  => $this->clioPaymentType((string) $transaction->gateway),
+                'reference'     => (string) $transaction->gateway_txn_id,
+                'bank_account'  => ['id' => $bankAccountId],
+                'bill_payments' => [[
+                    'bill'   => ['id' => (int) $billId],
+                    'amount' => $amount,
+                ]],
+            ];
 
             try {
-                $this->clioApi->recordPayment($connection, [
-                    'date'          => now()->toDateString(),
-                    'payment_type'  => $this->clioPaymentType((string) $transaction->gateway),
-                    'reference'     => (string) $transaction->gateway_txn_id,
-                    'bank_account'  => ['id' => $bankAccountId],
-                    'bill_payments' => [[
-                        'bill'   => ['id' => (int) $invoice->external_invoice_id],
-                        'amount' => $amount,
-                    ]],
-                ]);
+                $this->clioApi->recordPayment($connection, $paymentPayload);
                 $paymentRecorded = true;
             } catch (\Illuminate\Http\Client\RequestException $e) {
                 $status = $e->response->status();
-                if ($status !== 401 && $status !== 403) {
+
+                if ($this->isClioDraftTransitionError($e)) {
+                    // Bill is in Draft — promote it to Outstanding first, then retry.
+                    $this->clioApi->transitionBillToOutstanding($connection, $billId);
+
+                    try {
+                        $this->clioApi->recordPayment($connection, $paymentPayload);
+                        $paymentRecorded = true;
+                    } catch (\Illuminate\Http\Client\RequestException $retryException) {
+                        $retryStatus = $retryException->response->status();
+                        if ($retryStatus !== 401 && $retryStatus !== 403) {
+                            throw $retryException;
+                        }
+                        $this->clioApi->markBillPaid($connection, $billId);
+                    }
+                } elseif ($status === 401 || $status === 403) {
+                    // Account lacks payment-recording permission — fall back to state PATCH.
+                    // If the bill somehow ended up in Draft via a different path, handle it here too.
+                    try {
+                        $this->clioApi->markBillPaid($connection, $billId);
+                    } catch (\Illuminate\Http\Client\RequestException $patchException) {
+                        if ($this->isClioDraftTransitionError($patchException)) {
+                            $this->clioApi->transitionBillToOutstanding($connection, $billId);
+                            $this->clioApi->markBillPaid($connection, $billId);
+                        } else {
+                            throw $patchException;
+                        }
+                    }
+                } else {
                     throw $e;
                 }
-                // Fall back to marking bill paid when the account lacks payment-recording permission.
-                // Requires Clio Payments enabled + Administrator role on the connected user.
-                $this->clioApi->markBillPaid($connection, (string) $invoice->external_invoice_id);
             }
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
@@ -178,7 +206,7 @@ class SyncInvoicePaidListener
         }
     }
 
-    private function syncToQuickBooks(Transaction $transaction, mixed $invoice): void
+    private function syncToQuickBooks(Transaction $transaction, mixed $invoice, mixed $client): void
     {
         try {
             $connection = QuickBooksConnection::query()
@@ -190,19 +218,25 @@ class SyncInvoicePaidListener
 
             $amount = round(((int) $transaction->amount_cents) / 100, 2);
 
-            $this->qbApi->recordPayment($connection, [
-                'TotalAmt'       => $amount,
-                'CustomerRef'    => ['value' => (string) $invoice->external_client_id],
-                'TxnDate'        => now()->toDateString(),
-                'PaymentRefNum'  => (string) $transaction->gateway_txn_id,
-                'Line'           => [[
+            $payload = [
+                'TotalAmt'      => $amount,
+                'CustomerRef'   => ['value' => (string) $invoice->external_client_id],
+                'TxnDate'       => now()->toDateString(),
+                'PaymentRefNum' => (string) $transaction->gateway_txn_id,
+                'Line'          => [[
                     'Amount'    => $amount,
                     'LinkedTxn' => [[
                         'TxnId'   => (string) $invoice->external_invoice_id,
                         'TxnType' => 'Invoice',
                     ]],
                 ]],
-            ]);
+            ];
+
+            if (is_string($client->qb_default_account_id) && trim($client->qb_default_account_id) !== '') {
+                $payload['DepositToAccountRef'] = ['value' => $client->qb_default_account_id];
+            }
+
+            $this->qbApi->recordPayment($connection, $payload);
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
 
@@ -223,6 +257,13 @@ class SyncInvoicePaidListener
                 'error'          => $exception->getMessage(),
             ]);
         }
+    }
+
+    private function isClioDraftTransitionError(\Illuminate\Http\Client\RequestException $e): bool
+    {
+        $body = strtolower($e->response->body());
+
+        return str_contains($body, 'draft') && str_contains($body, 'paid');
     }
 
     private function zohoPaymentMode(string $gateway): string

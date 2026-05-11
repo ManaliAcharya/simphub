@@ -8,12 +8,14 @@ use Modules\Inbound\DTOs\PmsCallbackResult;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Models\QuickBooksConnection;
+use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksOAuthService;
 
 class QuickBooksConnector implements PmsConnectorInterface
 {
     public function __construct(
         private readonly QuickBooksOAuthService $oauth,
+        private readonly QuickBooksApiClient $api,
         private readonly Request $request,
     ) {}
 
@@ -67,11 +69,25 @@ class QuickBooksConnector implements PmsConnectorInterface
         $webhookUrl = rtrim((string) config('services.quickbooks.webhook_callback_url'), '/');
         $realmId    = $connection ? (string) data_get($connection->meta, 'realm_id', '') : '';
 
+        $qbAccounts          = [];
+        $qbAccountLoadError  = null;
+
+        if ($connection instanceof QuickBooksConnection && $client) {
+            try {
+                $freshConnection = $this->oauth->ensureValidAccessToken($connection);
+                $qbAccounts      = $this->api->fetchChartOfAccounts($freshConnection);
+            } catch (\Throwable $e) {
+                $qbAccountLoadError = 'Could not load QuickBooks chart of accounts: '.$e->getMessage();
+            }
+        }
+
         return [
-            'heading'     => 'Connect QuickBooks for a configured client',
-            'copy'        => 'Authenticate with QuickBooks Online to enable invoice webhooks and payment sync.',
-            'webhook_url' => $webhookUrl,
-            'realm_id'    => $realmId,
+            'heading'              => 'Connect QuickBooks for a configured client',
+            'copy'                 => 'Authenticate with QuickBooks Online to enable invoice webhooks and payment sync.',
+            'webhook_url'          => $webhookUrl,
+            'realm_id'             => $realmId,
+            'qb_accounts'          => $qbAccounts,
+            'qb_account_load_error' => $qbAccountLoadError,
             'webhook_instructions' => [],
         ];
     }

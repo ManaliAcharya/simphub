@@ -10,9 +10,12 @@ use Illuminate\Support\Str;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClioConnection;
 use Modules\Inbound\Models\PmsConnection;
+use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
 use Modules\Inbound\Services\PmsConnectorRegistry;
+use Modules\Inbound\Services\QuickBooksApiClient;
+use Modules\Inbound\Services\QuickBooksOAuthService;
 use Modules\Inbound\Services\ZohoApiClient;
 use Modules\Inbound\Services\ZohoOAuthService;
 
@@ -127,6 +130,46 @@ class PmsIntegrationController extends Controller
         return redirect()->route('inbound.clio.page', [
             'pms_client_id' => $client->pms_client_id,
             'success'       => 'Default Clio bank account saved.',
+        ]);
+    }
+
+    public function saveQbDefaultAccount(
+        Request $request,
+        QuickBooksOAuthService $qbOAuth,
+        QuickBooksApiClient $qbApi,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'pms_client_id'      => ['required', 'string'],
+            'qb_default_account_id' => ['required', 'string', 'max:100'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'QUICKBOOKS', 422, 'Default deposit account is only supported for QuickBooks clients.');
+
+        $connection = QuickBooksConnection::query()
+            ->where('provider', 'quickbooks')
+            ->where('pms_client_id', $client->pms_client_id)
+            ->firstOrFail();
+
+        $connection = $qbOAuth->ensureValidAccessToken($connection);
+        $accounts   = $qbApi->fetchChartOfAccounts($connection);
+
+        $selected = collect($accounts)
+            ->first(fn (array $a): bool => (string) ($a['account_id'] ?? '') === (string) $validated['qb_default_account_id']);
+
+        abort_unless(is_array($selected), 422, 'Selected account is invalid. Please choose from the dropdown.');
+
+        $client->forceFill([
+            'qb_default_account_id'   => (string) $selected['account_id'],
+            'qb_default_account_name' => (string) ($selected['account_name'] ?? ''),
+        ])->save();
+
+        return redirect()->route('inbound.quickbooks.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => 'Default QuickBooks deposit account saved.',
         ]);
     }
 

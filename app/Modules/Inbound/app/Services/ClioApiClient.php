@@ -113,4 +113,12 @@ class ClioApiClient
             ->throw()
             ->json();
     }
+
+    public function transitionBillToOutstanding(ClioConnection $connection, string $billId): array
+    {
+        return $this->authenticatedRequest($connection)
+            ->patch("/api/v4/bills/{$billId}.json", ['data' => ['state' => 'outstanding']])
+            ->throw()
+            ->json();
+    }
 }

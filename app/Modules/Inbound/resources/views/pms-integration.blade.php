@@ -65,6 +65,44 @@
                     <span>QuickBooks Company (Realm) ID</span>
                     <strong>{{ $realm_id ?: 'Not connected yet' }}</strong>
                 </div>
+
+                @if ($client)
+                    <div class="summary-card" style="margin-top: 18px;">
+                        <span>Default deposit account</span>
+                        <strong>{{ $client->qb_default_account_name ?: 'Not selected' }}</strong>
+                        <span>{{ $client->qb_default_account_id ?: '--' }}</span>
+
+                        @if (! empty($qb_account_load_error))
+                            <div class="notice error" style="margin-top: 8px;">{{ $qb_account_load_error }}</div>
+                        @endif
+
+                        @if (! empty($qb_accounts))
+                            <form method="POST" action="{{ route('inbound.quickbooks.default-account') }}" class="form-grid" style="margin-top: 10px;">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <label class="field">
+                                    <span>Default deposit account (chart of accounts)</span>
+                                    <select name="qb_default_account_id" required>
+                                        <option value="">Select account</option>
+                                        @foreach ($qb_accounts as $account)
+                                            <option
+                                                value="{{ $account['account_id'] }}"
+                                                @selected((string) $client->qb_default_account_id === (string) $account['account_id'])
+                                            >
+                                                {{ $account['account_name'] }}{{ $account['account_type'] ? ' ('.$account['account_type'].')' : '' }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </label>
+                                <button type="submit" class="button primary">Save default account</button>
+                            </form>
+                        @elseif (empty($qb_account_load_error))
+                            <div class="notice error" style="margin-top: 8px;">
+                                No accounts returned from QuickBooks chart of accounts. Reconnect QuickBooks or verify the connected user has access.
+                            </div>
+                        @endif
+                    </div>
+                @endif
             @endif
 
             @if ($provider === 'clio' && $client && $connection)
