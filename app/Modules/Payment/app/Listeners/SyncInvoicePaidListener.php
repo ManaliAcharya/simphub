@@ -132,7 +132,19 @@ class SyncInvoicePaidListener
             $paymentMethod = $this->clioPaymentType((string) $transaction->gateway);
             $note          = 'Externally processed via Third-Party Processor';
 
-            $bill      = $this->clioApi->fetchBillWithLineItems($connection, $billId);
+            $bill     = $this->clioApi->fetchBillWithLineItems($connection, $billId);
+            $billData = $bill['data'] ?? [];
+
+            AuditLogger::log('CLIO_BILL_DEBUG', 'invoice', $invoice->id, [
+                'bill_id'    => $billId,
+                'bill_keys'  => array_keys($billData),
+                'bill_state' => $billData['state'] ?? null,
+                'bill_total' => $billData['total'] ?? null,
+                'bill_balance' => $billData['balance'] ?? null,
+                'entries_raw'  => $billData['entries'] ?? 'KEY_MISSING',
+                'line_items_raw' => $billData['line_items'] ?? 'KEY_MISSING',
+            ]);
+
             $rawItems  = Arr::get($bill, 'data.entries', Arr::get($bill, 'data.line_items', []));
             $lineItems = collect(is_array($rawItems) ? $rawItems : [])
                 ->filter(fn (array $li): bool => (float) ($li['balance'] ?? $li['total'] ?? 0) > 0)
