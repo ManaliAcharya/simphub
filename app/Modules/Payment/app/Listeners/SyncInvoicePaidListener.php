@@ -136,12 +136,10 @@ class SyncInvoicePaidListener
             $billData = $bill['data'] ?? [];
             $state    = (string) ($billData['state'] ?? '');
 
-            // Advance through Clio's state machine until the bill is payable.
-            // draft → awaiting_approval → approved
-            $transitions = ['draft' => 'awaiting_approval', 'awaiting_approval' => 'approved'];
-            while (isset($transitions[$state])) {
-                $this->clioApi->transitionBillState($connection, $billId, $transitions[$state]);
-                $state = $transitions[$state];
+            // Clio only allows setting state to awaiting_approval via API (approved requires UI workflow).
+            if ($state === 'draft') {
+                $this->clioApi->transitionBillState($connection, $billId, 'awaiting_approval');
+                $state = 'awaiting_approval';
             }
 
             $lineItems = collect($this->clioApi->fetchLineItems($connection, $billId))
