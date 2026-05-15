@@ -37,8 +37,7 @@
     .req  { display:inline-block; padding:1px 7px; border-radius:999px; font-size:10px; font-weight:600; background:#fee2e2; color:#991b1b; }
     .opt  { display:inline-block; padding:1px 7px; border-radius:999px; font-size:10px; font-weight:600; background:#f3f4f6; color:#6b7280; }
 
-    .two-col { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-    @media(max-width:760px){ .two-col{ grid-template-columns:1fr; } }
+    .two-col { display:grid; grid-template-columns:1fr; gap:16px; }
 
     .code-block { background:#1e293b; border-radius:8px; padding:16px; overflow-x:auto; position:relative; margin-bottom:4px; }
     .code-block pre { margin:0; font-family:ui-monospace,monospace; font-size:12px; color:#e2e8f0; line-height:1.65; white-space:pre; }
