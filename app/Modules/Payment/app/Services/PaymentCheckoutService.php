@@ -92,7 +92,8 @@ class PaymentCheckoutService
         PaymentSession $session,
         string $token,
         string $paymentMethod = 'CARD',
-        ?string $routingRuleId = null
+        ?string $routingRuleId = null,
+        string $transactionType = 'debit',
     ): Transaction {
         $invoice = $session->invoice()->firstOrFail();
 
@@ -173,6 +174,7 @@ class PaymentCheckoutService
                 'payment_session_id' => $session->id,
                 'routing_rule_id' => $routingRuleId,
             ],
+            transactionType: $transactionType,
         ));
 
         if (! $response->approved) {

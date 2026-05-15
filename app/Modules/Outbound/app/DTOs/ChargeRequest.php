@@ -12,5 +12,6 @@ readonly class ChargeRequest
         public array $midCredentials = [],
         public array $billing = [],
         public array $metadata = [],
+        public string $transactionType = 'debit',
     ) {}
 }

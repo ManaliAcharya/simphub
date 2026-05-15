@@ -29,7 +29,8 @@ class PayaSandboxChargeService
 
         $paymentInfo->RequestID = 'R'.now()->format('ymdHis').random_int(111, 999);
         $paymentInfo->TransactionID = 'T'.now()->format('ymdHis').random_int(111, 999);
-        $amount = '-'.number_format($request->amountInCents / 100, 2, '.', '');
+        $sign   = strtolower($request->transactionType) === 'credit' ? '' : '-';
+        $amount = $sign . number_format($request->amountInCents / 100, 2, '.', '');
 
         $client = $this->makeSoapClient($config);
         $xml = $this->makeDataPacket($paymentInfo, $amount, $config['terminal_id']);

@@ -43,11 +43,12 @@ class InvoiceIngestionController extends Controller
 
         if ($source === 'custom') {
             $request->validate([
-                'routing_number' => ['required', 'string', 'regex:/^\d{9}$/'],
-                'account_number' => ['required', 'string', 'regex:/^\d{4,17}$/'],
-                'account_type'   => ['nullable', 'string', 'in:checking,savings'],
-                'amount_cents'   => ['required', 'integer', 'min:1'],
-                'fund_type'      => ['required', 'string', 'in:OPERATING,TRUST'],
+                'routing_number'   => ['required', 'string', 'regex:/^\d{9}$/'],
+                'account_number'   => ['required', 'string', 'regex:/^\d{4,17}$/'],
+                'account_type'     => ['nullable', 'string', 'in:checking,savings'],
+                'amount_cents'     => ['required', 'integer', 'min:1'],
+                'fund_type'        => ['required', 'string', 'in:OPERATING,TRUST'],
+                'transaction_type' => ['nullable', 'string', 'in:debit,credit'],
             ]);
         }
 
@@ -83,10 +84,11 @@ class InvoiceIngestionController extends Controller
 
             try {
                 $transaction = $checkout->submit(
-                    session:        $session,
-                    token:          $token,
-                    paymentMethod:  'ACH',
-                    routingRuleId:  $decision->routingRuleId,
+                    session:         $session,
+                    token:           $token,
+                    paymentMethod:   'ACH',
+                    routingRuleId:   $decision->routingRuleId,
+                    transactionType: strtolower($request->input('transaction_type', 'debit')),
                 );
             } catch (RuntimeException $e) {
                 return response()->json(['message' => $e->getMessage()], 422);
