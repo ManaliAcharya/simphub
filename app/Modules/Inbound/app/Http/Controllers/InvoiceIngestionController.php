@@ -63,12 +63,6 @@ class InvoiceIngestionController extends Controller
 
         // Custom PMS: run the full payment flow synchronously and return the result.
         if ($source === 'custom') {
-            $token = $tokenizer->tokenize([
-                'routing_number' => $request->input('routing_number'),
-                'account_number' => $request->input('account_number'),
-                'account_type'   => $request->input('account_type', 'checking'),
-            ]);
-
             try {
                 $decision = $routing->decide(new RoutingContext(
                     merchantId:    'default',
@@ -83,12 +77,23 @@ class InvoiceIngestionController extends Controller
             }
 
             try {
+                $payaToken = $tokenizer->tokenizeViaPaya([
+                    'routing_number' => $request->input('routing_number'),
+                    'account_number' => $request->input('account_number'),
+                    'account_type'   => $request->input('account_type', 'checking'),
+                ], $decision->midCredentials);
+            } catch (RuntimeException $e) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            }
+
+            try {
                 $transaction = $checkout->submit(
                     session:         $session,
-                    token:           $token,
+                    token:           $payaToken,
                     paymentMethod:   'ACH',
                     routingRuleId:   $decision->routingRuleId,
                     transactionType: strtolower($request->input('transaction_type', 'debit')),
+                    extraBilling:    ['paya_token' => $payaToken],
                 );
             } catch (RuntimeException $e) {
                 return response()->json(['message' => $e->getMessage()], 422);

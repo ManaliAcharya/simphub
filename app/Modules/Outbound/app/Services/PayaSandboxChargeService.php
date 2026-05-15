@@ -13,7 +13,13 @@ class PayaSandboxChargeService
 {
     public function charge(ChargeRequest $request, array $credentials = []): array
     {
-        $config = $this->resolveConfig($credentials);
+        $config    = $this->resolveConfig($credentials);
+        $payaToken = trim((string) ($request->billing['paya_token'] ?? ''));
+
+        if ($payaToken !== '') {
+            return $this->chargeWithToken($request, $payaToken, $config, $credentials);
+        }
+
         $paymentInfo = (object) array_merge(
             $this->defaultPaymentInfo(),
             $credentials['payment_info'] ?? [],
@@ -27,29 +33,66 @@ class PayaSandboxChargeService
             throw new RuntimeException('Payment cannot be done because account number and routing number are missing in invoice custom fields.');
         }
 
-        $paymentInfo->RequestID = 'R'.now()->format('ymdHis').random_int(111, 999);
+        $paymentInfo->RequestID    = 'R'.now()->format('ymdHis').random_int(111, 999);
         $paymentInfo->TransactionID = 'T'.now()->format('ymdHis').random_int(111, 999);
         $sign   = strtolower($request->transactionType) === 'credit' ? '' : '-';
         $amount = $sign . number_format($request->amountInCents / 100, 2, '.', '');
 
         $client = $this->makeSoapClient($config);
-        $xml = $this->makeDataPacket($paymentInfo, $amount, $config['terminal_id']);
+        $xml    = $this->makeDataPacket($paymentInfo, $amount, $config['terminal_id']);
 
         $terminalSettingsMethod = $config['terminal_settings_method'] ?: 'GetCertificationTerminalSettings';
-        $processMethod = $config['process_method'] ?: 'ProcessSingleCertificationCheck';
+        $processMethod          = $config['process_method'] ?: 'ProcessSingleCertificationCheck';
 
         $settingsResult = $client->__soapCall($terminalSettingsMethod, []);
-        $settingsXml = (string) ($settingsResult->{$terminalSettingsMethod.'Result'} ?? '');
+        $settingsXml    = (string) ($settingsResult->{$terminalSettingsMethod.'Result'} ?? '');
 
         if (! $this->isCertified($settingsXml)) {
             throw new RuntimeException($this->certificationFailureMessage($settingsXml));
         }
 
-        $processResult = $client->__soapCall($processMethod, [[
-            'DataPacket' => $xml,
-        ]]);
+        $processResult = $client->__soapCall($processMethod, [['DataPacket' => $xml]]);
 
-        $rawXml = (string) ($processResult->{$processMethod.'Result'} ?? '');
+        return $this->parseChargeResponse(
+            (string) ($processResult->{$processMethod.'Result'} ?? ''),
+            $paymentInfo->Identifier ?? 'A',
+        );
+    }
+
+    private function chargeWithToken(ChargeRequest $request, string $payaToken, array $config, array $credentials): array
+    {
+        $paymentInfo = (object) array_merge(
+            $this->defaultPaymentInfo(),
+            $credentials['payment_info'] ?? [],
+        );
+        $paymentInfo->RequestID    = 'R'.now()->format('ymdHis').random_int(111, 999);
+        $paymentInfo->TransactionID = 'T'.now()->format('ymdHis').random_int(111, 999);
+        $sign   = strtolower($request->transactionType) === 'credit' ? '' : '-';
+        $amount = $sign . number_format($request->amountInCents / 100, 2, '.', '');
+
+        $client = $this->makeSoapClient($config);
+        $xml    = $this->makeTokenChargeDataPacket($payaToken, $paymentInfo, $amount, $config['terminal_id']);
+
+        $terminalSettingsMethod  = $config['terminal_settings_method'] ?: 'GetCertificationTerminalSettings';
+        $processMethod           = ($config['process_method'] ?: 'ProcessSingleCertificationCheck') . 'WithToken';
+
+        $settingsResult = $client->__soapCall($terminalSettingsMethod, []);
+        $settingsXml    = (string) ($settingsResult->{$terminalSettingsMethod.'Result'} ?? '');
+
+        if (! $this->isCertified($settingsXml)) {
+            throw new RuntimeException($this->certificationFailureMessage($settingsXml));
+        }
+
+        $processResult = $client->__soapCall($processMethod, [['DataPacket' => $xml]]);
+
+        return $this->parseChargeResponse(
+            (string) ($processResult->{$processMethod.'Result'} ?? ''),
+            $paymentInfo->Identifier ?? 'A',
+        );
+    }
+
+    private function parseChargeResponse(string $rawXml, string $identifier): array
+    {
         if ($rawXml === '') {
             throw new RuntimeException('Paya gateway returned an empty response.');
         }
@@ -59,23 +102,75 @@ class PayaSandboxChargeService
             throw new RuntimeException('Paya gateway response could not be parsed.');
         }
 
-        $resultCode = (string) ($parsed->AUTHORIZATION_MESSAGE->RESULT_CODE ?? '');
+        $resultCode    = (string) ($parsed->AUTHORIZATION_MESSAGE->RESULT_CODE ?? '');
         $transactionId = (string) ($parsed->AUTHORIZATION_MESSAGE->TRANSACTION_ID ?? '');
-        $message = (string) ($parsed->AUTHORIZATION_MESSAGE->MESSAGE ?? $parsed->VALIDATION_MESSAGE->VALIDATION_ERROR->MESSAGE ?? 'Payment was declined.');
+        $message       = (string) ($parsed->AUTHORIZATION_MESSAGE->MESSAGE ?? $parsed->VALIDATION_MESSAGE->VALIDATION_ERROR->MESSAGE ?? 'Payment was declined.');
 
         return [
-            'approved' => $resultCode === '0',
-            'result_code' => $resultCode,
-            'transaction_id' => $transactionId,
-            'message' => $message,
-            'response_type' => (string) ($parsed->AUTHORIZATION_MESSAGE->RESPONSE_TYPE ?? ''),
+            'approved'           => $resultCode === '0',
+            'result_code'        => $resultCode,
+            'transaction_id'     => $transactionId,
+            'message'            => $message,
+            'response_type'      => (string) ($parsed->AUTHORIZATION_MESSAGE->RESPONSE_TYPE ?? ''),
             'response_type_text' => (string) ($parsed->AUTHORIZATION_MESSAGE->RESPONSE_TYPE_TEXT ?? ''),
-            'type_code' => (string) ($parsed->AUTHORIZATION_MESSAGE->TYPE_CODE ?? ''),
-            'code' => (string) ($parsed->AUTHORIZATION_MESSAGE->CODE ?? ''),
-            'request_id' => (string) ($parsed['REQUEST_ID'] ?? ''),
-            'identifier' => (string) ($paymentInfo->Identifier ?? 'A'),
-            'raw_xml' => $rawXml,
+            'type_code'          => (string) ($parsed->AUTHORIZATION_MESSAGE->TYPE_CODE ?? ''),
+            'code'               => (string) ($parsed->AUTHORIZATION_MESSAGE->CODE ?? ''),
+            'request_id'         => (string) ($parsed['REQUEST_ID'] ?? ''),
+            'identifier'         => $identifier,
+            'raw_xml'            => $rawXml,
         ];
+    }
+
+    private function makeTokenChargeDataPacket(string $payaToken, object $paymentInfo, string $amount, string $terminalId): string
+    {
+        $dom = new DOMDocument('1.0', 'ISO-8859-1');
+        $dom->formatOutput = true;
+
+        $auth = $dom->createElement('AUTH_GATEWAY');
+        $auth->appendChild(new \DOMAttr('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance'));
+        $auth->appendChild(new \DOMAttr('xmlns:xsd', 'http://www.w3.org/2001/XMLSchema'));
+        $auth->appendChild(new \DOMAttr('REQUEST_ID', $paymentInfo->RequestID));
+
+        $transaction = $dom->createElement('TRANSACTION');
+        $transaction->appendChild($dom->createElement('TRANSACTION_ID', $paymentInfo->TransactionID));
+
+        $merchant = $dom->createElement('MERCHANT');
+        $merchant->appendChild($dom->createElement('TERMINAL_ID', $terminalId));
+        $transaction->appendChild($merchant);
+
+        $packet = $dom->createElement('PACKET');
+        $packet->appendChild($dom->createElement('IDENTIFIER', 'R'));
+
+        $account = $dom->createElement('ACCOUNT');
+        $account->appendChild($dom->createElement('TOKEN', $payaToken));
+        $packet->appendChild($account);
+
+        $consumer = $dom->createElement('CONSUMER');
+        foreach ([
+            'FIRST_NAME'   => $paymentInfo->FirstName,
+            'LAST_NAME'    => $paymentInfo->LastName,
+            'ADDRESS1'     => $paymentInfo->Address1,
+            'ADDRESS2'     => $paymentInfo->Address2,
+            'CITY'         => $paymentInfo->City,
+            'STATE'        => $paymentInfo->State,
+            'ZIP'          => $paymentInfo->Zip,
+            'PHONE_NUMBER' => $paymentInfo->PhoneNumber,
+            'DL_STATE'     => $paymentInfo->DLState,
+            'DL_NUMBER'    => $paymentInfo->DLNumber,
+        ] as $name => $value) {
+            $consumer->appendChild($dom->createElement($name, (string) $value));
+        }
+        $consumer->appendChild($dom->createElement('COURTESY_CARD_ID'));
+        $packet->appendChild($consumer);
+
+        $check = $dom->createElement('CHECK');
+        $check->appendChild($dom->createElement('CHECK_AMOUNT', $amount));
+        $packet->appendChild($check);
+
+        $transaction->appendChild($packet);
+        $auth->appendChild($transaction);
+
+        return $dom->saveXML($auth);
     }
 
     private function makeSoapClient(array $config): SoapClient

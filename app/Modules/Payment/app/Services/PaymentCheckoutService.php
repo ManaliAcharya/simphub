@@ -94,6 +94,7 @@ class PaymentCheckoutService
         string $paymentMethod = 'CARD',
         ?string $routingRuleId = null,
         string $transactionType = 'debit',
+        array $extraBilling = [],
     ): Transaction {
         $invoice = $session->invoice()->firstOrFail();
 
@@ -138,28 +139,33 @@ class PaymentCheckoutService
 
         $billing = [];
         if (strtolower((string) $decision->gateway) === 'paya') {
-            $bankDetails = $this->resolvePayaBankDetails($invoice);
+            if (! empty($extraBilling)) {
+                // Caller already resolved billing (e.g. a Paya vault token from tokenizeViaPaya()).
+                $billing = $extraBilling;
+            } else {
+                $bankDetails = $this->resolvePayaBankDetails($invoice);
 
-            if ($bankDetails['missing'] !== []) {
-                // One last chance: re-fetch the customer from the invoice's PMS
-                // in case bank details were added after the invoice was ingested.
-                $refreshed = $this->refreshCustomerPayload($invoice);
+                if ($bankDetails['missing'] !== []) {
+                    // One last chance: re-fetch the customer from the invoice's PMS
+                    // in case bank details were added after the invoice was ingested.
+                    $refreshed = $this->refreshCustomerPayload($invoice);
 
-                if ($refreshed !== null) {
-                    $refreshed->save();
-                    $invoice     = $refreshed->fresh();
-                    $bankDetails = $this->resolvePayaBankDetails($invoice);
+                    if ($refreshed !== null) {
+                        $refreshed->save();
+                        $invoice     = $refreshed->fresh();
+                        $bankDetails = $this->resolvePayaBankDetails($invoice);
+                    }
                 }
-            }
 
-            if ($bankDetails['missing'] !== []) {
-                throw new RuntimeException('Payment cannot be done because account number and routing number are missing in invoice custom fields.');
-            }
+                if ($bankDetails['missing'] !== []) {
+                    throw new RuntimeException('Payment cannot be done because account number and routing number are missing in invoice custom fields.');
+                }
 
-            $billing = [
-                'account_number' => $bankDetails['account_number'],
-                'routing_number' => $bankDetails['routing_number'],
-            ];
+                $billing = [
+                    'account_number' => $bankDetails['account_number'],
+                    'routing_number' => $bankDetails['routing_number'],
+                ];
+            }
         }
 
         $response = $this->gateways->make($decision->gateway)->charge(new ChargeRequest(

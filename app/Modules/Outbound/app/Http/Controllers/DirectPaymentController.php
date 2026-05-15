@@ -57,8 +57,9 @@ class DirectPaymentController extends Controller
 
         try {
             $billing = $this->tokenizer->detokenize($validated['token']);
-        } catch (\RuntimeException $e) {
-            return response()->json(['error' => $e->getMessage()], 422);
+        } catch (\RuntimeException) {
+            // Token is a raw Paya gateway token, not a Laravel-encrypted one
+            $billing = ['paya_token' => $validated['token']];
         }
 
         $chargeRequest = new ChargeRequest(

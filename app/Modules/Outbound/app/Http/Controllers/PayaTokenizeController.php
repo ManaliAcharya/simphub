@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Inbound\Models\Client;
 use Modules\Outbound\Services\PayaTokenizerService;
+use Modules\Routing\Models\RoutingRule;
+use RuntimeException;
 
 class PayaTokenizeController extends Controller
 {
@@ -35,7 +37,26 @@ class PayaTokenizeController extends Controller
             'phone_number'   => ['nullable', 'string', 'max:20'],
         ]);
 
-        $token = $this->tokenizer->tokenize($validated);
+        $rule = RoutingRule::query()
+            ->where('gateway', 'paya')
+            ->where('is_active', true)
+            ->orderBy('priority')
+            ->first();
+
+        $credentials = [];
+        if ($rule && $rule->mid_credentials) {
+            try {
+                $credentials = (array) decrypt($rule->mid_credentials);
+            } catch (\Throwable) {
+                $credentials = [];
+            }
+        }
+
+        try {
+            $token = $this->tokenizer->tokenizeViaPaya($validated, $credentials);
+        } catch (RuntimeException $e) {
+            return response()->json(['error' => $e->getMessage()], 422);
+        }
 
         return response()->json([
             'token'        => $token,

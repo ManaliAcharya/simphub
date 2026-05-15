@@ -15,6 +15,7 @@
     .copy-btn-sm.copied { background:#10b981; }
     .gw-badge { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; margin-right:4px; }
 
+
     .endpoint { background:#fff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; }
     .endpoint-header { display:flex; align-items:center; gap:14px; padding:16px 20px; cursor:pointer; user-select:none; }
     .endpoint-header:hover { background:#f9fafb; }
@@ -49,6 +50,7 @@
     .ok   { color:#10b981; }
     .err  { color:#ef4444; }
 
+
     .actions { margin-top:28px; }
     .btn { padding:10px 20px; border-radius:8px; font-size:14px; cursor:pointer; border:1px solid #d1d5db; background:#fff; font-weight:500; text-decoration:none; color:#374151; display:inline-block; }
 </style>
@@ -59,16 +61,16 @@
         <div class="api-header">
             <p class="eyebrow">Custom PMS — API Reference</p>
             <h2>{{ $client->client_name }}</h2>
-            <p>Use the endpoint below to process Paya ACH payments directly. No invoice or session setup required.</p>
+            <p>Use the endpoints below to process Paya ACH payments from your own system.</p>
         </div>
 
         {{-- Client identity --}}
         <div class="client-card">
             <div class="client-meta">
-                <label>Merchant ID <span style="font-weight:400;">(use in the URL path)</span></label>
+                <label>PMS Client ID <span style="font-weight:400;">(use in request body)</span></label>
                 <div class="copy-row">
-                    <code id="merchant-id">{{ $client->pms_client_id }}</code>
-                    <button class="copy-btn-sm" onclick="copyText('merchant-id', this)">Copy</button>
+                    <code id="pms-client-id">{{ $client->pms_client_id }}</code>
+                    <button class="copy-btn-sm" onclick="copyText('pms-client-id', this)">Copy</button>
                 </div>
             </div>
             <div class="client-meta">
@@ -90,24 +92,24 @@
             </div>
         </div>
 
-        {{-- Endpoint 1: Tokenize --}}
+        {{-- Endpoint: Tokenize --}}
         <div class="endpoint" id="ep-tokenize" style="margin-bottom:14px;">
             <div class="endpoint-header" onclick="toggleEndpoint('ep-tokenize')">
                 <span class="method">POST</span>
                 <span class="endpoint-url">/api/v1/payment/direct/{merchantId}/tokenize</span>
-                <span class="endpoint-desc">Generate a bank account token</span>
+                <span class="endpoint-desc">Get a Paya vault token for a bank account</span>
                 <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
             </div>
             <div class="endpoint-body">
                 <p class="desc">
-                    Submit bank account details to receive a secure token. Pass this token to the charge endpoint — raw account details never need to travel with the payment request.
-                    Tokens are encrypted server-side and are valid for a single charge call. You can also generate tokens from your own panel and pass them directly to the charge endpoint.
+                    Submits bank account details to Paya and returns a vault token. The token can then be passed to the charge endpoint for payment — raw account details never need to travel with the payment request.
+                    Use <code>merchantId</code> = your PMS Client ID.
                 </p>
 
                 <p class="section-label">URL Parameter</p>
                 <table>
                     <tr><th>Parameter</th><th>Description</th><th></th></tr>
-                    <tr><td><code>merchantId</code></td><td>Your Merchant ID (see above)</td><td><span class="req">Required</span></td></tr>
+                    <tr><td><code>merchantId</code></td><td>Your PMS Client ID (see above)</td><td><span class="req">Required</span></td></tr>
                 </table>
 
                 <p class="section-label">Request Body</p>
@@ -136,14 +138,7 @@ Content-Type: application/json
 {
   "routing_number": "490000018",
   "account_number": "123456789",
-  "account_type": "checking",
-  "first_name": "Jane",
-  "last_name": "Doe",
-  "address1": "123 Main St",
-  "city": "Memphis",
-  "state": "TN",
-  "zip": "38103",
-  "phone_number": "9015551212"
+  "account_type": "checking"
 }</pre>
                         </div>
                     </div>
@@ -152,7 +147,7 @@ Content-Type: application/json
                         <div class="code-block">
                             <button class="copy-code" onclick="copyCode(this)">Copy</button>
                             <pre>{
-  "token": "eyJpdiI6Ik1...&lt;encrypted&gt;",
+  "token": "PAYA_VAULT_TOKEN",
   "account_type": "checking",
   "last4": "6789"
 }</pre>
@@ -162,77 +157,44 @@ Content-Type: application/json
             </div>
         </div>
 
-        {{-- Endpoint 2: Charge --}}
+        {{-- Endpoint: Charge --}}
         <div class="endpoint" id="ep-charge">
             <div class="endpoint-header" onclick="toggleEndpoint('ep-charge')">
                 <span class="method">POST</span>
                 <span class="endpoint-url">/api/v1/payment/direct/{merchantId}/charge</span>
-                <span class="endpoint-desc">Process a Paya ACH payment</span>
+                <span class="endpoint-desc">Process a Paya ACH payment using a vault token</span>
                 <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
             </div>
 
             <div class="endpoint-body">
                 <p class="desc">
-                    Submit a payment directly through Paya (ACH). Pass the tokenized bank account token alongside the amount and fund type.
-                    The system will automatically select the correct routing rule configured for your merchant account.
-                    No payment session or invoice is required.
+                    Submit a payment directly through Paya (ACH) using a vault token obtained from the tokenize endpoint.
+                    The system automatically selects the correct routing rule for your merchant account.
+                    No invoice or payment session is created; use the single-call flow above if you need an invoice record.
                 </p>
 
-                {{-- URL param --}}
                 <p class="section-label">URL Parameter</p>
                 <table>
                     <tr><th>Parameter</th><th>Description</th><th></th></tr>
-                    <tr>
-                        <td><code>merchantId</code></td>
-                        <td>Your Merchant ID (see above)</td>
-                        <td><span class="req">Required</span></td>
-                    </tr>
+                    <tr><td><code>merchantId</code></td><td>Your PMS Client ID (see above)</td><td><span class="req">Required</span></td></tr>
                 </table>
 
-                {{-- Headers --}}
                 <p class="section-label">Headers</p>
                 <table>
                     <tr><th>Header</th><th>Value</th><th></th></tr>
                     <tr><td><code>Content-Type</code></td><td><code>application/json</code></td><td><span class="req">Required</span></td></tr>
                 </table>
 
-                {{-- Body --}}
                 <p class="section-label">Request Body</p>
                 <table>
                     <tr><th>Field</th><th>Type</th><th>Description</th><th></th></tr>
-                    <tr>
-                        <td><code>token</code></td>
-                        <td>string</td>
-                        <td>ACH bank account token from Paya tokenizer</td>
-                        <td><span class="req">Required</span></td>
-                    </tr>
-                    <tr>
-                        <td><code>amount_cents</code></td>
-                        <td>integer</td>
-                        <td>Payment amount in cents — e.g. <code>150000</code> = $1,500.00</td>
-                        <td><span class="req">Required</span></td>
-                    </tr>
-                    <tr>
-                        <td><code>payment_method</code></td>
-                        <td>string</td>
-                        <td><code>ACH</code> or <code>CARD</code></td>
-                        <td><span class="opt">Optional</span> — default <code>ACH</code></td>
-                    </tr>
-                    <tr>
-                        <td><code>fund_type</code></td>
-                        <td>string</td>
-                        <td><code>OPERATING</code> or <code>TRUST</code></td>
-                        <td><span class="opt">Optional</span> — default <code>OPERATING</code></td>
-                    </tr>
-                    <tr>
-                        <td><code>currency</code></td>
-                        <td>string</td>
-                        <td>ISO 4217 currency code</td>
-                        <td><span class="opt">Optional</span> — default <code>USD</code></td>
-                    </tr>
+                    <tr><td><code>token</code></td><td>string</td><td>Paya vault token from the tokenize endpoint</td><td><span class="req">Required</span></td></tr>
+                    <tr><td><code>amount_cents</code></td><td>integer</td><td>Payment amount in cents — e.g. <code>150000</code> = $1,500.00</td><td><span class="req">Required</span></td></tr>
+                    <tr><td><code>payment_method</code></td><td>string</td><td><code>ACH</code> or <code>CARD</code></td><td><span class="opt">Optional</span> — default <code>ACH</code></td></tr>
+                    <tr><td><code>fund_type</code></td><td>string</td><td><code>OPERATING</code> or <code>TRUST</code></td><td><span class="opt">Optional</span> — default <code>OPERATING</code></td></tr>
+                    <tr><td><code>currency</code></td><td>string</td><td>ISO 4217 currency code</td><td><span class="opt">Optional</span> — default <code>USD</code></td></tr>
                 </table>
 
-                {{-- Examples --}}
                 <div class="two-col">
                     <div>
                         <p class="section-label response-label">Example Request</p>
@@ -242,7 +204,7 @@ Content-Type: application/json
 Content-Type: application/json
 
 {
-  "token": "ACH_TOKEN_FROM_PAYA_TOKENIZER",
+  "token": "PAYA_VAULT_TOKEN",
   "amount_cents": 150000,
   "payment_method": "ACH",
   "fund_type": "OPERATING",
@@ -278,6 +240,7 @@ Content-Type: application/json
 
             </div>
         </div>
+
     </section>
 </div>
 
