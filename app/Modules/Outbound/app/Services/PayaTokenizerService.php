@@ -137,7 +137,7 @@ class PayaTokenizerService
 
     private function makeSoapClient(array $config): SoapClient
     {
-        $client = new SoapClient($config['wsdl'], [
+        $client = new SoapClient(base_path('paya_payment/AuthGatewayWSDL-Demo.eftchecks.com.xml'), [
             'trace'      => true,
             'exceptions' => true,
             'cache_wsdl' => WSDL_CACHE_NONE,
@@ -157,7 +157,6 @@ class PayaTokenizerService
     private function resolveConfig(array $credentials): array
     {
         return [
-            'wsdl'         => $this->credVal($credentials, 'wsdl', 'PAYA_WSDL_PATH', base_path('paya_payment/AuthGatewayWSDL-Demo.eftchecks.com.xml')),
             'username'     => $this->credVal($credentials, 'username', 'PAYA_USERNAME', 'ImpactPaysCert'),
             'password'     => $this->credVal($credentials, 'password', 'PAYA_PASSWORD', '4AA3ZNSk#gpFbe9Z'),
             'terminal_id'  => $this->credVal($credentials, 'terminal_id', 'PAYA_TERMINAL_ID', '1814'),

@@ -260,7 +260,6 @@ class PayaSandboxChargeService
     private function resolveConfig(array $credentials): array
     {
         return [
-            'wsdl' => $this->credentialValue($credentials, 'wsdl', 'PAYA_WSDL_PATH', 'C:\\laragon\\www\\payment-middleware\\paya_payment\\AuthGatewayWSDL-Demo.eftchecks.com.xml'),
             'username' => $this->credentialValue($credentials, 'username', 'PAYA_USERNAME', 'ImpactPaysCert'),
             'password' => '4AA3ZNSk#gpFbe9Z',
             'terminal_id' => $this->credentialValue($credentials, 'terminal_id', 'PAYA_TERMINAL_ID', '1814'),
