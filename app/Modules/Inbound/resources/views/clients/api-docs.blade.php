@@ -278,11 +278,6 @@ Content-Type: application/json
 
             </div>
         </div>
-
-        <div class="actions">
-            <a class="btn" href="{{ route('inbound.clients.create') }}">Create Another Client</a>
-        </div>
-
     </section>
 </div>
 

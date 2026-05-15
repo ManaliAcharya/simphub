@@ -211,7 +211,7 @@
             {{-- ══════════════════════════════════════════════════════
                  IN-PERSON PAYMENTS
             ═══════════════════════════════════════════════════════ --}}
-            <div class="section-box">
+            <!--<div class="section-box">
                 <span class="section-legend">In-Person Payments <span style="font-weight:400;">(optional)</span></span>
 
                 <div class="tile-row" style="margin-bottom:0;">
@@ -236,7 +236,7 @@
                         @endforelse
                     </div>
                 </div>
-            </div>{{-- /in-person payments --}}
+            </div> -->{{-- /in-person payments --}}
 
             <input type="hidden" name="webhook_flow_enabled" value="1">
             <input type="hidden" name="call_api_to_pms" value="1">
