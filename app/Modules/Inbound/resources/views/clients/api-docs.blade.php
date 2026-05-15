@@ -91,71 +91,6 @@
             </div>
         </div>
 
-        {{-- Endpoint: Tokenize --}}
-        <div class="endpoint" id="ep-tokenize" style="margin-bottom:14px;">
-            <div class="endpoint-header" onclick="toggleEndpoint('ep-tokenize')">
-                <span class="method">POST</span>
-                <span class="endpoint-url">/api/v1/payment/direct/{merchantId}/tokenize</span>
-                <span class="endpoint-desc">Get a Paya vault token for a bank account</span>
-                <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
-            </div>
-            <div class="endpoint-body">
-                <p class="desc">
-                    Submits bank account details to Paya and returns a vault token. The token can then be passed to the charge endpoint for payment — raw account details never need to travel with the payment request.
-                    Use <code>merchantId</code> = your PMS Client ID.
-                </p>
-
-                <p class="section-label">URL Parameter</p>
-                <table>
-                    <tr><th>Parameter</th><th>Description</th><th></th></tr>
-                    <tr><td><code>merchantId</code></td><td>Your PMS Client ID (see above)</td><td><span class="req">Required</span></td></tr>
-                </table>
-
-                <p class="section-label">Request Body</p>
-                <table>
-                    <tr><th>Field</th><th>Type</th><th>Description</th><th></th></tr>
-                    <tr><td><code>routing_number</code></td><td>string</td><td>9-digit ABA routing number</td><td><span class="req">Required</span></td></tr>
-                    <tr><td><code>account_number</code></td><td>string</td><td>4–17 digit bank account number</td><td><span class="req">Required</span></td></tr>
-                    <tr><td><code>account_type</code></td><td>string</td><td><code>checking</code> or <code>savings</code></td><td><span class="opt">Optional</span> — default <code>checking</code></td></tr>
-                    <tr><td><code>first_name</code></td><td>string</td><td>Account holder first name</td><td><span class="opt">Optional</span></td></tr>
-                    <tr><td><code>last_name</code></td><td>string</td><td>Account holder last name</td><td><span class="opt">Optional</span></td></tr>
-                    <tr><td><code>address1</code></td><td>string</td><td>Billing address line 1</td><td><span class="opt">Optional</span></td></tr>
-                    <tr><td><code>city</code></td><td>string</td><td>Billing city</td><td><span class="opt">Optional</span></td></tr>
-                    <tr><td><code>state</code></td><td>string</td><td>2-letter state code</td><td><span class="opt">Optional</span></td></tr>
-                    <tr><td><code>zip</code></td><td>string</td><td>ZIP / postal code</td><td><span class="opt">Optional</span></td></tr>
-                    <tr><td><code>phone_number</code></td><td>string</td><td>Account holder phone</td><td><span class="opt">Optional</span></td></tr>
-                </table>
-
-                <div class="two-col">
-                    <div>
-                        <p class="section-label response-label">Example Request</p>
-                        <div class="code-block">
-                            <button class="copy-code" onclick="copyCode(this)">Copy</button>
-                            <pre>POST {{ $baseUrl }}/api/v1/payment/direct/{{ $client->pms_client_id }}/tokenize
-Content-Type: application/json
-
-{
-  "routing_number": "490000018",
-  "account_number": "123456789",
-  "account_type": "checking"
-}</pre>
-                        </div>
-                    </div>
-                    <div>
-                        <p class="section-label response-label ok">200 — Token Issued</p>
-                        <div class="code-block">
-                            <button class="copy-code" onclick="copyCode(this)">Copy</button>
-                            <pre>{
-  "token": "PAYA_VAULT_TOKEN",
-  "account_type": "checking",
-  "last4": "6789"
-}</pre>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         {{-- Endpoint: Charge --}}
         <div class="endpoint" id="ep-charge">
             <div class="endpoint-header" onclick="toggleEndpoint('ep-charge')">
@@ -167,9 +102,8 @@ Content-Type: application/json
 
             <div class="endpoint-body">
                 <p class="desc">
-                    Submit a payment directly through Paya (ACH) using a vault token obtained from the tokenize endpoint.
-                    The system automatically selects the correct routing rule for your merchant account.
-                    No invoice or payment session is created; use the single-call flow above if you need an invoice record.
+                    Submit a Paya ACH payment in a single call. Bank account tokenization is handled internally — no separate tokenize step required.
+                    The system automatically selects the correct routing rule for your merchant account and records the transaction.
                 </p>
 
                 <p class="section-label">URL Parameter</p>
@@ -187,7 +121,6 @@ Content-Type: application/json
                 <p class="section-label">Request Body</p>
                 <table>
                     <tr><th>Field</th><th>Type</th><th>Description</th><th></th></tr>
-                    <tr><td><code>token</code></td><td>string</td><td>Paya vault token from the tokenize endpoint</td><td><span class="req">Required</span></td></tr>
                     <tr><td><code>amount_cents</code></td><td>integer</td><td>Payment amount in cents — e.g. <code>150000</code> = $1,500.00</td><td><span class="req">Required</span></td></tr>
                     <tr><td><code>payment_method</code></td><td>string</td><td><code>ACH</code> or <code>CARD</code></td><td><span class="opt">Optional</span> — default <code>ACH</code></td></tr>
                     <tr><td><code>fund_type</code></td><td>string</td><td><code>OPERATING</code> or <code>TRUST</code></td><td><span class="opt">Optional</span> — default <code>OPERATING</code></td></tr>
@@ -203,7 +136,6 @@ Content-Type: application/json
 Content-Type: application/json
 
 {
-  "token": "PAYA_VAULT_TOKEN",
   "amount_cents": 150000,
   "payment_method": "ACH",
   "fund_type": "OPERATING",
@@ -217,6 +149,7 @@ Content-Type: application/json
                             <button class="copy-code" onclick="copyCode(this)">Copy</button>
                             <pre>{
   "status": "APPROVED",
+  "transaction_id": "uuid",
   "gateway_txn_id": "paya-txn-abc123",
   "gateway": "paya",
   "amount_cents": 150000,
