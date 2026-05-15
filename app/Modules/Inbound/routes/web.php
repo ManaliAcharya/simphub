@@ -5,6 +5,8 @@ use Modules\Inbound\Http\Controllers\ClientConfigController;
 use Modules\Inbound\Http\Controllers\PmsAuthController;
 use Modules\Inbound\Http\Controllers\PmsIntegrationController;
 use Modules\Inbound\Http\Controllers\QuickBooksAuthController;
+use Modules\Inbound\Http\Controllers\CustomPmsController;
+use Modules\Inbound\Http\Controllers\TerminalClientController;
 
 Route::middleware('web')->group(function (): void {
     Route::get('/setup/{provider}/{token}', [PmsIntegrationController::class, 'showByToken'])
@@ -14,6 +16,8 @@ Route::middleware('web')->group(function (): void {
     Route::prefix('inbound/clients')->name('inbound.clients.')->group(function (): void {
         Route::get('/create', [ClientConfigController::class, 'create'])->name('create');
         Route::post('/', [ClientConfigController::class, 'store'])->name('store');
+        Route::get('/terminal-created', [TerminalClientController::class, 'created'])->name('terminal-created');
+        Route::get('/api-docs', [CustomPmsController::class, 'apiDocs'])->name('api-docs');
     });
 
     Route::post('/inbound/zoho/default-account', [PmsIntegrationController::class, 'saveZohoDefaultAccount'])

@@ -18,6 +18,12 @@ class Client extends Model
             'call_api_to_pms' => 'boolean',
             'client_calls_our_api' => 'boolean',
             'allowed_payment_gateways' => 'array',
+            'allowed_terminals' => 'array',
         ];
+    }
+
+    public function usesTerminal(): bool
+    {
+        return ! empty($this->allowed_terminals);
     }
 }

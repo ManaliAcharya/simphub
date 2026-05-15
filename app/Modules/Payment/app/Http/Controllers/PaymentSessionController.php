@@ -6,6 +6,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Billing\Models\PaymentSession;
+use Modules\Outbound\Services\PayaTokenizerService;
 use Modules\Payment\Services\PaymentCheckoutService;
 use RuntimeException;
 
@@ -24,6 +25,38 @@ class PaymentSessionController extends Controller
                 'message' => $exception->getMessage(),
             ], 422);
         }
+    }
+
+    public function tokenize(Request $request, string $session, PayaTokenizerService $tokenizer): JsonResponse
+    {
+        $paymentSession = PaymentSession::query()
+            ->where('hosted_url_token', $session)
+            ->firstOrFail();
+
+        if (! in_array($paymentSession->status, ['PENDING', 'AWAITING_PAYMENT'], true)) {
+            return response()->json(['message' => 'Payment session is not in a payable state.'], 422);
+        }
+
+        $validated = $request->validate([
+            'routing_number' => ['required', 'string', 'regex:/^\d{9}$/'],
+            'account_number' => ['required', 'string', 'regex:/^\d{4,17}$/'],
+            'account_type'   => ['nullable', 'string', 'in:checking,savings'],
+            'first_name'     => ['nullable', 'string', 'max:100'],
+            'last_name'      => ['nullable', 'string', 'max:100'],
+            'address1'       => ['nullable', 'string', 'max:255'],
+            'city'           => ['nullable', 'string', 'max:100'],
+            'state'          => ['nullable', 'string', 'size:2'],
+            'zip'            => ['nullable', 'string', 'max:10'],
+            'phone_number'   => ['nullable', 'string', 'max:20'],
+        ]);
+
+        $token = $tokenizer->tokenize($validated);
+
+        return response()->json([
+            'token'        => $token,
+            'account_type' => strtolower($validated['account_type'] ?? 'checking'),
+            'last4'        => substr($validated['account_number'], -4),
+        ]);
     }
 
     public function submit(Request $request, string $session, PaymentCheckoutService $checkout): JsonResponse
