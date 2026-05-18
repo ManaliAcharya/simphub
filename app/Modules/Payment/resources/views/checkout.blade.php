@@ -386,11 +386,21 @@
             if (!response.ok) {
                 els.submitStatus.textContent = payload.message || 'Payment failed.';
                 els.submitButton.disabled = false;
+                const cancelUrl = state.details?.invoice?.cancel_redirect_url;
+                if (cancelUrl) {
+                    els.submitStatus.textContent += ' Redirecting you back...';
+                    setTimeout(() => { window.location.href = cancelUrl; }, 3000);
+                }
                 return;
             }
 
             els.submitStatus.textContent = `Payment approved. Gateway reference: ${payload.gateway_txn_id}`;
             els.status.textContent = 'COMPLETED';
+            const redirectUrl = payload.redirect_url;
+            if (redirectUrl) {
+                els.submitStatus.textContent += ' Redirecting...';
+                setTimeout(() => { window.location.href = redirectUrl; }, 1500);
+            }
         }
 
         els.submitButton.addEventListener('click', async () => {

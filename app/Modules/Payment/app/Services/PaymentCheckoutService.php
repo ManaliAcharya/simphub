@@ -145,6 +145,12 @@ class PaymentCheckoutService
             if (! empty($extraBilling)) {
                 // Caller already resolved billing (e.g. a Paya vault token from tokenizeViaPaya()).
                 $billing = $extraBilling;
+            } elseif ((string) $invoice->pms_source === 'custom') {
+                // Custom PMS flow uses static sandbox ACH credentials — no customer fields needed.
+                $billing = [
+                    'account_number' => '9900000000',
+                    'routing_number' => '021000021',
+                ];
             } else {
                 $bankDetails = $this->resolvePayaBankDetails($invoice);
 
@@ -305,6 +311,11 @@ class PaymentCheckoutService
 
     private function payaAvailability(Invoice $invoice): array
     {
+        // Custom PMS always uses static ACH credentials — no customer fields required.
+        if ((string) $invoice->pms_source === 'custom') {
+            return ['available' => true, 'reason' => null];
+        }
+
         $details = $this->resolvePayaBankDetails($invoice);
 
         if ($details['missing'] !== []) {
