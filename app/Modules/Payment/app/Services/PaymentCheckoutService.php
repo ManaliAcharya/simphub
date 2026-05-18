@@ -17,6 +17,7 @@ use Modules\Inbound\Services\LawcusCustomerRefreshService;
 use Modules\Inbound\Services\QuickBooksCustomerRefreshService;
 use Modules\Inbound\Services\ZohoCustomerRefreshService;
 use Modules\Inbound\Jobs\DispatchCustomWebhookJob;
+use Modules\Outbound\Services\PayaTokenizerService;
 use Modules\Routing\DTOs\RoutingContext;
 use Modules\Routing\Services\RoutingEngine;
 use RuntimeException;
@@ -32,6 +33,7 @@ class PaymentCheckoutService
         private readonly ClioCustomerRefreshService $clioCustomerRefresh,
         private readonly QuickBooksCustomerRefreshService $quickBooksCustomerRefresh,
         private readonly LawcusCustomerRefreshService $lawcusCustomerRefresh,
+        private readonly PayaTokenizerService $payaTokenizer,
     ) {}
 
     public function details(PaymentSession $session): array
@@ -146,11 +148,23 @@ class PaymentCheckoutService
                 // Caller already resolved billing (e.g. a Paya vault token from tokenizeViaPaya()).
                 $billing = $extraBilling;
             } elseif ((string) $invoice->pms_source === 'custom') {
-                // Custom PMS flow uses static ACH credentials — no customer fields needed.
-                $billing = [
-                    'account_number' => env('PAYA_ACCOUNT_NUMBER', '490000018'),
-                    'routing_number' => env('PAYA_ROUTING_NUMBER', '123456789'),
-                ];
+                // Custom PMS: tokenize static ACH credentials first, then charge with the token.
+                // ProcessSingleCertificationCheckWithToken is proven to work; direct ACH path declines.
+                \Log::debug('Custom PMS Paya: tokenizing static credentials', [
+                    'invoice_id' => $invoice->id,
+                    'routing'    => env('PAYA_ROUTING_NUMBER', '490000018'),
+                    'account'    => env('PAYA_ACCOUNT_NUMBER', '123456789'),
+                ]);
+
+                $payaToken = $this->payaTokenizer->tokenizeViaPaya([
+                    'routing_number' => env('PAYA_ROUTING_NUMBER', '490000018'),
+                    'account_number' => env('PAYA_ACCOUNT_NUMBER', '123456789'),
+                    'account_type'   => 'checking',
+                ], $decision->midCredentials);
+
+                \Log::debug('Custom PMS Paya: token acquired', ['token' => substr($payaToken, 0, 8).'...']);
+
+                $billing = ['paya_token' => $payaToken];
             } else {
                 $bankDetails = $this->resolvePayaBankDetails($invoice);
 
@@ -177,6 +191,14 @@ class PaymentCheckoutService
             }
         }
 
+        \Log::debug('PaymentCheckoutService: dispatching charge', [
+            'gateway'    => $decision->gateway,
+            'invoice_id' => $invoice->id,
+            'pms_source' => $invoice->pms_source,
+            'amount'     => $invoice->amount_cents,
+            'billing_keys' => array_keys($billing),
+        ]);
+
         $response = $this->gateways->make($decision->gateway)->charge(new ChargeRequest(
             token: $token,
             amountInCents: (int) $invoice->amount_cents,
@@ -191,6 +213,13 @@ class PaymentCheckoutService
             ],
             transactionType: $transactionType,
         ));
+
+        \Log::debug('PaymentCheckoutService: charge response', [
+            'approved' => $response->approved,
+            'message'  => $response->message,
+            'txn_ref'  => $response->transactionReference,
+            'raw'      => $response->raw,
+        ]);
 
         if (! $response->approved) {
             $session->forceFill(['status' => 'FAILED'])->save();

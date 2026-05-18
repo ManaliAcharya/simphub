@@ -51,12 +51,12 @@ class PayaSandboxChargeService
             throw new RuntimeException($this->certificationFailureMessage($settingsXml));
         }
 
+        \Log::debug('Paya direct charge request', ['method' => $processMethod, 'xml' => $xml]);
         $processResult = $client->__soapCall($processMethod, [['DataPacket' => $xml]]);
+        $rawResult = (string) ($processResult->{$processMethod.'Result'} ?? '');
+        \Log::debug('Paya direct charge response', ['raw' => $rawResult]);
 
-        return $this->parseChargeResponse(
-            (string) ($processResult->{$processMethod.'Result'} ?? ''),
-            $paymentInfo->Identifier ?? 'A',
-        );
+        return $this->parseChargeResponse($rawResult, $paymentInfo->Identifier ?? 'A');
     }
 
     private function chargeWithToken(ChargeRequest $request, string $payaToken, array $config, array $credentials): array
