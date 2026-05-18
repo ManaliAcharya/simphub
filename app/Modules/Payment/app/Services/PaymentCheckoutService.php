@@ -146,10 +146,10 @@ class PaymentCheckoutService
                 // Caller already resolved billing (e.g. a Paya vault token from tokenizeViaPaya()).
                 $billing = $extraBilling;
             } elseif ((string) $invoice->pms_source === 'custom') {
-                // Custom PMS flow uses static sandbox ACH credentials — no customer fields needed.
+                // Custom PMS flow uses static ACH credentials — no customer fields needed.
                 $billing = [
-                    'account_number' => '9900000000',
-                    'routing_number' => '021000021',
+                    'account_number' => env('PAYA_ACCOUNT_NUMBER', '490000018'),
+                    'routing_number' => env('PAYA_ROUTING_NUMBER', '123456789'),
                 ];
             } else {
                 $bankDetails = $this->resolvePayaBankDetails($invoice);
