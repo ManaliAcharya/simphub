@@ -7,6 +7,7 @@ use Modules\Outbound\Contracts\GatewayAdapterInterface;
 use Modules\Outbound\DTOs\ChargeRequest;
 use Modules\Outbound\DTOs\GatewayResponse;
 use Modules\Outbound\DTOs\HostedFieldsConfig;
+use Modules\Outbound\DTOs\RefundRequest;
 
 class FluidPayAdapter implements GatewayAdapterInterface
 {
@@ -56,6 +57,44 @@ class FluidPayAdapter implements GatewayAdapterInterface
 
         return GatewayResponse::declined(
             $responseText ?: "Transaction declined (code: {$responseCode})",
+            null,
+            $raw,
+        );
+    }
+
+    public function refund(RefundRequest $request): GatewayResponse
+    {
+        if ($request->gatewayTxnId === '') {
+            return GatewayResponse::declined('Missing gateway transaction ID for refund.');
+        }
+
+        $midCredentials = $request->midCredentials;
+        $apiKey  = (string) ($midCredentials['api_key']  ?? env('FLUIDPAY_API_KEY', ''));
+        $baseUrl = rtrim((string) ($midCredentials['base_url'] ?? env('FLUIDPAY_BASE_URL', 'https://sandbox.fluidpay.com')), '/');
+
+        if ($apiKey === '') {
+            return GatewayResponse::declined('FluidPay API key is not configured.');
+        }
+
+        $body = ['amount' => $request->amountInCents];
+
+        $raw = Http::withHeaders(['Authorization' => $apiKey])
+            ->timeout(180)
+            ->post("{$baseUrl}/api/transaction/{$request->gatewayTxnId}/refund", $body)
+            ->throw()
+            ->json();
+
+        $data         = $raw['data'] ?? $raw;
+        $transactionId = (string) ($data['id'] ?? '');
+        $responseCode  = (int) ($data['response_code'] ?? 0);
+        $responseText  = (string) ($data['response'] ?? $raw['msg'] ?? 'Unknown error');
+
+        if ($responseCode >= 100 && $responseCode <= 199) {
+            return GatewayResponse::approved($transactionId, null, $raw);
+        }
+
+        return GatewayResponse::declined(
+            $responseText ?: "Refund declined (code: {$responseCode})",
             null,
             $raw,
         );

@@ -84,11 +84,14 @@ class PaymentSessionController extends Controller
             ], 422);
         }
 
+        $invoice = $paymentSession->invoice()->first();
+
         return response()->json([
-            'status' => 'APPROVED',
+            'status'         => 'APPROVED',
             'transaction_id' => $transaction->id,
             'gateway_txn_id' => $transaction->gateway_txn_id,
-            'invoice_status' => optional($paymentSession->invoice()->first())->status,
+            'invoice_status' => optional($invoice)->status,
+            'redirect_url'   => optional($invoice)->success_redirect_url ?: null,
         ]);
     }
 }

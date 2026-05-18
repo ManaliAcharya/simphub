@@ -90,9 +90,12 @@ class ClientConfigController extends Controller
                 ->withInput();
         }
 
+        $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
+
         $client = Client::query()->create([
             'pms_client_id'            => (string) Str::uuid(),
             'setup_token'              => strtolower(Str::random(12)),
+            'webhook_secret'           => $isCustomPms ? 'whsec_' . Str::random(32) : null,
             'client_name'              => $validated['client_name'],
             'client_pms'               => strtoupper($validated['client_pms']),
             'zoho_region'              => strtoupper($validated['client_pms']) === 'ZOHO'

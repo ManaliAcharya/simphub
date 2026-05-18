@@ -33,9 +33,16 @@ class CustomInvoiceIngestionService
                     'fund_type'           => strtoupper((string) ($payload['fund_type'] ?? 'OPERATING')),
                     'status'              => 'PENDING',
                     'pms_sync_status'     => 'SYNCED',
-                    'recipient_emails'    => $payload['recipient_emails'] ?? [],
-                    // Store bank details in raw_payload so resolvePayaBankDetails()
-                    // can find them via its flat key-value pair extractor.
+                    'invoice_number'      => (string) ($payload['invoice_number'] ?? ''),
+                    'description'         => (string) ($payload['description'] ?? ''),
+                    'customer'            => $payload['customer'] ?? [],
+                    'success_redirect_url'=> (string) ($payload['success_redirect_url'] ?? ''),
+                    'cancel_redirect_url' => (string) ($payload['cancel_redirect_url'] ?? ''),
+                    'webhook_url'         => (string) ($payload['webhook_url'] ?? ''),
+                    'metadata'            => $payload['metadata'] ?? [],
+                    'recipient_emails'    => isset($payload['customer']['email'])
+                        ? [$payload['customer']['email']]
+                        : ($payload['recipient_emails'] ?? []),
                     'raw_payload'         => [
                         'account_number' => (string) ($payload['account_number'] ?? ''),
                         'routing_number' => (string) ($payload['routing_number'] ?? ''),

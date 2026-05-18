@@ -16,6 +16,7 @@ use Modules\Inbound\Services\ClioCustomerRefreshService;
 use Modules\Inbound\Services\LawcusCustomerRefreshService;
 use Modules\Inbound\Services\QuickBooksCustomerRefreshService;
 use Modules\Inbound\Services\ZohoCustomerRefreshService;
+use Modules\Inbound\Jobs\DispatchCustomWebhookJob;
 use Modules\Routing\DTOs\RoutingContext;
 use Modules\Routing\Services\RoutingEngine;
 use RuntimeException;
@@ -53,13 +54,15 @@ class PaymentCheckoutService
                 'expires_at' => optional($session->expires_at)->toIso8601String(),
             ],
             'invoice' => [
-                'id' => $invoice->id,
-                'external_invoice_id' => $invoice->external_invoice_id,
-                'amount_cents' => $invoice->amount_cents,
-                'currency' => $invoice->currency,
-                'fund_type' => $invoice->fund_type,
-                'status' => $invoice->status,
-                'client_emails' => array_values(array_filter((array) $invoice->recipient_emails)),
+                'id'                   => $invoice->id,
+                'external_invoice_id'  => $invoice->external_invoice_id,
+                'amount_cents'         => $invoice->amount_cents,
+                'currency'             => $invoice->currency,
+                'fund_type'            => $invoice->fund_type,
+                'status'               => $invoice->status,
+                'client_emails'        => array_values(array_filter((array) $invoice->recipient_emails)),
+                'success_redirect_url' => $invoice->success_redirect_url ?: null,
+                'cancel_redirect_url'  => $invoice->cancel_redirect_url ?: null,
             ],
             'payment_options' => $options->map(function ($decision) use ($invoice) {
                 $availability = strtolower((string) $decision->gateway) === 'paya'
@@ -195,23 +198,28 @@ class PaymentCheckoutService
                 'gateway' => $decision->gateway,
             ]);
 
+            if ((string) $invoice->pms_source === 'custom' && ! empty($invoice->webhook_url)) {
+                DispatchCustomWebhookJob::dispatch($invoice->id, 'invoice.failed');
+            }
+
             throw new RuntimeException($response->message ?? 'Payment was declined.');
         }
 
         $transaction = DB::transaction(function () use ($session, $invoice, $decision, $response) {
             $transaction = Transaction::query()->create([
                 'payment_session_id' => $session->id,
-                'invoice_id' => $invoice->id,
-                'routing_rule_id' => $decision->routingRuleId,
-                'gateway' => $decision->gateway,
-                'mid' => $decision->mid,
-                'gateway_txn_id' => $response->transactionReference,
-                'gateway_token' => (string) $response->gatewayToken,
-                'status' => 'CAPTURED',
-                'fund_type' => $session->fund_type,
-                'amount_cents' => $invoice->amount_cents,
-                'currency' => $invoice->currency,
-                'gateway_response' => $response->raw,
+                'invoice_id'         => $invoice->id,
+                'routing_rule_id'    => $decision->routingRuleId,
+                'gateway'            => $decision->gateway,
+                'mid'                => $decision->mid,
+                'gateway_txn_id'     => $response->transactionReference,
+                'gateway_token'      => (string) $response->gatewayToken,
+                'status'             => 'CAPTURED',
+                'transaction_type'   => 'debit',
+                'fund_type'          => $session->fund_type,
+                'amount_cents'       => $invoice->amount_cents,
+                'currency'           => $invoice->currency,
+                'gateway_response'   => $response->raw,
             ]);
 
             $this->stateMachine->transition($session, 'COMPLETED');
@@ -240,6 +248,10 @@ class PaymentCheckoutService
             'invoice_id' => $invoice->id,
             'payment_session_id' => $session->id,
         ]));
+
+        if ((string) $invoice->pms_source === 'custom' && ! empty($invoice->webhook_url)) {
+            DispatchCustomWebhookJob::dispatch($invoice->id, 'invoice.paid');
+        }
 
         return $transaction;
     }

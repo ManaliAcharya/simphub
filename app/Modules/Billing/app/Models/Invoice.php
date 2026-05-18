@@ -14,9 +14,11 @@ class Invoice extends Model
     protected function casts(): array
     {
         return [
-            'raw_payload' => 'array',
+            'raw_payload'      => 'array',
             'recipient_emails' => 'array',
-            'synced_at' => 'datetime',
+            'customer'         => 'array',
+            'metadata'         => 'array',
+            'synced_at'        => 'datetime',
         ];
     }
 }
