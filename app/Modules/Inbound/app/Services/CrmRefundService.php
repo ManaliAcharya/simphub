@@ -10,6 +10,7 @@ use Modules\Inbound\Jobs\DispatchCustomWebhookJob;
 use Modules\Inbound\Models\Client;
 use Modules\Outbound\DTOs\RefundRequest;
 use Modules\Outbound\Factory\GatewayAdapterFactory;
+use Modules\Outbound\Services\PayaTokenizerService;
 use Modules\Routing\Models\RoutingRule;
 use RuntimeException;
 
@@ -17,6 +18,7 @@ class CrmRefundService
 {
     public function __construct(
         private readonly GatewayAdapterFactory $gateways,
+        private readonly PayaTokenizerService $payaTokenizer,
     ) {}
 
     /**
@@ -69,9 +71,20 @@ class CrmRefundService
             } catch (\Throwable) {}
         }
 
+        // Paya tokens are single-use — the original token was consumed by the charge.
+        // Re-tokenize with the static credentials to get a fresh token for the credit.
+        $gatewayToken = (string) $original->gateway_token;
+        if (strtolower($original->gateway) === 'paya') {
+            $gatewayToken = $this->payaTokenizer->tokenizeViaPaya([
+                'routing_number' => env('PAYA_ROUTING_NUMBER', '490000018'),
+                'account_number' => env('PAYA_ACCOUNT_NUMBER', '123456789'),
+                'account_type'   => 'checking',
+            ], $midCredentials);
+        }
+
         $response = $this->gateways->make($original->gateway)->refund(new RefundRequest(
             gatewayTxnId: (string) $original->gateway_txn_id,
-            gatewayToken: (string) $original->gateway_token,
+            gatewayToken: $gatewayToken,
             amountInCents: $refundAmount,
             currency: (string) $original->currency,
             midCredentials: $midCredentials,
