@@ -358,7 +358,7 @@ Authorization: Bearer {{ $client->pms_client_id }}</pre>
         </div>
 
         {{-- POST /invoices/{id}/cancel --}}
-        <div class="endpoint-card" id="ep-invoice-cancel">
+        <div class="endpoint-card" id="ep-invoice-cancel" style="display:none;">
             <div class="ep-header" onclick="toggleEp('ep-invoice-cancel')">
                 <span class="method-badge method-post">POST</span>
                 <span class="ep-url">/api/v1/invoices/{invoice_id}/cancel</span>
