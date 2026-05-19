@@ -131,28 +131,21 @@ class CrmInvoiceController extends Controller
             ], 404);
         }
 
-        if ($invoice->status === 'PAID') {
-            return response()->json([
-                'error' => ['code' => 'validation_error', 'message' => 'Cannot cancel a paid invoice.'],
-            ], 400);
-        }
-
         if ($invoice->status === 'CANCELLED') {
             return response()->json([
                 'error' => ['code' => 'validation_error', 'message' => 'Invoice is already cancelled.'],
             ], 400);
         }
 
-        // Attempt to void any captured (unsettled) transaction at the gateway before cancelling locally.
+        // If a captured transaction exists, attempt gateway void regardless of our local invoice status.
+        // Our DB may say PAID while the gateway transaction is still pending_settlement (not yet captured),
+        // in which case void is still possible. Let the gateway decide.
         $capturedTxn = Transaction::query()
             ->where('invoice_id', $invoice->id)
             ->where('transaction_type', 'debit')
             ->where('status', 'CAPTURED')
             ->latest()
             ->first();
-
-        $voidAttempted = false;
-        $voidSucceeded = false;
 
         if ($capturedTxn && $capturedTxn->gateway_txn_id) {
             $midCredentials = [];
@@ -168,33 +161,47 @@ class CrmInvoiceController extends Controller
                     (string) $capturedTxn->gateway_txn_id,
                     $midCredentials,
                 );
-                $voidAttempted = true;
-                $voidSucceeded = $voidResponse->approved;
-
-                AuditLogger::log('VOID_ATTEMPTED', 'transaction', $capturedTxn->id, [
-                    'gateway'         => $capturedTxn->gateway,
-                    'gateway_txn_id'  => $capturedTxn->gateway_txn_id,
-                    'approved'        => $voidSucceeded,
-                    'message'         => $voidResponse->message ?? '',
-                ]);
-
-                if ($voidSucceeded) {
-                    $capturedTxn->update(['status' => 'VOIDED']);
-                }
             } catch (\Throwable $e) {
                 AuditLogger::log('VOID_FAILED', 'transaction', $capturedTxn->id, [
                     'gateway'        => $capturedTxn->gateway,
                     'gateway_txn_id' => $capturedTxn->gateway_txn_id,
                     'error'          => $e->getMessage(),
                 ]);
+
+                return response()->json([
+                    'error' => [
+                        'code'    => 'void_failed',
+                        'message' => 'Could not reach the gateway to void this transaction. Please try again or use the refund API.',
+                    ],
+                ], 400);
             }
+
+            AuditLogger::log('VOID_ATTEMPTED', 'transaction', $capturedTxn->id, [
+                'gateway'        => $capturedTxn->gateway,
+                'gateway_txn_id' => $capturedTxn->gateway_txn_id,
+                'approved'       => $voidResponse->approved,
+                'message'        => $voidResponse->message ?? '',
+            ]);
+
+            if (! $voidResponse->approved) {
+                // Gateway declined void — transaction is already settled or gateway does not support void.
+                return response()->json([
+                    'error' => [
+                        'code'    => 'void_declined',
+                        'message' => 'The transaction has already been settled at the gateway and cannot be voided. Use the refund API instead.',
+                        'gateway_message' => $voidResponse->message,
+                    ],
+                ], 400);
+            }
+
+            $capturedTxn->update(['status' => 'VOIDED']);
         }
 
         $invoice->update(['status' => 'CANCELLED']);
 
         PaymentSession::query()
             ->where('invoice_id', $invoice->id)
-            ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT'])
+            ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT', 'PROCESSING'])
             ->update(['status' => 'FAILED']);
 
         if (! empty($client->webhook_url)) {
@@ -204,8 +211,8 @@ class CrmInvoiceController extends Controller
         return response()->json([
             'invoice_id'    => $invoice->id,
             'status'        => 'cancelled',
-            'void_attempted' => $voidAttempted,
-            'void_succeeded' => $voidSucceeded,
+            'void_attempted' => $capturedTxn !== null,
+            'void_succeeded' => $capturedTxn !== null,
         ]);
     }
 }
