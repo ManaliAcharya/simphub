@@ -14,9 +14,10 @@ Route::prefix('v1/inbound')->name('inbound.')->group(function () {
 });
 
 Route::prefix('v1')->name('crm.')->middleware(CrmApiAuth::class)->group(function () {
-    Route::post('/invoices',                          [CrmInvoiceController::class, 'store'])->name('invoices.store');
-    Route::get('/invoices/{invoice_id}',              [CrmInvoiceController::class, 'show'])->name('invoices.show');
-    Route::post('/invoices/{invoice_id}/cancel',      [CrmInvoiceController::class, 'cancel'])->name('invoices.cancel');
-    Route::get('/transactions',                       [CrmTransactionController::class, 'index'])->name('transactions.index');
-    Route::post('/refunds',                           [CrmRefundController::class, 'store'])->name('refunds.store');
+    Route::post('/invoices',                              [CrmInvoiceController::class, 'store'])->name('invoices.store');
+    Route::get('/invoices/{invoice_id}',                  [CrmInvoiceController::class, 'show'])->name('invoices.show');
+    Route::post('/invoices/{invoice_id}/cancel',          [CrmInvoiceController::class, 'cancel'])->name('invoices.cancel');
+    Route::get('/transactions',                           [CrmTransactionController::class, 'index'])->name('transactions.index');
+    Route::post('/transactions/{transaction_id}/cancel',  [CrmTransactionController::class, 'cancel'])->name('transactions.cancel');
+    Route::post('/refunds',                               [CrmRefundController::class, 'store'])->name('refunds.store');
 });

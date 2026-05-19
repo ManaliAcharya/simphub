@@ -372,27 +372,26 @@ Authorization: Bearer {{ $client->pms_client_id }}</pre>
             <div class="ep-header" onclick="toggleEp('ep-invoice-cancel')">
                 <span class="method-badge method-post">POST</span>
                 <span class="ep-url">/api/v1/invoices/{invoice_id}/cancel</span>
-                <span class="ep-desc">Cancel a pending invoice</span>
+                <span class="ep-desc">Cancel an unpaid invoice</span>
                 <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
             </div>
             <div class="ep-body">
                 <p class="ep-desc-text">
-                    Cancels a pending invoice and invalidates its payment link.
-                    Cannot cancel an invoice that has already been paid.
+                    Cancels a <strong>pending (unpaid)</strong> invoice and invalidates its payment link. No gateway call is made.
+                    If the invoice has a captured transaction, use <code>POST /api/v1/transactions/{transaction_id}/cancel</code> instead to void it at the gateway.
                 </p>
 
                 <p class="section-label">URL Parameter</p>
                 <table class="doc-table">
                     <tr><th>Parameter</th><th>Type</th><th>Description</th><th>Required</th></tr>
-                    <tr><td><code>invoice_id</code></td><td>string</td><td>The UUID of the invoice to cancel.</td><td><span class="badge-req">Required</span></td></tr>
+                    <tr><td><code>invoice_id</code></td><td>string</td><td>UUID of the invoice to cancel.</td><td><span class="badge-req">Required</span></td></tr>
                 </table>
 
                 <p class="code-label label-req">Example Request</p>
                 <div class="code-block">
                     <button class="copy-code" onclick="copyCode(this)">Copy</button>
                     <pre>POST {{ $baseUrl }}/api/v1/invoices/{invoice_id}/cancel
-Authorization: Bearer {{ $client->pms_client_id }}
-Content-Type: application/json</pre>
+Authorization: Bearer {{ $client->pms_client_id }}</pre>
                 </div>
 
                 <p class="code-label label-ok">200 — Cancelled</p>
@@ -404,19 +403,74 @@ Content-Type: application/json</pre>
 }</pre>
                 </div>
 
-                <p class="code-label label-err">400 — Cannot Cancel</p>
+                <p class="code-label label-err">400 — Has Captured Transaction</p>
                 <div class="code-block">
                     <button class="copy-code" onclick="copyCode(this)">Copy</button>
                     <pre>{
-  "error": { "code": "validation_error", "message": "Cannot cancel a paid invoice." }
+  "error": {
+    "code": "validation_error",
+    "message": "This invoice has a captured transaction. Use POST /v1/transactions/{transaction_id}/cancel to void it at the gateway."
+  }
+}</pre>
+                </div>
+            </div>
+        </div>
+
+        {{-- POST /transactions/{id}/cancel --}}
+        <div class="endpoint-card" id="ep-txn-cancel">
+            <div class="ep-header" onclick="toggleEp('ep-txn-cancel')">
+                <span class="method-badge method-post">POST</span>
+                <span class="ep-url">/api/v1/transactions/{transaction_id}/cancel</span>
+                <span class="ep-desc">Void a captured transaction at the gateway</span>
+                <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+            <div class="ep-body">
+                <p class="ep-desc-text">
+                    Voids a <code>CAPTURED</code> transaction directly at the payment gateway, then cancels the associated invoice.
+                    The gateway decides whether the void is possible — if the transaction has already settled, you must use the refund API instead.
+                    Use the <code>transaction_id</code> from <code>GET /api/v1/transactions</code>.
+                </p>
+
+                <p class="section-label">URL Parameter</p>
+                <table class="doc-table">
+                    <tr><th>Parameter</th><th>Type</th><th>Description</th><th>Required</th></tr>
+                    <tr><td><code>transaction_id</code></td><td>string</td><td>UUID of the captured debit transaction to void.</td><td><span class="badge-req">Required</span></td></tr>
+                </table>
+
+                <p class="code-label label-req">Example Request</p>
+                <div class="code-block">
+                    <button class="copy-code" onclick="copyCode(this)">Copy</button>
+                    <pre>POST {{ $baseUrl }}/api/v1/transactions/{transaction_id}/cancel
+Authorization: Bearer {{ $client->pms_client_id }}</pre>
+                </div>
+
+                <p class="code-label label-ok">200 — Voided</p>
+                <div class="code-block">
+                    <button class="copy-code" onclick="copyCode(this)">Copy</button>
+                    <pre>{
+  "transaction_id": "uuid",
+  "invoice_id": "uuid",
+  "status": "voided"
 }</pre>
                 </div>
 
-                <p class="code-label label-err">404 — Not Found</p>
+                <p class="code-label label-err">400 — Already Settled</p>
                 <div class="code-block">
                     <button class="copy-code" onclick="copyCode(this)">Copy</button>
                     <pre>{
-  "error": { "code": "not_found", "message": "Invoice not found." }
+  "error": {
+    "code": "void_declined",
+    "message": "The transaction has already been settled at the gateway and cannot be voided. Use the refund API instead.",
+    "gateway_message": "..."
+  }
+}</pre>
+                </div>
+
+                <p class="code-label label-err">400 — Wrong Status</p>
+                <div class="code-block">
+                    <button class="copy-code" onclick="copyCode(this)">Copy</button>
+                    <pre>{
+  "error": { "code": "validation_error", "message": "Transaction cannot be voided in its current status (VOIDED)." }
 }</pre>
                 </div>
             </div>
