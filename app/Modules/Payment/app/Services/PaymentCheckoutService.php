@@ -12,7 +12,6 @@ use Modules\Inbound\Models\Client;
 use Modules\Outbound\DTOs\ChargeRequest;
 use Modules\Outbound\Factory\GatewayAdapterFactory;
 use Modules\Payment\Events\PaymentApproved;
-use Modules\Inbound\Models\Client;
 use Modules\Inbound\Services\ClioCustomerRefreshService;
 use Modules\Inbound\Services\LawcusCustomerRefreshService;
 use Modules\Inbound\Services\QuickBooksCustomerRefreshService;
