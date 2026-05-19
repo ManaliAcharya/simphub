@@ -158,13 +158,6 @@
             <button class="copy-btn" onclick="copyText('base-url-val', this)">Copy</button>
         </div>
     </div>
-    <div class="client-meta">
-        <label>Environment</label>
-        <div class="env-toggle">
-            <span class="active">Test</span>
-            <span>Live</span>
-        </div>
-    </div>
     @if($client->webhook_secret)
     <div class="client-meta">
         <label>Webhook Secret</label>
@@ -210,6 +203,13 @@
             @empty
                 <span style="font-size:13px;color:#9ca3af;">None configured</span>
             @endforelse
+        </div>
+    </div>
+    <div class="client-meta">
+        <label>Environment</label>
+        <div class="env-toggle">
+            <span class="active">Test</span>
+            <span>Live</span>
         </div>
     </div>
 </div>
@@ -293,7 +293,7 @@
             <li><span class="step-num">1</span> Your CRM calls <code>POST /api/v1/invoices</code> with the amount, customer details, and redirect URLs.</li>
             <li><span class="step-num">2</span> Middleware creates the invoice and returns a <code>payment_url</code>.</li>
             <li><span class="step-num">3</span> Your CRM redirects the payer's browser to <code>payment_url</code>.</li>
-            <li><span class="step-num">4</span> Payer enters bank or card details on the hosted page. We process via Paya.</li>
+            <li><span class="step-num">4</span> Payer enters bank or card details on the hosted page. We process via Selected Payment Gateway.</li>
             <li><span class="step-num">5</span> Payer is redirected to your <code>success_redirect_url</code> or <code>cancel_redirect_url</code>.</li>
             <li><span class="step-num">6</span> Middleware POSTs an <code>invoice.paid</code>, <code>invoice.failed</code>, or <code>ach.settled</code> webhook to your callback URL.</li>
         </ul>
@@ -710,7 +710,7 @@ if (abs(time() - (int)$timestamp) > 300) {
     <div class="doc-section" id="sandbox">
         <h2>Sandbox</h2>
         <div class="warn-box">
-            <strong>Test mode is active.</strong> Use bank account routing <code>021000021</code> / account <code>9900000000</code> for a successful ACH.
+            <strong>Test mode is active.</strong> Use bank account routing <code>490000018</code> / account <code>123456789</code> for a successful ACH.
             Amounts ending in <code>.99</code> trigger an NSF return after 2 minutes for testing <code>ach.returned</code>.
             No live funds are moved in test mode.
         </div>
