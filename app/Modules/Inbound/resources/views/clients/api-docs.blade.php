@@ -540,9 +540,9 @@ Authorization: Bearer {{ $client->pms_client_id }}</pre>
                     <pre>{
   "data": [
     {
-      "transaction_id": "uuid-or-null",
+      "transaction_id": "uuid",
       "gateway_txn_id": "fp-txn-abc123",
-      "invoice_id": "uuid-or-null",
+      "invoice_id": "uuid",
       "invoice_number": "INV-2026-001",
       "gateway": "fluidpay",
       "transaction_type": "debit",
@@ -561,8 +561,8 @@ Authorization: Bearer {{ $client->pms_client_id }}</pre>
                 </div>
                 <div class="info-box" style="margin-top:12px;">
                     <strong>Consistent schema across gateways.</strong>
-                    All fields are present for both <code>fluidpay</code> and <code>paya</code>.
-                    <code>transaction_id</code> and <code>invoice_id</code> are <code>null</code> for live gateway rows (FluidPay) where no local record exists.
+                    All fields are always present for both <code>fluidpay</code> and <code>paya</code>.
+                    Use <code>transaction_id</code> when calling the Refund API — it is always populated regardless of gateway.
                     <code>transaction_type</code> is <code>debit</code> for charges and <code>credit</code> for refunds.
                 </div>
             </div>
