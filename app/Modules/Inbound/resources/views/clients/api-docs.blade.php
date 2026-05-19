@@ -445,7 +445,15 @@ Authorization: Bearer {{ $client->pms_client_id }}</pre>
                 <p class="section-label">URL Parameter</p>
                 <table class="doc-table">
                     <tr><th>Parameter</th><th>Type</th><th>Description</th><th>Required</th></tr>
-                    <tr><td><code>transaction_id</code></td><td>string</td><td>UUID of the captured debit transaction to void.</td><td><span class="badge-req">Required</span></td></tr>
+                    <tr>
+                        <td><code>transaction_id</code></td>
+                        <td>string (UUID)</td>
+                        <td>
+                            <strong>Middleware transaction ID</strong> — the <code>transaction_id</code> field from <code>GET /api/v1/transactions</code> or the <code>invoice.paid</code> webhook payload.
+                            <br><span style="color:#dc2626;">Not the gateway's own transaction reference (<code>gateway_txn_id</code>).</span>
+                        </td>
+                        <td><span class="badge-req">Required</span></td>
+                    </tr>
                 </table>
 
                 <p class="code-label label-req">Example Request</p>
@@ -520,10 +528,24 @@ Authorization: Bearer {{ $client->pms_client_id }}</pre>
                 <p class="section-label">Request Body</p>
                 <table class="doc-table">
                     <tr><th>Field</th><th>Type</th><th>Description</th><th>Required</th></tr>
-                    <tr><td><code>transaction_id</code></td><td>string (UUID)</td><td>The captured transaction to refund.</td><td><span class="badge-req">Required</span></td></tr>
-                    <tr><td><code>amount_cents</code></td><td>integer</td><td>Amount to refund. Defaults to full transaction amount. Must not exceed unrefunded balance.</td><td><span class="badge-opt">Optional</span></td></tr>
-                    <tr><td><code>reason</code></td><td>string</td><td>Reason for the refund. Stored for audit.</td><td><span class="badge-opt">Optional</span></td></tr>
+                    <tr>
+                        <td><code>transaction_id</code></td>
+                        <td>string (UUID)</td>
+                        <td>
+                            <strong>Middleware transaction ID</strong> — the <code>transaction_id</code> field from <code>GET /api/v1/transactions</code> or the <code>invoice.paid</code> webhook payload.
+                            <br><span style="color:#dc2626;">Not the gateway's own transaction reference (<code>gateway_txn_id</code>).</span>
+                        </td>
+                        <td><span class="badge-req">Required</span></td>
+                    </tr>
+                    <tr><td><code>amount_cents</code></td><td>integer</td><td>Amount to refund in smallest currency unit. Omit for a full refund. Must not exceed unrefunded balance.</td><td><span class="badge-opt">Optional</span></td></tr>
+                    <tr><td><code>reason</code></td><td>string</td><td>Reason for the refund. Stored for audit trail.</td><td><span class="badge-opt">Optional</span></td></tr>
                 </table>
+                <div class="info-box">
+                    <strong>How to get <code>transaction_id</code>:</strong>
+                    Call <code>GET /api/v1/transactions</code> and use the <code>transaction_id</code> field from the matching row —
+                    or read it directly from the <code>invoice.paid</code> webhook payload (<code>data.transaction_id</code>).
+                    The <code>gateway_txn_id</code> field in those responses is the gateway's own reference and is <strong>not</strong> accepted here.
+                </div>
 
                 <p class="code-label label-req">Example Request</p>
                 <div class="code-block">
