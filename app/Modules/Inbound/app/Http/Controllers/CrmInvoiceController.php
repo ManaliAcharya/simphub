@@ -35,19 +35,10 @@ class CrmInvoiceController extends Controller
             'customer.name'        => ['required', 'string', 'max:255'],
             'customer.email'       => ['required', 'email', 'max:255'],
             'customer.phone'       => ['nullable', 'string', 'max:30'],
-            'gateway'              => ['required', 'string'],
-            'payment_method'       => ['nullable', 'string', 'in:ach,card'],
             'success_redirect_url' => ['required', 'url'],
             'cancel_redirect_url'  => ['required', 'url'],
             'metadata'             => ['nullable', 'array', 'max:20'],
         ]);
-
-        $allowedGateways = $client->allowed_payment_gateways ?? [];
-        if (! in_array(strtolower($validated['gateway']), array_map('strtolower', $allowedGateways), true)) {
-            return response()->json([
-                'error' => ['code' => 'gateway_not_allowed', 'message' => 'Gateway not enabled for this client.'],
-            ], 400);
-        }
 
         try {
             $result = $this->ingestion->ingest(

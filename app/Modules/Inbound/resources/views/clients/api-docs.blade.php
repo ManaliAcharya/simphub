@@ -249,7 +249,7 @@
             <div class="ep-body">
                 <p class="ep-desc-text">
                     Creates an invoice record and returns a hosted <code>payment_url</code> your CRM should redirect the payer to.
-                    Use <code>merchantId</code> = your Client ID in the URL.
+                    Gateway selection happens automatically at checkout time based on routing rules configured for your account — no gateway field is required here.
                 </p>
 
                 <p class="section-label">Request Body</p>
@@ -260,8 +260,6 @@
                     <tr><td><code>invoice_number</code></td><td>string</td><td>Your invoice reference. 1–64 chars, unique per client.</td><td><span class="badge-req">Required</span></td></tr>
                     <tr><td><code>description</code></td><td>string</td><td>Shown on the hosted payment page.</td><td><span class="badge-opt">Optional</span></td></tr>
                     <tr><td><code>customer</code></td><td>object</td><td><code>name</code>, <code>email</code>, <code>phone</code></td><td><span class="badge-req">Required</span></td></tr>
-                    <tr><td><code>gateway</code></td><td>string</td><td>Must be in your allowed gateways. Currently: <code>paya</code></td><td><span class="badge-req">Required</span></td></tr>
-                    <tr><td><code>payment_method</code></td><td>string</td><td><code>ach</code> or <code>card</code></td><td><span class="badge-opt">Optional</span> — default <code>ach</code></td></tr>
                     <tr><td><code>success_redirect_url</code></td><td>string</td><td>HTTPS only. Payer lands here on success.</td><td><span class="badge-req">Required</span></td></tr>
                     <tr><td><code>cancel_redirect_url</code></td><td>string</td><td>HTTPS only. Payer lands here on cancel.</td><td><span class="badge-req">Required</span></td></tr>
                     <tr><td><code>metadata</code></td><td>object</td><td>Up to 20 key/value pairs returned on webhooks.</td><td><span class="badge-opt">Optional</span></td></tr>
@@ -284,8 +282,6 @@ Content-Type: application/json
     "email": "john@example.com",
     "phone": "+13125551234"
   },
-  "gateway": "paya",
-  "payment_method": "ach",
   "success_redirect_url": "https://yourcrm.com/paid",
   "cancel_redirect_url": "https://yourcrm.com/cancelled",
   "metadata": { "matter_id": "M-9091" }
