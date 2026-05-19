@@ -218,11 +218,6 @@
                 <td><code>application/json</code></td>
                 <td><span class="badge-req">Required</span></td>
             </tr>
-            <tr>
-                <td><code>Idempotency-Key</code></td>
-                <td>UUID — replay-safe POSTs</td>
-                <td><span class="badge-opt">POST only</span></td>
-            </tr>
         </table>
     </div>
 
@@ -278,7 +273,6 @@
                     <pre>POST {{ $baseUrl }}/api/v1/invoices
 Authorization: Bearer {{ $client->pms_client_id }}
 Content-Type: application/json
-Idempotency-Key: 8f3e2c1a-4b5d-6e7f-8a9b-0c1d2e3f4a5b
 
 {
   "amount_cents": 150000,
@@ -427,9 +421,30 @@ Authorization: Bearer {{ $client->pms_client_id }}</pre>
             <div class="ep-body">
                 <p class="ep-desc-text">
                     Voids a <code>CAPTURED</code> transaction directly at the payment gateway, then cancels the associated invoice.
-                    The gateway decides whether the void is possible — if the transaction has already settled, you must use the refund API instead.
+                    The gateway decides whether the void is possible — if the transaction has already settled, use the refund API instead.
                     Use the <code>transaction_id</code> from <code>GET /api/v1/transactions</code>.
                 </p>
+
+                <p class="section-label">Gateway Support</p>
+                <table class="doc-table" style="margin-bottom:16px;">
+                    <tr><th>Gateway</th><th>Void supported</th><th>Notes</th></tr>
+                    <tr>
+                        <td><code>fluidpay</code></td>
+                        <td><span style="color:#059669;font-weight:700;">Yes</span></td>
+                        <td>Void succeeds only while the transaction is <code>pending_settlement</code>. Once the daily batch closes it returns <code>void_declined</code> — use refund instead.</td>
+                    </tr>
+                    <tr>
+                        <td><code>paya</code></td>
+                        <td><span style="color:#dc2626;font-weight:700;">No</span></td>
+                        <td>Paya ACH has no void operation. This endpoint always returns <code>void_declined</code> for Paya transactions. Use the refund API.</td>
+                    </tr>
+                </table>
+
+                <div class="warn-box">
+                    <strong>Paya ACH transactions cannot be voided.</strong>
+                    If your transaction was processed via Paya, calling this endpoint will always return <code>400 void_declined</code>.
+                    Use <code>POST /api/v1/refunds</code> to return funds to the customer's bank account (2–3 business days).
+                </div>
 
                 <p class="section-label">URL Parameter</p>
                 <table class="doc-table">
@@ -444,7 +459,7 @@ Authorization: Bearer {{ $client->pms_client_id }}</pre>
 Authorization: Bearer {{ $client->pms_client_id }}</pre>
                 </div>
 
-                <p class="code-label label-ok">200 — Voided</p>
+                <p class="code-label label-ok">200 — Voided (FluidPay only)</p>
                 <div class="code-block">
                     <button class="copy-code" onclick="copyCode(this)">Copy</button>
                     <pre>{
@@ -454,14 +469,14 @@ Authorization: Bearer {{ $client->pms_client_id }}</pre>
 }</pre>
                 </div>
 
-                <p class="code-label label-err">400 — Already Settled</p>
+                <p class="code-label label-err">400 — Paya / Already Settled</p>
                 <div class="code-block">
                     <button class="copy-code" onclick="copyCode(this)">Copy</button>
                     <pre>{
   "error": {
     "code": "void_declined",
     "message": "The transaction has already been settled at the gateway and cannot be voided. Use the refund API instead.",
-    "gateway_message": "..."
+    "gateway_message": "Void is not supported for Paya ACH transactions."
   }
 }</pre>
                 </div>
@@ -490,6 +505,21 @@ Authorization: Bearer {{ $client->pms_client_id }}</pre>
                     The gateway credit is submitted immediately and a new <code>credit</code> transaction record is created.
                     Partial refunds are supported; multiple partial refunds can be issued until the full amount is recovered.
                 </p>
+
+                <p class="section-label">Gateway Behaviour</p>
+                <table class="doc-table" style="margin-bottom:16px;">
+                    <tr><th>Gateway</th><th>How refund works</th><th>Timeline</th></tr>
+                    <tr>
+                        <td><code>fluidpay</code></td>
+                        <td>Linked refund — references original transaction ID at the gateway.</td>
+                        <td>3–5 business days to cardholder</td>
+                    </tr>
+                    <tr>
+                        <td><code>paya</code></td>
+                        <td>Standalone ACH credit — no gateway-level link to the original debit. This is the <strong>only reversal option</strong> for Paya (void is not supported).</td>
+                        <td>2–3 business days to bank account</td>
+                    </tr>
+                </table>
 
                 <p class="section-label">Request Body</p>
                 <table class="doc-table">
