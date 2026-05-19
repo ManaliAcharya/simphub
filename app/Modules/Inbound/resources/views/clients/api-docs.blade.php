@@ -28,27 +28,6 @@
     .env-toggle span.active { background:#eff6ff; color:#2563eb; }
     .gw-badge { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; margin-right:4px; }
 
-    /* ── Gateway modal ── */
-    .modal-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:100; align-items:center; justify-content:center; }
-    .modal-backdrop.open { display:flex; }
-    .modal { background:#fff; border-radius:14px; padding:28px; width:420px; max-width:calc(100vw - 32px); box-shadow:0 20px 60px rgba(0,0,0,.18); }
-    .modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:20px; }
-    .modal-header h3 { font-size:16px; font-weight:700; color:#111827; margin:0; }
-    .modal-close { background:none; border:none; cursor:pointer; color:#9ca3af; font-size:20px; line-height:1; padding:0 4px; }
-    .modal-close:hover { color:#374151; }
-    .gw-tile-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:24px; }
-    .gw-tile { border:1.5px solid #e5e7eb; border-radius:10px; padding:14px 8px 10px; text-align:center; cursor:pointer; background:#fff; transition:all .15s; position:relative; user-select:none; }
-    .gw-tile:hover { border-color:#6ee7b7; }
-    .gw-tile.selected { border-color:#10b981; background:#ecfdf5; }
-    .gw-tile.selected::after { content:"✓"; position:absolute; top:6px; right:7px; background:#10b981; color:#fff; font-size:9px; font-weight:700; width:15px; height:15px; border-radius:50%; display:flex; align-items:center; justify-content:center; }
-    .gw-tile input[type=checkbox] { display:none; }
-    .gw-tile-logo { height:36px; display:flex; align-items:center; justify-content:center; margin-bottom:6px; }
-    .gw-tile-logo img { max-width:100%; max-height:100%; object-fit:contain; }
-    .gw-tile-name { font-size:11px; font-weight:600; color:#111827; }
-    .modal-actions { display:flex; justify-content:flex-end; gap:10px; }
-    .btn-modal { padding:9px 18px; border-radius:8px; font-size:13px; font-weight:500; cursor:pointer; border:1px solid #d1d5db; background:#fff; }
-    .btn-modal.primary { background:#2563eb; color:#fff; border-color:#2563eb; }
-    .btn-modal.primary:hover { background:#1d4ed8; }
     .add-gw-btn { margin-left:8px; padding:2px 10px; background:#ecfdf5; color:#059669; border:1px solid #6ee7b7; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; vertical-align:middle; transition:all .15s; }
     .add-gw-btn:hover { background:#d1fae5; }
 
@@ -193,10 +172,7 @@
     </div>
     @endif
     <div class="client-meta">
-        <label>
-            Allowed Gateways
-            <button type="button" class="add-gw-btn" onclick="openGwModal()">+ Edit</button>
-        </label>
+        <label>Allowed Gateways</label>
         <div id="gw-badge-list" style="margin-top:4px;">
             @forelse($client->allowed_payment_gateways ?? [] as $gw)
                 <span class="gw-badge">{{ strtoupper($gw) }}</span>
@@ -220,42 +196,6 @@
 </div>
 @endif
 
-{{-- Gateway edit modal --}}
-<div class="modal-backdrop" id="gw-modal">
-    <div class="modal">
-        <div class="modal-header">
-            <h3>Allowed Gateways</h3>
-            <button class="modal-close" onclick="closeGwModal()">&#215;</button>
-        </div>
-        <form method="POST" action="{{ route('inbound.clients.update-gateways', $client->pms_client_id) }}">
-            @csrf
-            <div class="gw-tile-grid">
-                @foreach($availableGateways as $gw)
-                    @php $checked = in_array($gw, $client->allowed_payment_gateways ?? [], true); @endphp
-                    <div class="gw-tile {{ $checked ? 'selected' : '' }}" onclick="toggleGwTile(this)">
-                        <input type="checkbox" name="allowed_payment_gateways[]" value="{{ $gw }}" @checked($checked)>
-                        <div class="gw-tile-logo">
-                            @if(strtoupper($gw) === 'FLUIDPAY')
-                                <img src="{{ asset('images/fluidpay_logo.png') }}" alt="FluidPay">
-                            @elseif(strtoupper($gw) === 'PAYA')
-                                <img src="{{ asset('images/paya_logo.png') }}" alt="Paya">
-                            @elseif(strtoupper($gw) === 'NMI')
-                                <img src="{{ asset('images/nmi_logo.png') }}" alt="NMI">
-                            @else
-                                <div style="width:36px;height:36px;border-radius:8px;background:#d1fae5;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#059669;">{{ substr($gw,0,1) }}</div>
-                            @endif
-                        </div>
-                        <div class="gw-tile-name">{{ $gw }}</div>
-                    </div>
-                @endforeach
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn-modal" onclick="closeGwModal()">Cancel</button>
-                <button type="submit" class="btn-modal primary">Save</button>
-            </div>
-        </form>
-    </div>
-</div>
 
 <div class="doc-body">
 
@@ -747,21 +687,6 @@ if (abs(time() - (int)$timestamp) > 300) {
         document.getElementById('whurl-form').style.display    = show ? 'block' : 'none';
         if (show) document.querySelector('#whurl-form input[name=webhook_url]').focus();
     }
-
-    function openGwModal() {
-        document.getElementById('gw-modal').classList.add('open');
-    }
-    function closeGwModal() {
-        document.getElementById('gw-modal').classList.remove('open');
-    }
-    function toggleGwTile(tile) {
-        const cb = tile.querySelector('input[type="checkbox"]');
-        cb.checked = !cb.checked;
-        tile.classList.toggle('selected', cb.checked);
-    }
-    document.getElementById('gw-modal').addEventListener('click', function (e) {
-        if (e.target === this) closeGwModal();
-    });
 
     // Highlight active nav on scroll
     const sections = ['auth','flow','endpoints','webhooks','errors','sandbox'];

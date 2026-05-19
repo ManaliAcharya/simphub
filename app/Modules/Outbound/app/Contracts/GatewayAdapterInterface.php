@@ -15,5 +15,10 @@ interface GatewayAdapterInterface
 
     public function refund(RefundRequest $request): GatewayResponse;
 
+    public function void(string $gatewayTxnId, array $midCredentials = []): GatewayResponse;
+
+    /** @return array{ data: list<array<string,mixed>>, total_count: int } */
+    public function listTransactions(array $filters, array $midCredentials = []): array;
+
     public function hostedFieldsConfig(string $mid, array $midCredentials = []): HostedFieldsConfig;
 }

@@ -7,10 +7,14 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
+use Modules\Audit\Services\AuditLogger;
+use Modules\Billing\Models\Transaction;
 use Modules\Inbound\Jobs\DispatchCustomWebhookJob;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Services\CustomInvoiceIngestionService;
+use Modules\Outbound\Factory\GatewayAdapterFactory;
 use Modules\Payment\Services\PaymentLinkService;
+use Modules\Routing\Models\RoutingRule;
 use RuntimeException;
 
 class CrmInvoiceController extends Controller
@@ -18,6 +22,7 @@ class CrmInvoiceController extends Controller
     public function __construct(
         private readonly CustomInvoiceIngestionService $ingestion,
         private readonly PaymentLinkService $paymentLinks,
+        private readonly GatewayAdapterFactory $gateways,
     ) {}
 
     public function store(Request $request): JsonResponse
@@ -138,6 +143,53 @@ class CrmInvoiceController extends Controller
             ], 400);
         }
 
+        // Attempt to void any captured (unsettled) transaction at the gateway before cancelling locally.
+        $capturedTxn = Transaction::query()
+            ->where('invoice_id', $invoice->id)
+            ->where('transaction_type', 'debit')
+            ->where('status', 'CAPTURED')
+            ->latest()
+            ->first();
+
+        $voidAttempted = false;
+        $voidSucceeded = false;
+
+        if ($capturedTxn && $capturedTxn->gateway_txn_id) {
+            $midCredentials = [];
+            $routingRule = RoutingRule::find($capturedTxn->routing_rule_id);
+            if ($routingRule?->mid_credentials) {
+                try {
+                    $midCredentials = (array) decrypt($routingRule->mid_credentials);
+                } catch (\Throwable) {}
+            }
+
+            try {
+                $voidResponse = $this->gateways->make($capturedTxn->gateway)->void(
+                    (string) $capturedTxn->gateway_txn_id,
+                    $midCredentials,
+                );
+                $voidAttempted = true;
+                $voidSucceeded = $voidResponse->approved;
+
+                AuditLogger::log('VOID_ATTEMPTED', 'transaction', $capturedTxn->id, [
+                    'gateway'         => $capturedTxn->gateway,
+                    'gateway_txn_id'  => $capturedTxn->gateway_txn_id,
+                    'approved'        => $voidSucceeded,
+                    'message'         => $voidResponse->message ?? '',
+                ]);
+
+                if ($voidSucceeded) {
+                    $capturedTxn->update(['status' => 'VOIDED']);
+                }
+            } catch (\Throwable $e) {
+                AuditLogger::log('VOID_FAILED', 'transaction', $capturedTxn->id, [
+                    'gateway'        => $capturedTxn->gateway,
+                    'gateway_txn_id' => $capturedTxn->gateway_txn_id,
+                    'error'          => $e->getMessage(),
+                ]);
+            }
+        }
+
         $invoice->update(['status' => 'CANCELLED']);
 
         PaymentSession::query()
@@ -150,8 +202,10 @@ class CrmInvoiceController extends Controller
         }
 
         return response()->json([
-            'invoice_id' => $invoice->id,
-            'status'     => 'cancelled',
+            'invoice_id'    => $invoice->id,
+            'status'        => 'cancelled',
+            'void_attempted' => $voidAttempted,
+            'void_succeeded' => $voidSucceeded,
         ]);
     }
 }

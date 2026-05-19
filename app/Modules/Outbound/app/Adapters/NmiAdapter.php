@@ -47,6 +47,16 @@ class NmiAdapter implements GatewayAdapterInterface
         );
     }
 
+    public function void(string $gatewayTxnId, array $midCredentials = []): GatewayResponse
+    {
+        return GatewayResponse::declined('Void is not yet supported for NMI.');
+    }
+
+    public function listTransactions(array $filters, array $midCredentials = []): array
+    {
+        return ['data' => [], 'total_count' => 0];
+    }
+
     public function hostedFieldsConfig(string $mid, array $midCredentials = []): HostedFieldsConfig
     {
         $publicKey = (string) ($midCredentials['public_key'] ?? env('NMI_COLLECTJS_PUBLIC_KEY'));

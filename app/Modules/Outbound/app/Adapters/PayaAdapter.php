@@ -71,6 +71,18 @@ class PayaAdapter implements GatewayAdapterInterface
         );
     }
 
+    public function void(string $gatewayTxnId, array $midCredentials = []): GatewayResponse
+    {
+        // Paya WSDL (both sandbox and production) has no void/cancel operation.
+        return GatewayResponse::declined('Void is not supported for Paya ACH transactions.');
+    }
+
+    public function listTransactions(array $filters, array $midCredentials = []): array
+    {
+        // Paya WSDL has no transaction-list or search operation (only GetArchivedResponse by single ID).
+        return ['data' => [], 'total_count' => 0];
+    }
+
     public function hostedFieldsConfig(string $mid, array $midCredentials = []): HostedFieldsConfig
     {
         return new HostedFieldsConfig(
