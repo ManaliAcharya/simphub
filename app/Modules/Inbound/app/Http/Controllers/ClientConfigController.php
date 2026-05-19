@@ -79,6 +79,7 @@ class ClientConfigController extends Controller
             'allowed_terminals.*'        => $availableTerminals !== []
                 ? ['string', Rule::in($availableTerminals)]
                 : ['string'],
+            'webhook_url'                => ['nullable', 'url', 'max:500'],
             'webhook_flow_enabled'       => ['nullable', 'boolean'],
             'call_api_to_pms'            => ['nullable', 'boolean'],
             'client_calls_our_api'       => ['nullable', 'boolean'],
@@ -96,6 +97,7 @@ class ClientConfigController extends Controller
             'pms_client_id'            => (string) Str::uuid(),
             'setup_token'              => strtolower(Str::random(12)),
             'webhook_secret'           => $isCustomPms ? 'whsec_' . Str::random(32) : null,
+            'webhook_url'              => $isCustomPms ? ($validated['webhook_url'] ?? null) : null,
             'client_name'              => $validated['client_name'],
             'client_pms'               => strtoupper($validated['client_pms']),
             'zoho_region'              => strtoupper($validated['client_pms']) === 'ZOHO'
@@ -136,5 +138,51 @@ class ClientConfigController extends Controller
             'pms_client_id' => $client->pms_client_id,
             'success' => 'Client created. Continue with PMS connection.',
         ]);
+    }
+
+    public function updateWebhookUrl(Request $request, string $pmsClientId): RedirectResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        $validated = $request->validate([
+            'webhook_url' => ['nullable', 'url', 'max:500'],
+        ]);
+
+        $client->update(['webhook_url' => $validated['webhook_url'] ?? null]);
+
+        return redirect()->route('inbound.clients.api-docs', [
+            'pms_client_id' => $pmsClientId,
+        ])->with('success', 'Webhook URL updated.');
+    }
+
+    public function updateGateways(Request $request, string $pmsClientId): RedirectResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        $availableGateways = RoutingRule::query()
+            ->where('is_active', true)
+            ->distinct()
+            ->pluck('gateway')
+            ->filter()
+            ->map(fn ($g) => strtoupper((string) $g))
+            ->values()
+            ->all();
+
+        $validated = $request->validate([
+            'allowed_payment_gateways'   => ['nullable', 'array'],
+            'allowed_payment_gateways.*' => $availableGateways !== []
+                ? ['string', Rule::in($availableGateways)]
+                : ['string'],
+        ]);
+
+        $client->update([
+            'allowed_payment_gateways' => collect($validated['allowed_payment_gateways'] ?? [])
+                ->map(fn ($g) => strtoupper((string) $g))
+                ->unique()->values()->all(),
+        ]);
+
+        return redirect()->route('inbound.clients.api-docs', [
+            'pms_client_id' => $pmsClientId,
+        ])->with('success', 'Allowed gateways updated.');
     }
 }

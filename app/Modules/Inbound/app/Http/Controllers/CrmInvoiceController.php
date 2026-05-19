@@ -38,7 +38,6 @@ class CrmInvoiceController extends Controller
             'payment_method'       => ['nullable', 'string', 'in:ach,card'],
             'success_redirect_url' => ['required', 'url'],
             'cancel_redirect_url'  => ['required', 'url'],
-            'webhook_url'          => ['nullable', 'url'],
             'metadata'             => ['nullable', 'array', 'max:20'],
         ]);
 
@@ -146,7 +145,7 @@ class CrmInvoiceController extends Controller
             ->whereIn('status', ['PENDING', 'AWAITING_PAYMENT'])
             ->update(['status' => 'FAILED']);
 
-        if (! empty($invoice->webhook_url)) {
+        if (! empty($client->webhook_url)) {
             DispatchCustomWebhookJob::dispatch($invoice->id, 'invoice.cancelled');
         }
 

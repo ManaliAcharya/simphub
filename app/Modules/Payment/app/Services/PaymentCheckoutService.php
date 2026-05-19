@@ -12,6 +12,7 @@ use Modules\Inbound\Models\Client;
 use Modules\Outbound\DTOs\ChargeRequest;
 use Modules\Outbound\Factory\GatewayAdapterFactory;
 use Modules\Payment\Events\PaymentApproved;
+use Modules\Inbound\Models\Client;
 use Modules\Inbound\Services\ClioCustomerRefreshService;
 use Modules\Inbound\Services\LawcusCustomerRefreshService;
 use Modules\Inbound\Services\QuickBooksCustomerRefreshService;
@@ -233,8 +234,11 @@ class PaymentCheckoutService
                 'gateway' => $decision->gateway,
             ]);
 
-            if ((string) $invoice->pms_source === 'custom' && ! empty($invoice->webhook_url)) {
-                DispatchCustomWebhookJob::dispatch($invoice->id, 'invoice.failed');
+            if ((string) $invoice->pms_source === 'custom') {
+                $webhookClient = Client::query()->where('pms_client_id', $invoice->pms_client_id)->first();
+                if (! empty($webhookClient?->webhook_url)) {
+                    DispatchCustomWebhookJob::dispatch($invoice->id, 'invoice.failed');
+                }
             }
 
             throw new RuntimeException($response->message ?? 'Payment was declined.');
@@ -284,8 +288,11 @@ class PaymentCheckoutService
             'payment_session_id' => $session->id,
         ]));
 
-        if ((string) $invoice->pms_source === 'custom' && ! empty($invoice->webhook_url)) {
-            DispatchCustomWebhookJob::dispatch($invoice->id, 'invoice.paid');
+        if ((string) $invoice->pms_source === 'custom') {
+            $webhookClient = Client::query()->where('pms_client_id', $invoice->pms_client_id)->first();
+            if (! empty($webhookClient?->webhook_url)) {
+                DispatchCustomWebhookJob::dispatch($invoice->id, 'invoice.paid');
+            }
         }
 
         return $transaction;

@@ -5,6 +5,7 @@ namespace Modules\Inbound\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Inbound\Models\Client;
+use Modules\Routing\Models\RoutingRule;
 
 class CustomPmsController extends Controller
 {
@@ -18,9 +19,20 @@ class CustomPmsController extends Controller
             return redirect()->route('inbound.clients.create');
         }
 
+        $availableGateways = RoutingRule::query()
+            ->where('is_active', true)
+            ->distinct()
+            ->orderBy('gateway')
+            ->pluck('gateway')
+            ->filter()
+            ->map(fn ($g) => strtoupper((string) $g))
+            ->values()
+            ->all();
+
         return view('inbound::clients.api-docs', [
-            'client'  => $client,
-            'baseUrl' => rtrim(config('app.url'), '/'),
+            'client'            => $client,
+            'baseUrl'           => rtrim(config('app.url'), '/'),
+            'availableGateways' => $availableGateways,
         ]);
     }
 }

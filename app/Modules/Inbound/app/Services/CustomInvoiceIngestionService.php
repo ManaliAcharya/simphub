@@ -38,7 +38,6 @@ class CustomInvoiceIngestionService
                     'customer'            => $payload['customer'] ?? [],
                     'success_redirect_url'=> (string) ($payload['success_redirect_url'] ?? ''),
                     'cancel_redirect_url' => (string) ($payload['cancel_redirect_url'] ?? ''),
-                    'webhook_url'         => (string) ($payload['webhook_url'] ?? ''),
                     'metadata'            => $payload['metadata'] ?? [],
                     'recipient_emails'    => isset($payload['customer']['email'])
                         ? [$payload['customer']['email']]

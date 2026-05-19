@@ -130,9 +130,14 @@ class CrmRefundService
                 'reason'                  => $reason ?? '',
             ]);
 
-            $invoice = $refundTxn->invoice;
-            if ($invoice && ! empty($invoice->webhook_url)) {
-                DispatchCustomWebhookJob::dispatch($invoice->id, 'refund.completed');
+            $refundInvoice = $refundTxn->invoice;
+            if ($refundInvoice) {
+                $webhookClient = \Modules\Inbound\Models\Client::query()
+                    ->where('pms_client_id', $refundInvoice->pms_client_id)
+                    ->first();
+                if (! empty($webhookClient?->webhook_url)) {
+                    DispatchCustomWebhookJob::dispatch($refundInvoice->id, 'refund.completed');
+                }
             }
 
             return $refundTxn;

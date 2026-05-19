@@ -42,13 +42,17 @@ class DispatchCustomWebhookJob implements ShouldQueue
     {
         $invoice = Invoice::find($this->invoiceId);
 
-        if (! $invoice || empty($invoice->webhook_url)) {
+        if (! $invoice) {
             return;
         }
 
         $client = Client::query()->where('pms_client_id', $invoice->pms_client_id)->first();
-        $secret = $client?->webhook_secret;
 
+        if (empty($client?->webhook_url)) {
+            return;
+        }
+
+        $secret    = $client->webhook_secret;
         $body      = $this->buildPayload($invoice);
         $json      = (string) json_encode($body);
         $timestamp = time();
@@ -57,7 +61,7 @@ class DispatchCustomWebhookJob implements ShouldQueue
         $response = Http::withHeaders([
             'Content-Type'        => 'application/json',
             'Middleware-Signature' => "t={$timestamp},v1={$signature}",
-        ])->post($invoice->webhook_url, $body);
+        ])->post($client->webhook_url, $body);
 
         if (! $response->successful()) {
             Log::warning('Custom webhook delivery failed', [
