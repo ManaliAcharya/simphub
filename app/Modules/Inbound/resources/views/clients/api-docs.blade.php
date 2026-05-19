@@ -519,7 +519,10 @@ Content-Type: application/json
                 <p class="section-label">Query Parameters</p>
                 <table class="doc-table">
                     <tr><th>Parameter</th><th>Type</th><th>Description</th><th>Required</th></tr>
-                    <tr><td><code>status</code></td><td>string</td><td><code>CAPTURED</code>, <code>FAILED</code>, <code>PENDING</code>, or <code>REFUNDED</code></td><td><span class="badge-opt">Optional</span></td></tr>
+                    <tr><td><code>gateway</code></td><td>string</td><td>Filter to one gateway, e.g. <code>fluidpay</code> or <code>paya</code>. Defaults to all allowed gateways.</td><td><span class="badge-opt">Optional</span></td></tr>
+                    <tr><td><code>status</code></td><td>string</td><td>Filter by status, e.g. <code>CAPTURED</code>, <code>REFUNDED</code>, <code>FAILED</code>, <code>VOIDED</code>.</td><td><span class="badge-opt">Optional</span></td></tr>
+                    <tr><td><code>start_date</code></td><td>date</td><td>Return transactions on or after this date. Format <code>YYYY-MM-DD</code>.</td><td><span class="badge-opt">Optional</span></td></tr>
+                    <tr><td><code>end_date</code></td><td>date</td><td>Return transactions on or before this date. Format <code>YYYY-MM-DD</code>.</td><td><span class="badge-opt">Optional</span></td></tr>
                     <tr><td><code>per_page</code></td><td>integer</td><td>Results per page. Min 1, max 100.</td><td><span class="badge-opt">Optional</span> — default <code>20</code></td></tr>
                     <tr><td><code>page</code></td><td>integer</td><td>Page number.</td><td><span class="badge-opt">Optional</span> — default <code>1</code></td></tr>
                 </table>
@@ -527,7 +530,7 @@ Content-Type: application/json
                 <p class="code-label label-req">Example Request</p>
                 <div class="code-block">
                     <button class="copy-code" onclick="copyCode(this)">Copy</button>
-                    <pre>GET {{ $baseUrl }}/api/v1/transactions?status=CAPTURED&per_page=10
+                    <pre>GET {{ $baseUrl }}/api/v1/transactions?gateway=fluidpay&status=CAPTURED&per_page=10
 Authorization: Bearer {{ $client->pms_client_id }}</pre>
                 </div>
 
@@ -537,25 +540,30 @@ Authorization: Bearer {{ $client->pms_client_id }}</pre>
                     <pre>{
   "data": [
     {
-      "transaction_id": "uuid",
-      "invoice_id": "uuid",
+      "transaction_id": "uuid-or-null",
+      "gateway_txn_id": "fp-txn-abc123",
+      "invoice_id": "uuid-or-null",
       "invoice_number": "INV-2026-001",
-      "gateway": "paya",
-      "gateway_txn_id": "paya-txn-abc123",
+      "gateway": "fluidpay",
+      "transaction_type": "debit",
       "status": "CAPTURED",
       "amount_cents": 150000,
       "currency": "USD",
-      "fund_type": "OPERATING",
       "created_at": "2026-05-18T08:30:00+00:00"
     }
   ],
   "meta": {
     "total": 42,
     "per_page": 10,
-    "page": 1,
-    "pages": 5
+    "page": 1
   }
 }</pre>
+                </div>
+                <div class="info-box" style="margin-top:12px;">
+                    <strong>Consistent schema across gateways.</strong>
+                    All fields are present for both <code>fluidpay</code> and <code>paya</code>.
+                    <code>transaction_id</code> and <code>invoice_id</code> are <code>null</code> for live gateway rows (FluidPay) where no local record exists.
+                    <code>transaction_type</code> is <code>debit</code> for charges and <code>credit</code> for refunds.
                 </div>
             </div>
         </div>
