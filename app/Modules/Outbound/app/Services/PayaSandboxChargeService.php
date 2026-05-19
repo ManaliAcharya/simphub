@@ -35,11 +35,12 @@ class PayaSandboxChargeService
 
         $paymentInfo->RequestID    = 'R'.now()->format('ymdHis').random_int(111, 999);
         $paymentInfo->TransactionID = 'T'.now()->format('ymdHis').random_int(111, 999);
-        $sign   = strtolower($request->transactionType) === 'credit' ? '' : '-';
-        $amount = $sign . number_format($request->amountInCents / 100, 2, '.', '');
+        $isCredit  = strtolower($request->transactionType) === 'credit';
+        $identifier = $isCredit ? 'R' : 'A';
+        $amount     = number_format($request->amountInCents / 100, 2, '.', '');
 
         $client = $this->makeSoapClient($config);
-        $xml    = $this->makeDataPacket($paymentInfo, $amount, $config['terminal_id']);
+        $xml    = $this->makeDataPacket($paymentInfo, $amount, $identifier, $config['terminal_id']);
 
         $terminalSettingsMethod = $config['terminal_settings_method'] ?: 'GetCertificationTerminalSettings';
         $processMethod          = $config['process_method'] ?: 'ProcessSingleCertificationCheck';
@@ -67,11 +68,12 @@ class PayaSandboxChargeService
         );
         $paymentInfo->RequestID    = 'R'.now()->format('ymdHis').random_int(111, 999);
         $paymentInfo->TransactionID = 'T'.now()->format('ymdHis').random_int(111, 999);
-        $sign   = strtolower($request->transactionType) === 'credit' ? '' : '-';
-        $amount = $sign . number_format($request->amountInCents / 100, 2, '.', '');
+        $isCredit   = strtolower($request->transactionType) === 'credit';
+        $identifier = $isCredit ? 'R' : 'A';
+        $amount     = number_format($request->amountInCents / 100, 2, '.', '');
 
         $client = $this->makeSoapClient($config);
-        $xml    = $this->makeTokenChargeDataPacket($payaToken, $paymentInfo, $amount, $config['terminal_id']);
+        $xml    = $this->makeTokenChargeDataPacket($payaToken, $paymentInfo, $amount, $identifier, $config['terminal_id']);
 
         $terminalSettingsMethod  = $config['terminal_settings_method'] ?: 'GetCertificationTerminalSettings';
         $processMethod           = ($config['process_method'] ?: 'ProcessSingleCertificationCheck') . 'WithToken';
@@ -121,7 +123,7 @@ class PayaSandboxChargeService
         ];
     }
 
-    private function makeTokenChargeDataPacket(string $payaToken, object $paymentInfo, string $amount, string $terminalId): string
+    private function makeTokenChargeDataPacket(string $payaToken, object $paymentInfo, string $amount, string $identifier, string $terminalId): string
     {
         $dom = new DOMDocument('1.0', 'ISO-8859-1');
         $dom->formatOutput = true;
@@ -139,7 +141,7 @@ class PayaSandboxChargeService
         $transaction->appendChild($merchant);
 
         $packet = $dom->createElement('PACKET');
-        $packet->appendChild($dom->createElement('IDENTIFIER', 'R'));
+        $packet->appendChild($dom->createElement('IDENTIFIER', $identifier));
 
         $account = $dom->createElement('ACCOUNT');
         $account->appendChild($dom->createElement('TOKEN', $payaToken));
@@ -192,7 +194,7 @@ class PayaSandboxChargeService
         return $client;
     }
 
-    private function makeDataPacket(object $paymentInfo, string $amount, string $terminalId): string
+    private function makeDataPacket(object $paymentInfo, string $amount, string $identifier, string $terminalId): string
     {
         $dom = new DOMDocument('1.0', 'ISO-8859-1');
         $dom->formatOutput = true;
@@ -210,7 +212,7 @@ class PayaSandboxChargeService
         $transaction->appendChild($merchant);
 
         $packet = $dom->createElement('PACKET');
-        $packet->appendChild($dom->createElement('IDENTIFIER', 'R'));
+        $packet->appendChild($dom->createElement('IDENTIFIER', $identifier));
 
         $account = $dom->createElement('ACCOUNT');
         $account->appendChild($dom->createElement('ROUTING_NUMBER', $paymentInfo->RoutingNumber));
@@ -287,7 +289,6 @@ class PayaSandboxChargeService
             'PhoneNumber' => env('PAYA_PHONE_NUMBER', '9015551212'),
             'DLState' => env('PAYA_DL_STATE', 'TN'),
             'DLNumber' => env('PAYA_DL_NUMBER', '12345'),
-            'Identifier' => 'R',
         ];
     }
 
