@@ -2,6 +2,7 @@
 
 namespace Modules\Inbound\Http\Controllers;
 
+
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -15,6 +16,7 @@ use Modules\Routing\Models\TerminalConfiguration;
 
 class ClientConfigController extends Controller
 {
+    
     public function create(ZohoRegionResolver $zohoRegions): View
     {
         $availableGateways = RoutingRule::query()
@@ -69,6 +71,7 @@ class ClientConfigController extends Controller
 
         $validated = $request->validate([
             'client_name'                => ['required', 'string', 'max:255'],
+
             'client_pms'                 => ['required', 'string', 'max:50'],
             'zoho_region'                => ['nullable', 'string', Rule::in(array_keys($zohoRegions->options()))],
             'allowed_payment_gateways'   => ! $isTerminal && $availableGateways !== []
@@ -116,6 +119,8 @@ class ClientConfigController extends Controller
             'client_calls_our_api' => strtoupper($validated['client_pms']) === 'CUSTOM' ? true : ($isTerminal ? false : (bool) ($validated['client_calls_our_api'] ?? false)),
         ]);
 
+        
+
         if ($isTerminal) {
             return redirect()->route('inbound.clients.terminal-created', [
                 'pms_client_id' => $client->pms_client_id,
@@ -131,6 +136,7 @@ class ClientConfigController extends Controller
         $providerRoute = match ($client->client_pms) {
             'ZOHO'       => 'inbound.zoho.page',
             'QUICKBOOKS' => 'inbound.quickbooks.page',
+            'WAVE' => 'inbound.wave.page',
             default      => 'inbound.clio.page',
         };
 
