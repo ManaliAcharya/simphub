@@ -55,11 +55,18 @@ class WaveApiClient
             throw new RuntimeException('No Wave business found for this connection.');
         }
 
-        $businessId = (string) Arr::get($edges[0], 'node.id', '');
+        $graphqlId = (string) Arr::get($edges[0], 'node.id', '');
 
-        if ($businessId === '') {
+        if ($graphqlId === '') {
             throw new RuntimeException('Wave API returned a business with no ID.');
         }
+
+        // GraphQL returns base64 global IDs like "Business:7c6e10e4-..."
+        // Webhook payload sends the plain UUID — decode and strip the type prefix
+        $decoded    = base64_decode($graphqlId);
+        $businessId = str_contains($decoded, ':')
+            ? substr($decoded, strrpos($decoded, ':') + 1)
+            : $graphqlId;
 
         $connection->forceFill(['meta' => array_merge($connection->meta ?? [], ['business_id' => $businessId])])->save();
 
