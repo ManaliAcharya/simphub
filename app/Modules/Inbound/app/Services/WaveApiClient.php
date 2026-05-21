@@ -25,9 +25,11 @@ class WaveApiClient
         return $token;
     }
 
-    private function graphqlPost(?WaveConnection $connection, array $body): array
+    private function graphqlPost(?WaveConnection $connection, array $body, ?string $tokenOverride = null): array
     {
-        return Http::withToken($this->graphqlToken($connection))
+        $token = $tokenOverride ?? $this->graphqlToken($connection);
+
+        return Http::withToken($token)
             ->acceptJson()
             ->post($this->graphqlEndpoint(), $body)
             ->throw()
@@ -42,9 +44,10 @@ class WaveApiClient
             return $cached;
         }
 
+        // Must use the connection's OAuth token — Full Access Token only sees the developer's own business
         $data = $this->graphqlPost($connection, [
             'query' => '{ businesses(page: 1, pageSize: 10) { edges { node { id name } } } }',
-        ]);
+        ], $connection->access_token);
 
         $edges = Arr::get($data, 'data.businesses.edges', []);
 
@@ -121,10 +124,10 @@ class WaveApiClient
         }
         GQL;
 
-        $data    = $this->graphqlPost($connection, [
+        $data = $this->graphqlPost($connection, [
             'query'     => $query,
             'variables' => ['businessId' => $businessId, 'invoiceId' => $invoiceId],
-        ]);
+        ], $connection->access_token);
 
         $invoice = Arr::get($data, 'data.business.invoice');
 
