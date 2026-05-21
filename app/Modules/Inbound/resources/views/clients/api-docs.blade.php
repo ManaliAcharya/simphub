@@ -117,7 +117,7 @@
     <p class="lead">
         Integrate your in-house CRM with the payment middleware. You create an invoice, we return a hosted
         payment URL, your payer pays on our page, we send you a webhook when it settles. Card and ACH data
-        never touches your server — PCI and NACHA scope stays with us.
+        never touches your server — PCI and NACHA scope stays with our PCI-certified gateway partners.
     </p>
 </div>
 

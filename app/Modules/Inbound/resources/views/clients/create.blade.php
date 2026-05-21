@@ -4,8 +4,10 @@
     h2   { font-size:22px; margin:0 0 6px; color:#111827; }
     p.sub { color:#6b7280; margin:0 0 0; font-size:14px; line-height:1.5; }
 
-    input[type=text] { width:100%; padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; box-sizing:border-box; }
-    input[type=text]:focus { outline:none; border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,.15); }
+    input[type=text],
+    input[type=email] { width:100%; padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; box-sizing:border-box; }
+    input[type=text]:focus,
+    input[type=email]:focus { outline:none; border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,.15); }
 
     /* ── Section boxes ───────────────────────────────────── */
     .section-box {
@@ -98,6 +100,7 @@
 </style>
 
 <div class="shell">
+
     <section class="panel">
         <p class="eyebrow">Client Onboarding</p>
         <h2>Create Client</h2>
@@ -110,6 +113,7 @@
             <label style="display:block;font-weight:600;font-size:13px;margin:20px 0 8px;color:#374151;">Client name</label>
             <input type="text" placeholder="e.g. Acme Law Firm" name="client_name" value="{{ old('client_name') }}" required>
 
+            
             {{-- ══════════════════════════════════════════════════════
                  ONLINE PAYMENTS
             ═══════════════════════════════════════════════════════ --}}
@@ -161,6 +165,12 @@
                             <div class="logo-box"><img src="{{ asset('images/qb_logo.png') }}" alt="QuickBooks"></div>
                             <div class="tile-name">QuickBooks</div>
                         </div>
+                        <div class="tile pms {{ old('client_pms') === 'WAVE' ? 'selected' : '' }}" data-value="WAVE" onclick="selectPMS(this)">
+                            <div class="logo-box">
+                                <div style="width:40px;height:40px;border-radius:8px;background:#eff6ff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px;color:#2563eb;">W</div>
+                            </div>
+                            <div class="tile-name">Wave</div>
+                        </div>
                     </div>
                 </div>
 
@@ -208,9 +218,6 @@
 
             </div>{{-- /online payments --}}
 
-            {{-- ══════════════════════════════════════════════════════
-                 IN-PERSON PAYMENTS
-            ═══════════════════════════════════════════════════════ --}}
             <!--<div class="section-box">
                 <span class="section-legend">In-Person Payments <span style="font-weight:400;">(optional)</span></span>
 
@@ -247,6 +254,7 @@
                 <button type="submit" class="btn primary">Create Client</button>
             </div>
         </form>
+
 
         @if ($errors->any())
             <div class="notice error" style="margin-top:16px;">{{ $errors->first() }}</div>

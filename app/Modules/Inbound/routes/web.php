@@ -9,8 +9,10 @@ use Modules\Inbound\Http\Controllers\CustomPmsController;
 use Modules\Inbound\Http\Controllers\TerminalClientController;
 
 Route::middleware('web')->group(function (): void {
+
+    // ── Public / admin routes (no merchant login required) ────────────────
     Route::get('/setup/{provider}/{token}', [PmsIntegrationController::class, 'showByToken'])
-        ->whereIn('provider', ['clio', 'zoho', 'lawcus'])
+        ->whereIn('provider', ['clio', 'zoho', 'lawcus', 'wave'])
         ->name('inbound.setup.share');
 
     Route::prefix('inbound/clients')->name('inbound.clients.')->group(function (): void {
@@ -20,21 +22,23 @@ Route::middleware('web')->group(function (): void {
         Route::post('/{pms_client_id}/webhook-url', [ClientConfigController::class, 'updateWebhookUrl'])->name('update-webhook-url');
         Route::get('/terminal-created', [TerminalClientController::class, 'created'])->name('terminal-created');
         Route::get('/api-docs', [CustomPmsController::class, 'apiDocs'])->name('api-docs');
+     
     });
 
     Route::post('/inbound/zoho/default-account', [PmsIntegrationController::class, 'saveZohoDefaultAccount'])
-        ->name('inbound.zoho.default-account');
+      ->name('inbound.zoho.default-account');
 
     Route::post('/inbound/clio/default-bank-account', [PmsIntegrationController::class, 'saveClioDefaultBankAccount'])
-        ->name('inbound.clio.default-bank-account');
+      ->name('inbound.clio.default-bank-account');
 
     Route::post('/inbound/quickbooks/default-account', [PmsIntegrationController::class, 'saveQbDefaultAccount'])
-        ->name('inbound.quickbooks.default-account');
+      ->name('inbound.quickbooks.default-account');
 
     Route::post('/inbound/lawcus/default-bank-account', [PmsIntegrationController::class, 'saveLawcusDefaultBankAccount'])
-        ->name('inbound.lawcus.default-bank-account');
+       ->name('inbound.lawcus.default-bank-account');
 
-    foreach (['clio', 'zoho', 'lawcus'] as $provider) {
+    // OAuth callbacks — initiated by external provider, no session cookie present
+    foreach (['clio', 'zoho', 'lawcus', 'wave'] as $provider) {
         Route::prefix("inbound/{$provider}")->name("inbound.{$provider}.")->group(function () use ($provider): void {
             Route::get('/', [PmsIntegrationController::class, 'show'])->defaults('provider', $provider)->name('page');
             Route::get('/share/{token}', [PmsIntegrationController::class, 'showByToken'])->defaults('provider', $provider)->name('share');
@@ -51,4 +55,5 @@ Route::middleware('web')->group(function (): void {
         Route::get('/select-company', [QuickBooksAuthController::class, 'selectCompany'])->name('select-company');
         Route::post('/confirm-company', [QuickBooksAuthController::class, 'confirmCompany'])->name('confirm-company');
     });
+
 });

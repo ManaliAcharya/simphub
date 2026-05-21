@@ -11,6 +11,7 @@ class InboundInvoiceProcessor
         private readonly ZohoInvoiceIngestionService $zoho,
         private readonly QuickBooksInvoiceIngestionService $quickbooks,
         private readonly LawcusInvoiceIngestionService $lawcus,
+        private readonly WaveInvoiceIngestionService $wave,
         private readonly CustomInvoiceIngestionService $custom,
     ) {}
 
@@ -21,6 +22,7 @@ class InboundInvoiceProcessor
             'zoho'       => $this->zoho->ingest($externalInvoiceId, $payload),
             'quickbooks' => $this->quickbooks->ingest($externalInvoiceId, $payload),
             'lawcus'     => $this->lawcus->ingest($externalInvoiceId, $payload),
+            'wave'       => $this->wave->ingest($externalInvoiceId, $payload),
             'custom'     => $this->custom->ingest($externalInvoiceId, $payload),
             default      => throw new RuntimeException("Unsupported PMS source [{$source}]."),
         };
