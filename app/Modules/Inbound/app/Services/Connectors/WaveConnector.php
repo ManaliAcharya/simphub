@@ -37,6 +37,9 @@ class WaveConnector implements PmsConnectorInterface
         $webhookUrl  = config('services.wave.webhook_callback_url');
         $successNote = '';
 
+        // Store business_id in meta immediately so webhook routing works for all clients
+        $this->api->fetchBusinessId($connection);
+
         try {
             $webhookIds = $this->api->registerWebhookSubscription($connection, $webhookUrl);
 
