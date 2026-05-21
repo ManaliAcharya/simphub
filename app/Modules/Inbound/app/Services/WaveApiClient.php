@@ -80,39 +80,6 @@ class WaveApiClient
         return $businessId;
     }
 
-    public function registerWebhookSubscription(WaveConnection $connection, string $webhookUrl): array
-    {
-        $businessId = $this->fetchBusinessId($connection);
-
-        $mutation = 'mutation ($input: WebhookCreateInput!) { webhookCreate(input: $input) { didSucceed errors { code message } webhook { id } } }';
-
-        $registeredIds = [];
-
-        foreach (['INVOICE_APPROVED', 'INVOICE_PAID'] as $event) {
-            $data = $this->graphqlPost($connection, [
-                'query'     => $mutation,
-                'variables' => [
-                    'input' => [
-                        'businessId' => $businessId,
-                        'event'      => $event,
-                        'url'        => $webhookUrl,
-                    ],
-                ],
-            ]);
-
-            $result = Arr::get($data, 'data.webhookCreate');
-
-            if (! Arr::get($result, 'didSucceed')) {
-                $errors = collect(Arr::get($result, 'errors', []))->pluck('message')->implode('; ');
-                throw new RuntimeException("Wave webhook registration failed for {$event}: " . ($errors ?: 'unknown error'));
-            }
-
-            $registeredIds[$event] = (string) Arr::get($result, 'webhook.id', '');
-        }
-
-        return $registeredIds;
-    }
-
     public function fetchInvoice(WaveConnection $connection, string $invoiceId): array
     {
         $businessId = $this->fetchBusinessId($connection);

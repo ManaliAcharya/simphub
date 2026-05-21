@@ -33,35 +33,20 @@ class WaveConnector implements PmsConnectorInterface
 
     public function completeAuthorization(string $code, string $pmsClientId): PmsCallbackResult
     {
-        $connection  = $this->oauth->exchangeCode($code, $pmsClientId);
-        $webhookUrl  = config('services.wave.webhook_callback_url');
-        $successNote = '';
+        $connection = $this->oauth->exchangeCode($code, $pmsClientId);
 
-        // Store business_id in meta immediately so webhook routing works for all clients
+        // Fetch and store business_id immediately so incoming webhooks can be routed to the right client
         $this->api->fetchBusinessId($connection);
-
-        try {
-            $webhookIds = $this->api->registerWebhookSubscription($connection, $webhookUrl);
-
-            $meta                 = $connection->meta ?? [];
-            $meta['webhook_ids']  = $webhookIds;
-            $connection->forceFill(['meta' => $meta])->save();
-
-            $successNote = ' Webhook subscription registered automatically.';
-        } catch (\Throwable $e) {
-            logger()->warning('Wave webhook auto-registration failed: ' . $e->getMessage());
-            $successNote = ' Webhook registration failed — configure it manually in the Wave dashboard.';
-        }
 
         return new PmsCallbackResult(
             connection: $connection,
-            successMessage: 'Wave connected successfully.' . $successNote,
+            successMessage: 'Wave connected successfully.',
         );
     }
 
     public function webhookMode(): string
     {
-        return 'auto';
+        return 'manual';
     }
 
     public function connection(?string $pmsClientId): ?PmsConnection
