@@ -43,7 +43,7 @@ class WaveApiClient
         }
 
         $data = $this->graphqlPost($connection, [
-            'query' => '{ businesses { edges { node { id name } } } }',
+            'query' => '{ businesses(page: 1, pageSize: 10) { edges { node { id name } } } }',
         ]);
 
         $edges = Arr::get($data, 'data.businesses.edges', []);
