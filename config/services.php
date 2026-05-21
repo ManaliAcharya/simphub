@@ -89,6 +89,17 @@ return [
         'webhook_events'       => array_values(array_filter(array_map('trim', explode(',', env('LAWCUS_WEBHOOK_EVENTS', 'invoice.created'))))),
     ],
 
+    'wave' => [
+        'base_url'             => rtrim(env('WAVE_BASE_URL', 'https://api.waveapps.com'), '/'),
+        'graphql_url'          => env('WAVE_GRAPHQL_URL', 'https://gql.waveapps.com/graphql/public'),
+        'client_id'            => env('WAVE_CLIENT_ID'),
+        'client_secret'        => env('WAVE_CLIENT_SECRET'),
+        'redirect_uri'         => env('WAVE_REDIRECT_URI', rtrim(env('APP_URL', 'http://localhost'), '/').'/inbound/wave/callback'),
+        'scope'                => env('WAVE_SCOPE', 'account:*'),
+        'webhook_callback_url' => env('WAVE_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/wave'),
+        'webhook_secret'       => env('WAVE_WEBHOOK_SECRET'),
+    ],
+
     'payment' => [
         'host_url' => rtrim(env('PAYMENT_HOST_URL', env('APP_URL', 'http://localhost')), '/'),
     ],
