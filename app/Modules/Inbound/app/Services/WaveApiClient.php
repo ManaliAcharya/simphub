@@ -2,7 +2,6 @@
 
 namespace Modules\Inbound\Services;
 
-use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Modules\Inbound\Models\WaveConnection;
@@ -10,18 +9,29 @@ use RuntimeException;
 
 class WaveApiClient
 {
-    public function graphqlRequest(?WaveConnection $connection = null): PendingRequest
+    private function graphqlEndpoint(): string
     {
-        $token = config('services.wave.full_access_token')
-            ?: $connection?->access_token;
+        return rtrim(config('services.wave.graphql_url', 'https://gql.waveapps.com/graphql/public'), '/');
+    }
+
+    private function graphqlToken(?WaveConnection $connection = null): string
+    {
+        $token = config('services.wave.full_access_token') ?: $connection?->access_token;
 
         if (! $token) {
             throw new RuntimeException('No Wave API token available. Set WAVE_FULL_ACCESS_TOKEN in .env.');
         }
 
-        return Http::withToken($token)
+        return $token;
+    }
+
+    private function graphqlPost(?WaveConnection $connection, array $body): array
+    {
+        return Http::withToken($this->graphqlToken($connection))
             ->acceptJson()
-            ->baseUrl(config('services.wave.graphql_url', 'https://gql.waveapps.com/graphql/public'));
+            ->post($this->graphqlEndpoint(), $body)
+            ->throw()
+            ->json();
     }
 
     public function fetchBusinessId(WaveConnection $connection): string
@@ -32,13 +42,11 @@ class WaveApiClient
             return $cached;
         }
 
-        $response = $this->graphqlRequest($connection)
-            ->post('', [
-                'query' => '{ businesses { edges { node { id name } } } }',
-            ])
-            ->throw();
+        $data = $this->graphqlPost($connection, [
+            'query' => '{ businesses { edges { node { id name } } } }',
+        ]);
 
-        $edges = Arr::get($response->json(), 'data.businesses.edges', []);
+        $edges = Arr::get($data, 'data.businesses.edges', []);
 
         if (empty($edges)) {
             throw new RuntimeException('No Wave business found for this connection.');
@@ -64,20 +72,18 @@ class WaveApiClient
         $registeredIds = [];
 
         foreach (['INVOICE_APPROVED', 'INVOICE_PAID'] as $event) {
-            $response = $this->graphqlRequest($connection)
-                ->post('', [
-                    'query'     => $mutation,
-                    'variables' => [
-                        'input' => [
-                            'businessId' => $businessId,
-                            'event'      => $event,
-                            'url'        => $webhookUrl,
-                        ],
+            $data = $this->graphqlPost($connection, [
+                'query'     => $mutation,
+                'variables' => [
+                    'input' => [
+                        'businessId' => $businessId,
+                        'event'      => $event,
+                        'url'        => $webhookUrl,
                     ],
-                ])
-                ->throw();
+                ],
+            ]);
 
-            $result = Arr::get($response->json(), 'data.webhookCreate');
+            $result = Arr::get($data, 'data.webhookCreate');
 
             if (! Arr::get($result, 'didSucceed')) {
                 $errors = collect(Arr::get($result, 'errors', []))->pluck('message')->implode('; ');
@@ -115,14 +121,12 @@ class WaveApiClient
         }
         GQL;
 
-        $response = $this->graphqlRequest($connection)
-            ->post('', [
-                'query'     => $query,
-                'variables' => ['businessId' => $businessId, 'invoiceId' => $invoiceId],
-            ])
-            ->throw();
+        $data    = $this->graphqlPost($connection, [
+            'query'     => $query,
+            'variables' => ['businessId' => $businessId, 'invoiceId' => $invoiceId],
+        ]);
 
-        $invoice = Arr::get($response->json(), 'data.business.invoice');
+        $invoice = Arr::get($data, 'data.business.invoice');
 
         if (! $invoice) {
             throw new RuntimeException("Wave invoice [{$invoiceId}] not found.");
