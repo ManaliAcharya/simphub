@@ -70,6 +70,13 @@ class WaveApiClient
 
         $connection->forceFill(['meta' => array_merge($connection->meta ?? [], ['business_id' => $businessId])])->save();
 
+        logger()->info('Wave: stored business_id in meta', [
+            'pms_client_id' => $connection->pms_client_id,
+            'graphql_id'    => $graphqlId,
+            'decoded'       => $decoded,
+            'business_id'   => $businessId,
+        ]);
+
         return $businessId;
     }
 
