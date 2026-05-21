@@ -19,7 +19,7 @@ class WaveOAuthService
             'response_type' => 'code',
             'client_id'     => $this->clientId(),
             'redirect_uri'  => $this->redirectUri(),
-            'scope'         => config('services.wave.scope', 'account:*'),
+            'scope'         => str_replace(',', ' ', config('services.wave.scope', 'account:*')),
             'state'         => $this->state->make('wave', $pmsClientId),
         ]);
     }

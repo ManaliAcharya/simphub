@@ -6,12 +6,14 @@ use Modules\Inbound\Contracts\PmsConnectorInterface;
 use Modules\Inbound\DTOs\PmsCallbackResult;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\PmsConnection;
+use Modules\Inbound\Services\WaveApiClient;
 use Modules\Inbound\Services\WaveOAuthService;
 
 class WaveConnector implements PmsConnectorInterface
 {
     public function __construct(
         private readonly WaveOAuthService $oauth,
+        private readonly WaveApiClient $api,
     ) {}
 
     public function key(): string
@@ -31,17 +33,32 @@ class WaveConnector implements PmsConnectorInterface
 
     public function completeAuthorization(string $code, string $pmsClientId): PmsCallbackResult
     {
-        $connection = $this->oauth->exchangeCode($code, $pmsClientId);
+        $connection  = $this->oauth->exchangeCode($code, $pmsClientId);
+        $webhookUrl  = config('services.wave.webhook_callback_url');
+        $successNote = '';
+
+        try {
+            $webhookIds = $this->api->registerWebhookSubscription($connection, $webhookUrl);
+
+            $meta                 = $connection->meta ?? [];
+            $meta['webhook_ids']  = $webhookIds;
+            $connection->forceFill(['meta' => $meta])->save();
+
+            $successNote = ' Webhook subscription registered automatically.';
+        } catch (\Throwable $e) {
+            logger()->warning('Wave webhook auto-registration failed: ' . $e->getMessage());
+            $successNote = ' Webhook registration failed — configure it manually in the Wave dashboard.';
+        }
 
         return new PmsCallbackResult(
             connection: $connection,
-            successMessage: 'Wave connected successfully. Webhooks will be received at the configured URL.',
+            successMessage: 'Wave connected successfully.' . $successNote,
         );
     }
 
     public function webhookMode(): string
     {
-        return 'manual';
+        return 'auto';
     }
 
     public function connection(?string $pmsClientId): ?PmsConnection

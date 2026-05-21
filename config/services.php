@@ -94,6 +94,7 @@ return [
         'graphql_url'          => env('WAVE_GRAPHQL_URL', 'https://gql.waveapps.com/graphql/public'),
         'client_id'            => env('WAVE_CLIENT_ID'),
         'client_secret'        => env('WAVE_CLIENT_SECRET'),
+        'full_access_token'    => env('WAVE_FULL_ACCESS_TOKEN'),
         'redirect_uri'         => env('WAVE_REDIRECT_URI', rtrim(env('APP_URL', 'http://localhost'), '/').'/inbound/wave/callback'),
         'scope'                => env('WAVE_SCOPE', 'account:*'),
         'webhook_callback_url' => env('WAVE_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/wave'),

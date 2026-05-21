@@ -36,7 +36,8 @@ class WaveWebhookService
         $payloadData = $request->json()->all();
 
         $invoiceId = (string) (
-            Arr::get($payloadData, 'data.payload.invoiceId')
+            Arr::get($payloadData, 'data.invoiceId')
+            ?? Arr::get($payloadData, 'data.payload.invoiceId')
             ?? Arr::get($payloadData, 'payload.invoiceId')
             ?? Arr::get($payloadData, 'data.id')
             ?? Arr::get($payloadData, 'id')
@@ -60,7 +61,7 @@ class WaveWebhookService
         $this->inboundApi->callInvoiceIngestion('wave', array_merge($payloadData, [
             'invoice_id'     => $invoiceId,
             'pms_client_id'  => $pmsClientId,
-            'event_name'     => (string) (Arr::get($payloadData, 'data.topic') ?? Arr::get($payloadData, 'topic') ?? 'INVOICE_CREATED'),
+            'event_name'     => (string) (Arr::get($payloadData, 'topic') ?? Arr::get($payloadData, 'data.topic') ?? 'INVOICE_CREATED'),
             'headers'        => $request->headers->all(),
         ]));
 
@@ -71,6 +72,7 @@ class WaveWebhookService
     {
         $businessId = (string) (
             Arr::get($payload, 'data.businessId')
+            ?? Arr::get($payload, 'ownerId')
             ?? Arr::get($payload, 'businessId')
             ?? ''
         );

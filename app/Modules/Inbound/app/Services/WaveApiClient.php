@@ -10,9 +10,16 @@ use RuntimeException;
 
 class WaveApiClient
 {
-    public function graphqlRequest(WaveConnection $connection): PendingRequest
+    public function graphqlRequest(?WaveConnection $connection = null): PendingRequest
     {
-        return Http::withToken($connection->access_token)
+        $token = config('services.wave.full_access_token')
+            ?: $connection?->access_token;
+
+        if (! $token) {
+            throw new RuntimeException('No Wave API token available. Set WAVE_FULL_ACCESS_TOKEN in .env.');
+        }
+
+        return Http::withToken($token)
             ->acceptJson()
             ->baseUrl(config('services.wave.graphql_url', 'https://gql.waveapps.com/graphql/public'));
     }
@@ -46,6 +53,41 @@ class WaveApiClient
         $connection->forceFill(['meta' => array_merge($connection->meta ?? [], ['business_id' => $businessId])])->save();
 
         return $businessId;
+    }
+
+    public function registerWebhookSubscription(WaveConnection $connection, string $webhookUrl): array
+    {
+        $businessId = $this->fetchBusinessId($connection);
+
+        $mutation = 'mutation ($input: WebhookCreateInput!) { webhookCreate(input: $input) { didSucceed errors { code message } webhook { id } } }';
+
+        $registeredIds = [];
+
+        foreach (['INVOICE_APPROVED', 'INVOICE_PAID'] as $event) {
+            $response = $this->graphqlRequest($connection)
+                ->post('', [
+                    'query'     => $mutation,
+                    'variables' => [
+                        'input' => [
+                            'businessId' => $businessId,
+                            'event'      => $event,
+                            'url'        => $webhookUrl,
+                        ],
+                    ],
+                ])
+                ->throw();
+
+            $result = Arr::get($response->json(), 'data.webhookCreate');
+
+            if (! Arr::get($result, 'didSucceed')) {
+                $errors = collect(Arr::get($result, 'errors', []))->pluck('message')->implode('; ');
+                throw new RuntimeException("Wave webhook registration failed for {$event}: " . ($errors ?: 'unknown error'));
+            }
+
+            $registeredIds[$event] = (string) Arr::get($result, 'webhook.id', '');
+        }
+
+        return $registeredIds;
     }
 
     public function fetchInvoice(WaveConnection $connection, string $invoiceId): array
