@@ -27,13 +27,26 @@ class WaveApiClient
 
     private function graphqlPost(?WaveConnection $connection, array $body, ?string $tokenOverride = null): array
     {
-        $token = $tokenOverride ?? $this->graphqlToken($connection);
-
-        return Http::withToken($token)
+        $token    = $tokenOverride ?? $this->graphqlToken($connection);
+        $response = Http::withToken($token)
             ->acceptJson()
-            ->post($this->graphqlEndpoint(), $body)
-            ->throw()
-            ->json();
+            ->post($this->graphqlEndpoint(), $body);
+
+        $json = $response->json() ?? [];
+
+        if ($response->failed() || ! empty($json['errors'])) {
+            logger()->error('Wave GraphQL error', [
+                'status'  => $response->status(),
+                'errors'  => $json['errors'] ?? [],
+                'query'   => $body['query'] ?? '',
+                'vars'    => $body['variables'] ?? [],
+            ]);
+
+            $message = $json['errors'][0]['message'] ?? ('HTTP ' . $response->status());
+            throw new RuntimeException("Wave GraphQL request failed: {$message}");
+        }
+
+        return $json;
     }
 
     public function fetchBusinessId(WaveConnection $connection): string
