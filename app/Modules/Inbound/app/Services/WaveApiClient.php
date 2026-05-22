@@ -79,7 +79,11 @@ class WaveApiClient
 
     public function fetchInvoice(WaveConnection $connection, string $invoiceId): array
     {
-        $businessId = $this->fetchBusinessId($connection);
+        $plainBusinessId = $this->fetchBusinessId($connection);
+
+        // Wave GraphQL expects base64 global IDs: "Business:{uuid}" and "Invoice:{id}"
+        $graphqlBusinessId = base64_encode('Business:' . $plainBusinessId);
+        $graphqlInvoiceId  = base64_encode('Invoice:' . $invoiceId);
 
         $query = <<<'GQL'
         query GetInvoice($businessId: ID!, $invoiceId: ID!) {
@@ -104,7 +108,7 @@ class WaveApiClient
 
         $data = $this->graphqlPost($connection, [
             'query'     => $query,
-            'variables' => ['businessId' => $businessId, 'invoiceId' => $invoiceId],
+            'variables' => ['businessId' => $graphqlBusinessId, 'invoiceId' => $graphqlInvoiceId],
         ], $connection->access_token);
 
         $invoice = Arr::get($data, 'data.business.invoice');
