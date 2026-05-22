@@ -85,9 +85,14 @@ class WaveWebhookService
             return '';
         }
 
+        // Try plain UUID first, then fall back to legacy base64 global ID format
+        $base64Id   = base64_encode('Business:' . $businessId);
         $connection = WaveConnection::query()
             ->where('provider', 'wave')
-            ->whereJsonContains('meta->business_id', $businessId)
+            ->where(function ($q) use ($businessId, $base64Id): void {
+                $q->whereJsonContains('meta->business_id', $businessId)
+                  ->orWhereJsonContains('meta->business_id', $base64Id);
+            })
             ->first();
 
         logger()->info('Wave webhook: lookup result', [
