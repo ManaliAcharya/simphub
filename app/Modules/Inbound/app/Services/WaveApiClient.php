@@ -44,9 +44,8 @@ class WaveApiClient
             return $cached;
         }
 
-        // Must use the connection's OAuth token — Full Access Token only sees the developer's own business
         $data = $this->graphqlPost($connection, [
-            'query' => '{ businesses(page: 1, pageSize: 10) { edges { node { id name } } } }',
+            'query' => '{ businesses { edges { node { id name } } } }',
         ], $connection->access_token);
 
         $edges = Arr::get($data, 'data.businesses.edges', []);
@@ -55,25 +54,16 @@ class WaveApiClient
             throw new RuntimeException('No Wave business found for this connection.');
         }
 
-        $graphqlId = (string) Arr::get($edges[0], 'node.id', '');
+        $businessId = (string) Arr::get($edges[0], 'node.id', '');
 
-        if ($graphqlId === '') {
+        if ($businessId === '') {
             throw new RuntimeException('Wave API returned a business with no ID.');
         }
 
-        // GraphQL returns base64 global IDs like "Business:7c6e10e4-..."
-        // Webhook payload sends the plain UUID — decode and strip the type prefix
-        $decoded    = base64_decode($graphqlId);
-        $businessId = str_contains($decoded, ':')
-            ? substr($decoded, strrpos($decoded, ':') + 1)
-            : $graphqlId;
-
         $connection->forceFill(['meta' => array_merge($connection->meta ?? [], ['business_id' => $businessId])])->save();
 
-        logger()->info('Wave: stored business_id in meta', [
+        logger()->info('Wave: business_id stored', [
             'pms_client_id' => $connection->pms_client_id,
-            'graphql_id'    => $graphqlId,
-            'decoded'       => $decoded,
             'business_id'   => $businessId,
         ]);
 
