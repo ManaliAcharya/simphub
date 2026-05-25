@@ -219,6 +219,46 @@
                 </div>
             @endif
 
+            @if ($provider === 'wave')
+                <div style="margin-top: 24px; padding: 20px 24px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; font-family: sans-serif;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 18px;">
+                        <span style="font-size: 22px;">&#9881;</span>
+                        <strong style="font-size: 16px; color: #111827;">How Wave integration works</strong>
+                    </div>
+
+                    {{-- Flow overview --}}
+                    <div style="margin-bottom: 20px; padding: 14px 16px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 14px; color: #1e40af; line-height: 1.7;">
+                        <strong style="display: block; margin-bottom: 6px; color: #1d4ed8;">End-to-end payment flow</strong>
+                        <ol style="margin: 0 0 0 18px; padding: 0;">
+                            <li>You approve an invoice in Wave &rarr; Wave fires an <code style="background:#dbeafe;padding:1px 5px;border-radius:3px;">invoice.approved</code> webhook to this middleware.</li>
+                            <li>The middleware fetches the invoice details via the Wave GraphQL API and creates a payment session.</li>
+                            <li>A payment link is emailed to the customer. The customer clicks the link and completes payment.</li>
+                            <li>The middleware records the payment in Wave — the invoice is marked <strong>Paid</strong> automatically in your Wave account.</li>
+                        </ol>
+                    </div>
+
+                    {{-- Setup steps --}}
+                    <strong style="display: block; margin-bottom: 10px; font-size: 14px; color: #374151;">Setup steps</strong>
+                    <ol style="margin: 0 0 20px 20px; padding: 0; color: #374151; font-size: 14px; line-height: 1.8;">
+                        <li><strong>Connect Wave</strong> — Click the <em>Connect Wave</em> button above and authorise this middleware with your Wave account. This stores a secure OAuth token so the middleware can read invoices and record payments on your behalf.</li>
+                        <li><strong>Select a default payment account</strong> — After connecting, choose the Wave account (e.g. <em>Chequing</em> or <em>Stripe Payments</em>) where collected payments should be deposited. This is used as the deposit account when marking invoices paid.</li>
+                    </ol>
+
+                    {{-- Event trigger info --}}
+                    <div style="margin-bottom: 16px; padding: 12px 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; color: #374151;">
+                        <strong style="display: block; margin-bottom: 4px;">Which invoices trigger the payment flow?</strong>
+                        <p style="margin: 0;">The payment flow is triggered whenever you <strong>approve an invoice</strong> in Wave. Wave fires an <code style="background:#f3f4f6;padding:1px 5px;border-radius:3px;">invoice.approved</code> event to this middleware — no manual webhook setup needed, that is handled automatically on the backend.</p>
+                    </div>
+
+                    {{-- Payment effect --}}
+                    <div style="padding: 12px 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; font-size: 13px; color: #374151;">
+                        <strong style="display: block; margin-bottom: 4px;">How payments appear in Wave</strong>
+                        <p style="margin: 0;">Once the customer pays, the middleware calls Wave's <code style="background:#f3f4f6;padding:1px 5px;border-radius:3px;">invoicePaymentCreateManual</code> API. This records a payment transaction against the invoice and changes its status to <strong>Paid</strong> — no manual entry required in Wave.</p>
+                    </div>
+                </div>
+
+            @endif
+
             @if ($provider === 'zoho' && $client && $connection)
                 <div class="summary-card" style="margin-top: 18px;">
                     <span>Default Zoho deposit account</span>
