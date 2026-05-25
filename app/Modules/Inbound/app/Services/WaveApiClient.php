@@ -136,6 +136,78 @@ class WaveApiClient
     }
 
     /**
+     * Fetch the Accounts Receivable account ID for the Wave business.
+     * Required as anchor.accountId in moneyTransactionCreate for invoice payments.
+     */
+    public function fetchArAccountId(WaveConnection $connection): string
+    {
+        $cached = Arr::get($connection->meta ?? [], 'ar_account_id');
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $businessId = $this->fetchBusinessId($connection);
+
+        $query = <<<'GQL'
+        query GetAccounts($businessId: ID!, $page: Int!, $pageSize: Int!) {
+            business(id: $businessId) {
+                accounts(page: $page, pageSize: $pageSize) {
+                    edges {
+                        node {
+                            id
+                            name
+                            subtype { value }
+                            isArchived
+                        }
+                    }
+                }
+            }
+        }
+        GQL;
+
+        $data  = $this->graphqlPost($connection, [
+            'query'     => $query,
+            'variables' => ['businessId' => $businessId, 'page' => 1, 'pageSize' => 200],
+        ], $connection->access_token);
+
+        $edges = Arr::get($data, 'data.business.accounts.edges', []);
+
+        $arAccountId = '';
+
+        foreach ($edges as $edge) {
+            $node = $edge['node'] ?? [];
+            if ($node['isArchived'] ?? false) {
+                continue;
+            }
+            if (strtoupper($node['subtype']['value'] ?? '') === 'ACCOUNTS_RECEIVABLE') {
+                $arAccountId = (string) ($node['id'] ?? '');
+                break;
+            }
+        }
+
+        if ($arAccountId === '') {
+            foreach ($edges as $edge) {
+                $node = $edge['node'] ?? [];
+                if (($node['isArchived'] ?? false)) {
+                    continue;
+                }
+                if (stripos($node['name'] ?? '', 'receivable') !== false) {
+                    $arAccountId = (string) ($node['id'] ?? '');
+                    break;
+                }
+            }
+        }
+
+        if ($arAccountId === '') {
+            throw new RuntimeException('No Accounts Receivable account found in Wave. Ensure the business has an AR account configured.');
+        }
+
+        $connection->forceFill(['meta' => array_merge($connection->meta ?? [], ['ar_account_id' => $arAccountId])])->save();
+
+        return $arAccountId;
+    }
+
+    /**
      * Resolve the account ID to use for payment recording.
      * Priority: client-configured account → connection meta cache → first ASSET account from API.
      */
@@ -229,6 +301,7 @@ class WaveApiClient
         $plainBusinessId   = $this->fetchBusinessId($connection);
         $graphqlBusinessId = base64_encode('Business:' . $plainBusinessId);
         $accountId         = $this->fetchDefaultPaymentAccountId($connection, $clientAccountId);
+        $arAccountId       = $this->fetchArAccountId($connection);
 
         $mutation = <<<'GQL'
         mutation RecordPayment($input: MoneyTransactionCreateInput!) {
@@ -255,8 +328,9 @@ class WaveApiClient
                     'date'        => $date,
                     'description' => $description,
                     'anchor'      => [
-                        'id'   => $invoiceRelayId,
-                        'type' => 'INVOICE',
+                        'accountId' => $arAccountId,
+                        'id'        => $invoiceRelayId,
+                        'type'      => 'INVOICE',
                     ],
                     'lineItems' => [[
                         'accountId' => $accountId,
