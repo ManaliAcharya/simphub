@@ -302,7 +302,7 @@ class WaveApiClient
 
         $mutation = <<<'GQL'
         mutation RecordPayment($input: InvoicePaymentCreateManualInput!) {
-            invoicePaymentCreateManual(input: $input) {
+            invoiceManualPaymentCreate(input: $input) {
                 didSucceed
                 inputErrors {
                     code
@@ -326,12 +326,14 @@ class WaveApiClient
                     'amount'           => number_format($amount, 2, '.', ''),
                     'paymentDate'      => $date,
                     'paymentMethod'    => $paymentMethod,
+                    'exchangeRate'     => '1.00',
+                    'memo'             => $description,
                 ],
             ],
         ], $connection->access_token);
 
-        $didSucceed  = (bool) Arr::get($data, 'data.invoicePaymentCreateManual.didSucceed', false);
-        $inputErrors = Arr::get($data, 'data.invoicePaymentCreateManual.inputErrors', []);
+        $didSucceed  = (bool) Arr::get($data, 'data.invoiceManualPaymentCreate.didSucceed', false);
+        $inputErrors = Arr::get($data, 'data.invoiceManualPaymentCreate.inputErrors', []);
 
         if (! $didSucceed) {
             $errorMsg = collect($inputErrors)->pluck('message')->filter()->implode('; ');
