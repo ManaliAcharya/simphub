@@ -351,7 +351,6 @@ class SyncInvoicePaidListener
                 (string) $transaction->gateway_txn_id,
                 now()->toDateString(),
                 clientAccountId: $clientAccountId,
-                paymentMethod: $this->wavePaymentMethod((string) $transaction->gateway),
             );
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
@@ -400,15 +399,6 @@ class SyncInvoicePaidListener
             'paya'     => 'Check',
             'fluidpay' => 'Credit Card',
             default    => 'Credit Card',
-        };
-    }
-
-    private function wavePaymentMethod(string $gateway): string
-    {
-        return match (strtolower($gateway)) {
-            'paya'     => 'ACH_CREDIT_TRANSFER',
-            'fluidpay' => 'CREDIT_CARD',
-            default    => 'CREDIT_CARD',
         };
     }
 
