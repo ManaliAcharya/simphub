@@ -6,6 +6,7 @@ use Modules\Inbound\Contracts\PmsConnectorInterface;
 use Modules\Inbound\DTOs\PmsCallbackResult;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\PmsConnection;
+use Modules\Inbound\Models\WaveConnection;
 use Modules\Inbound\Services\WaveApiClient;
 use Modules\Inbound\Services\WaveOAuthService;
 
@@ -55,7 +56,7 @@ class WaveConnector implements PmsConnectorInterface
             return null;
         }
 
-        return PmsConnection::query()
+        return WaveConnection::query()
             ->where('provider', 'wave')
             ->where('pms_client_id', $pmsClientId)
             ->latest('created_at')
