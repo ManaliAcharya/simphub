@@ -1,4 +1,4 @@
-<x-inbound::layouts.master>
+<x-inbound::layouts.master :title="($providerLabel ?? 'PMS') . ' Integration'">
     <div class="shell">
         <section class="panel">
             <p class="eyebrow">Client Setup</p>
