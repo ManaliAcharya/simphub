@@ -89,6 +89,18 @@ return [
         'webhook_events'       => array_values(array_filter(array_map('trim', explode(',', env('LAWCUS_WEBHOOK_EVENTS', 'invoice.created'))))),
     ],
 
+    'nmi' => [
+        'collectjs_url'        => env('NMI_COLLECTJS_URL', 'https://secure.networkmerchants.com/token/Collect.js'),
+        'collectjs_public_key' => env('NMI_COLLECTJS_PUBLIC_KEY'),
+    ],
+
+    'fluidpay' => [
+        'base_url'      => rtrim(env('FLUIDPAY_BASE_URL', 'https://sandbox.fluidpay.com'), '/'),
+        'tokenizer_url' => env('FLUIDPAY_TOKENIZER_URL'),
+        'public_key'    => env('FLUIDPAY_PUBLIC_KEY'),
+        'api_key'       => env('FLUIDPAY_API_KEY'),
+    ],
+
     'wave' => [
         'base_url'             => rtrim(env('WAVE_BASE_URL', 'https://api.waveapps.com'), '/'),
         'graphql_url'          => env('WAVE_GRAPHQL_URL', 'https://gql.waveapps.com/graphql/public'),

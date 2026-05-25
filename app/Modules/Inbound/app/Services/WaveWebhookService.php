@@ -76,11 +76,6 @@ class WaveWebhookService
             ?? ''
         );
 
-        logger()->info('Wave webhook: resolving client', [
-            'business_id_from_payload' => $businessId,
-            'all_wave_connections_meta' => WaveConnection::where('provider', 'wave')->pluck('meta', 'pms_client_id'),
-        ]);
-
         if ($businessId === '') {
             return '';
         }
@@ -94,10 +89,6 @@ class WaveWebhookService
                   ->orWhereJsonContains('meta->business_id', $base64Id);
             })
             ->first();
-
-        logger()->info('Wave webhook: lookup result', [
-            'found_pms_client_id' => $connection?->pms_client_id,
-        ]);
 
         return (string) ($connection?->pms_client_id ?? '');
     }

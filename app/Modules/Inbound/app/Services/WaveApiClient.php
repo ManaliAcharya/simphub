@@ -82,11 +82,6 @@ class WaveApiClient
 
         $connection->forceFill(['meta' => array_merge($connection->meta ?? [], ['business_id' => $businessId])])->save();
 
-        logger()->info('Wave: business_id stored', [
-            'pms_client_id' => $connection->pms_client_id,
-            'business_id'   => $businessId,
-        ]);
-
         return $businessId;
     }
 
