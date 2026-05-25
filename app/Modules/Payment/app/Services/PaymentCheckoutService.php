@@ -147,13 +147,14 @@ class PaymentCheckoutService
             if (! empty($extraBilling)) {
                 // Caller already resolved billing (e.g. a Paya vault token from tokenizeViaPaya()).
                 $billing = $extraBilling;
-            } elseif ((string) $invoice->pms_source === 'custom') {
-                // Custom PMS: tokenize static ACH credentials first, then charge with the token.
-                // ProcessSingleCertificationCheckWithToken is proven to work; direct ACH path declines.
-                \Log::debug('Custom PMS Paya: tokenizing static credentials', [
+            } elseif (in_array((string) $invoice->pms_source, ['custom', 'wave'], true)) {
+                // Custom and Wave PMS: always tokenize from static env ACH credentials.
+                // Direct ACH path is unreliable; tokenize first, then charge with the vault token.
+                \Log::debug('Paya: tokenizing static env credentials', [
                     'invoice_id' => $invoice->id,
-                    'routing'    => env('PAYA_ROUTING_NUMBER', '490000018'),
-                    'account'    => env('PAYA_ACCOUNT_NUMBER', '123456789'),
+                    'pms_source' => $invoice->pms_source,
+                    'routing'    => config('services.paya.routing_number', env('PAYA_ROUTING_NUMBER')),
+                    'account'    => config('services.paya.account_number', env('PAYA_ACCOUNT_NUMBER')),
                 ]);
 
                 $payaToken = $this->payaTokenizer->tokenizeViaPaya([
@@ -162,7 +163,7 @@ class PaymentCheckoutService
                     'account_type'   => 'checking',
                 ], $decision->midCredentials);
 
-                \Log::debug('Custom PMS Paya: token acquired', ['token' => substr($payaToken, 0, 8).'...']);
+                \Log::debug('Paya: token acquired', ['token' => substr($payaToken, 0, 8).'...']);
 
                 $billing = ['paya_token' => $payaToken];
             } else {
@@ -360,8 +361,8 @@ class PaymentCheckoutService
 
     private function payaAvailability(Invoice $invoice): array
     {
-        // Custom PMS always uses static ACH credentials — no customer fields required.
-        if ((string) $invoice->pms_source === 'custom') {
+        // Custom and Wave always use static ACH credentials — no customer fields required.
+        if (in_array((string) $invoice->pms_source, ['custom', 'wave'], true)) {
             return ['available' => true, 'reason' => null];
         }
 
