@@ -292,12 +292,10 @@ class WaveApiClient
         ?string $clientAccountId = null,
         string $paymentMethod = 'OTHER',
     ): void {
-        // Normalize compound Relay IDs like "Business:uuid;Invoice:id" — extract just the Invoice portion.
+        // invoicePaymentCreateManual expects the full compound Relay ID as stored from the listing query.
+        // Do NOT strip the Business: prefix — Wave uses the full "Business:uuid;Invoice:id" as the node ID.
         $rawInvoiceRelayId = $invoiceRelayId;
         $decoded = base64_decode($invoiceRelayId);
-        if (str_contains($decoded, 'Invoice:')) {
-            $invoiceRelayId = base64_encode(substr($decoded, (int) strpos($decoded, 'Invoice:')));
-        }
 
         $paymentAccountId = $this->fetchDefaultPaymentAccountId($connection, $clientAccountId);
 
