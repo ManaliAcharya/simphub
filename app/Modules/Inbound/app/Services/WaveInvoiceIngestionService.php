@@ -112,8 +112,10 @@ class WaveInvoiceIngestionService
 
         $amountDue = Arr::get($invoice, 'amountDue.value', 0);
         $total     = Arr::get($invoice, 'total.value', $amountDue);
+        // Wave's invoice.amountDue only returns `value`, not nested currency.
+        // Fall back to the currency sent in the webhook payload.
         $currency  = Arr::get($invoice, 'amountDue.currency.code')
-            ?? Arr::get($invoice, 'total.currency.code')
+            ?? Arr::get($triggerPayload, 'data.currency_code')
             ?? Arr::get($triggerPayload, 'currency', 'USD');
 
         $waveStatus = strtoupper((string) Arr::get($invoice, 'status', 'DRAFT'));

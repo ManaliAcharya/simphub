@@ -96,23 +96,24 @@ class WaveApiClient
         $graphqlBusinessId = base64_encode('Business:' . $plainBusinessId);
         $graphqlInvoiceId  = base64_encode('Invoice:' . $invoiceId);
 
-        // Wave's Business type exposes invoices() (plural, paginated) with an optional
-        // invoiceId filter — there is no singular invoice(id:) field.
+        // Wave's Business type has invoice(id:) singular — fields confirmed against Wave's schema.
+        // amountDue only returns `value`, not nested currency; currency comes from the webhook payload.
         $query = <<<'GQL'
         query GetInvoice($businessId: ID!, $invoiceId: ID!) {
             business(id: $businessId) {
-                invoices(page: 1, pageSize: 1, invoiceId: $invoiceId) {
-                    edges {
-                        node {
-                            id
-                            invoiceNumber
-                            status
-                            amountDue { value currency { code } }
-                            amountPaid { value currency { code } }
-                            total { value currency { code } }
-                            customer { id name email }
-                            dueDate
-                        }
+                invoice(id: $invoiceId) {
+                    id
+                    invoiceNumber
+                    status
+                    invoiceDate
+                    dueDate
+                    amountDue {
+                        value
+                    }
+                    customer {
+                        id
+                        name
+                        email
                     }
                 }
             }
@@ -124,7 +125,7 @@ class WaveApiClient
             'variables' => ['businessId' => $graphqlBusinessId, 'invoiceId' => $graphqlInvoiceId],
         ], $connection->access_token);
 
-        $invoice = Arr::get($data, 'data.business.invoices.edges.0.node');
+        $invoice = Arr::get($data, 'data.business.invoice');
 
         if (! $invoice) {
             throw new RuntimeException("Wave invoice [{$invoiceId}] not found.");
