@@ -156,7 +156,7 @@ class WaveApiClient
                         node {
                             id
                             name
-                            subtype { value }
+                            type { value }
                             isArchived
                         }
                     }
@@ -172,26 +172,27 @@ class WaveApiClient
 
         $edges = Arr::get($data, 'data.business.accounts.edges', []);
 
+        // Primary: name contains "receivable" (Wave auto-creates "Accounts Receivable" for every business)
         $arAccountId = '';
-
         foreach ($edges as $edge) {
             $node = $edge['node'] ?? [];
             if ($node['isArchived'] ?? false) {
                 continue;
             }
-            if (strtoupper($node['subtype']['value'] ?? '') === 'ACCOUNTS_RECEIVABLE') {
+            if (stripos($node['name'] ?? '', 'receivable') !== false) {
                 $arAccountId = (string) ($node['id'] ?? '');
                 break;
             }
         }
 
+        // Fallback: first non-archived ASSET account
         if ($arAccountId === '') {
             foreach ($edges as $edge) {
                 $node = $edge['node'] ?? [];
-                if (($node['isArchived'] ?? false)) {
+                if ($node['isArchived'] ?? false) {
                     continue;
                 }
-                if (stripos($node['name'] ?? '', 'receivable') !== false) {
+                if (strtoupper($node['type']['value'] ?? '') === 'ASSET') {
                     $arAccountId = (string) ($node['id'] ?? '');
                     break;
                 }
