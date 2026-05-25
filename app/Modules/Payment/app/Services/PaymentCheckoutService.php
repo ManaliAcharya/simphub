@@ -58,6 +58,7 @@ class PaymentCheckoutService
             'invoice' => [
                 'id'                   => $invoice->id,
                 'external_invoice_id'  => $invoice->external_invoice_id,
+                'invoice_number'       => $invoice->invoice_number ?: null,
                 'amount_cents'         => $invoice->amount_cents,
                 'currency'             => $invoice->currency,
                 'fund_type'            => $invoice->fund_type,

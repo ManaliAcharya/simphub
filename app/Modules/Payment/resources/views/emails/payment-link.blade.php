@@ -7,7 +7,7 @@
 <body style="font-family: Arial, sans-serif; color: #14213d; line-height: 1.5;">
     <h2>Invoice ready for payment</h2>
     <p>Your invoice is ready. Use the secure payment link below to complete payment.</p>
-    <p><strong>Invoice:</strong> {{ $invoice->external_invoice_id }}</p>
+    <p><strong>Invoice:</strong> {{ $invoice->invoice_number ? '#'.$invoice->invoice_number : $invoice->external_invoice_id }}</p>
     <p><strong>Amount:</strong> {{ number_format($invoice->amount_cents / 100, 2) }} {{ $invoice->currency }}</p>
     <p>
         <a href="{{ $paymentUrl }}" style="display: inline-block; padding: 12px 18px; background: #14213d; color: #fff; text-decoration: none; border-radius: 8px;">

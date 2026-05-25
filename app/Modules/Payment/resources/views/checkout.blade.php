@@ -107,7 +107,9 @@
             const details = await response.json();
             state.details = details;
             const amount = (details.invoice.amount_cents / 100).toFixed(2);
-            els.title.textContent = `Invoice ${details.invoice.external_invoice_id}`;
+            els.title.textContent = details.invoice.invoice_number
+                ? `Invoice #${details.invoice.invoice_number}`
+                : `Invoice ${details.invoice.external_invoice_id}`;
             els.copy.textContent = 'Review the invoice details below and continue to the secure card form.';
             els.amount.textContent = `${amount} ${details.invoice.currency}`;
             els.status.textContent = details.session.status;
