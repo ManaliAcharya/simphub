@@ -130,8 +130,13 @@ class WaveInvoiceIngestionService
             throw new RuntimeException('Wave invoice response did not include an invoice id.');
         }
 
-        $amountDue = Arr::get($invoice, 'amountDue.value', 0);
-        $total     = Arr::get($invoice, 'total.value', $amountDue);
+        $amountDue     = Arr::get($invoice, 'amountDue.value', 0);
+        $total         = Arr::get($invoice, 'total.value', $amountDue);
+        // Wave's amountDue can be 0 when the invoice was already marked paid in Wave,
+        // or when the GraphQL response omits the field. Fall back to the webhook amount.
+        $webhookAmount = Arr::get($triggerPayload, 'data.amount', 0);
+        $resolvedAmount = $amountDue ?: $total ?: $webhookAmount;
+
         // Wave's invoice.amountDue only returns `value`, not nested currency.
         // Fall back to the currency sent in the webhook payload.
         $currency  = Arr::get($invoice, 'amountDue.currency.code')
@@ -153,7 +158,7 @@ class WaveInvoiceIngestionService
             'external_client_id'  => (string) (Arr::get($invoice, 'customer.id') ?? $id),
             'status'              => $status,
             'fund_type'           => 'OPERATING',
-            'amount_cents'        => $this->toCents($amountDue ?: $total),
+            'amount_cents'        => $this->toCents($resolvedAmount),
             'currency'            => strtoupper(trim($currency)) ?: 'USD',
         ];
     }

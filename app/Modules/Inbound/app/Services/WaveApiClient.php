@@ -309,10 +309,6 @@ class WaveApiClient
                     message
                     path
                 }
-                invoicePayment {
-                    id
-                    amount
-                }
             }
         }
         GQL;
