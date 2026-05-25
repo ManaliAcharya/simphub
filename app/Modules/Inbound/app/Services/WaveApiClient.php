@@ -219,6 +219,13 @@ class WaveApiClient
         string $description = 'Payment recorded from Payment Middleware checkout',
         ?string $clientAccountId = null,
     ): void {
+        // Wave sometimes returns compound Relay IDs like "Business:uuid;Invoice:id" from the listing query.
+        // The moneyTransactionCreate anchor only accepts the Invoice portion.
+        $decodedAnchor = base64_decode($invoiceRelayId);
+        if (str_contains($decodedAnchor, 'Invoice:')) {
+            $invoiceRelayId = base64_encode(substr($decodedAnchor, (int) strpos($decodedAnchor, 'Invoice:')));
+        }
+
         $plainBusinessId   = $this->fetchBusinessId($connection);
         $graphqlBusinessId = base64_encode('Business:' . $plainBusinessId);
         $accountId         = $this->fetchDefaultPaymentAccountId($connection, $clientAccountId);
