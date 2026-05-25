@@ -293,6 +293,7 @@ class WaveApiClient
         string $paymentMethod = 'OTHER',
     ): void {
         // Normalize compound Relay IDs like "Business:uuid;Invoice:id" — extract just the Invoice portion.
+        $rawInvoiceRelayId = $invoiceRelayId;
         $decoded = base64_decode($invoiceRelayId);
         if (str_contains($decoded, 'Invoice:')) {
             $invoiceRelayId = base64_encode(substr($decoded, (int) strpos($decoded, 'Invoice:')));
@@ -300,40 +301,65 @@ class WaveApiClient
 
         $paymentAccountId = $this->fetchDefaultPaymentAccountId($connection, $clientAccountId);
 
+        $input = [
+            'invoiceId'        => $invoiceRelayId,
+            'paymentAccountId' => $paymentAccountId,
+            'amount'           => number_format($amount, 2, '.', ''),
+            'paymentDate'      => $date,
+            'paymentMethod'    => $paymentMethod,
+            'exchangeRate'     => '1.00',
+            'memo'             => $description,
+        ];
+
         $mutation = <<<'GQL'
         mutation RecordPayment($input: InvoicePaymentCreateManualInput!) {
             invoiceManualPaymentCreate(input: $input) {
-                didSucceed
-                inputErrors {
-                    code
-                    message
-                    path
+                invoicePayment {
+                    id
                 }
             }
         }
         GQL;
 
-        $data = $this->graphqlPost($connection, [
-            'query'     => $mutation,
-            'variables' => [
-                'input' => [
-                    'invoiceId'        => $invoiceRelayId,
-                    'paymentAccountId' => $paymentAccountId,
-                    'amount'           => number_format($amount, 2, '.', ''),
-                    'paymentDate'      => $date,
-                    'paymentMethod'    => $paymentMethod,
-                    'exchangeRate'     => '1.00',
-                    'memo'             => $description,
-                ],
-            ],
-        ], $connection->access_token);
+        logger()->info('Wave: recordInvoicePayment — request', [
+            'mutation'              => 'invoiceManualPaymentCreate',
+            'raw_invoice_relay_id'  => $rawInvoiceRelayId,
+            'decoded_relay_id'      => $decoded,
+            'normalized_invoice_id' => $invoiceRelayId,
+            'payment_account_id'    => $paymentAccountId,
+            'input'                 => $input,
+            'pms_client_id'         => $connection->pms_client_id,
+        ]);
 
-        $didSucceed  = (bool) Arr::get($data, 'data.invoiceManualPaymentCreate.didSucceed', false);
-        $inputErrors = Arr::get($data, 'data.invoiceManualPaymentCreate.inputErrors', []);
+        try {
+            $data = $this->graphqlPost($connection, [
+                'query'     => $mutation,
+                'variables' => ['input' => $input],
+            ], $connection->access_token);
+        } catch (\Throwable $e) {
+            logger()->error('Wave: recordInvoicePayment — graphqlPost threw', [
+                'exception'  => $e->getMessage(),
+                'input'      => $input,
+                'mutation'   => trim($mutation),
+            ]);
+            throw $e;
+        }
 
-        if (! $didSucceed) {
-            $errorMsg = collect($inputErrors)->pluck('message')->filter()->implode('; ');
-            throw new RuntimeException("Wave payment recording failed: {$errorMsg}");
+        logger()->info('Wave: recordInvoicePayment — raw response', [
+            'response' => $data,
+        ]);
+
+        // graphqlPost already throws on top-level errors; additionally verify a payment ID was returned.
+        $paymentId = Arr::get($data, 'data.invoiceManualPaymentCreate.invoicePayment.id', '');
+
+        logger()->info('Wave: recordInvoicePayment — result', [
+            'payment_id'     => $paymentId,
+            'success'        => $paymentId !== '',
+            'full_data_path' => $data['data'] ?? null,
+        ]);
+
+        if ($paymentId === '') {
+            throw new RuntimeException('Wave payment recording failed: no invoicePayment id returned.');
         }
     }
 
