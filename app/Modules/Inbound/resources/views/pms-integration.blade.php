@@ -226,6 +226,18 @@
                         <strong style="font-size: 16px; color: #111827;">How Wave integration works</strong>
                     </div>
 
+                    {{-- Demo video --}}
+                    <div style="margin-bottom: 20px;">
+                        <div style="position: relative; padding-bottom: 56.25%; height: 0; border-radius: 10px; overflow: hidden; border: 1px solid #e5e7eb;">
+                            <iframe
+                                src="https://www.loom.com/embed/22e129965ac649dcbe440078e3b4cbed"
+                                frameborder="0"
+                                allowfullscreen
+                                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
+                            </iframe>
+                        </div>
+                    </div>
+
                     {{-- Flow overview --}}
                     <div style="margin-bottom: 20px; padding: 14px 16px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 14px; color: #1e40af; line-height: 1.7;">
                         <strong style="display: block; margin-bottom: 6px; color: #1d4ed8;">End-to-end payment flow</strong>
