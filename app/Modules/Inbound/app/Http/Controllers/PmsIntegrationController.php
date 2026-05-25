@@ -19,6 +19,9 @@ use Modules\Inbound\Services\LawcusOAuthService;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksOAuthService;
+use Modules\Inbound\Models\WaveConnection;
+use Modules\Inbound\Services\WaveApiClient;
+use Modules\Inbound\Services\WaveOAuthService;
 use Modules\Inbound\Services\ZohoApiClient;
 use Modules\Inbound\Services\ZohoOAuthService;
 
@@ -173,6 +176,47 @@ class PmsIntegrationController extends Controller
         return redirect()->route('inbound.lawcus.page', [
             'pms_client_id' => $client->pms_client_id,
             'success'       => 'Default Lawcus bank account saved.',
+        ]);
+    }
+
+    public function saveWaveDefaultAccount(
+        Request $request,
+        WaveOAuthService $waveOAuth,
+        WaveApiClient $waveApi,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'pms_client_id'          => ['required', 'string'],
+            'wave_default_account_id' => ['required', 'string', 'max:100'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'WAVE', 422, 'Default account is only supported for Wave clients.');
+
+        $connection = WaveConnection::query()
+            ->where('provider', 'wave')
+            ->where('pms_client_id', $client->pms_client_id)
+            ->latest('created_at')
+            ->firstOrFail();
+
+        $connection = $waveOAuth->ensureValidAccessToken($connection);
+        $accounts   = $waveApi->fetchPaymentAccounts($connection);
+
+        $selected = collect($accounts)
+            ->first(fn (array $a): bool => (string) ($a['account_id'] ?? '') === (string) $validated['wave_default_account_id']);
+
+        abort_unless(is_array($selected), 422, 'Selected account is invalid. Please choose from the dropdown.');
+
+        $client->forceFill([
+            'wave_default_account_id'   => (string) $selected['account_id'],
+            'wave_default_account_name' => (string) ($selected['account_name'] ?? ''),
+        ])->save();
+
+        return redirect()->route('inbound.wave.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => 'Default Wave payment account saved.',
         ]);
     }
 

@@ -10,12 +10,15 @@ use Modules\Inbound\Models\ClioConnection;
 use Modules\Inbound\Models\LawcusConnection;
 use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Models\QuickBooksConnection;
+use Modules\Inbound\Models\WaveConnection;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
 use Modules\Inbound\Services\LawcusApiClient;
 use Modules\Inbound\Services\LawcusOAuthService;
 use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksOAuthService;
+use Modules\Inbound\Services\WaveApiClient;
+use Modules\Inbound\Services\WaveOAuthService;
 use Modules\Inbound\Services\ZohoApiClient;
 use Modules\Inbound\Services\ZohoOAuthService;
 use Modules\Payment\Events\PaymentApproved;
@@ -31,6 +34,8 @@ class SyncInvoicePaidListener
         private readonly QuickBooksApiClient $qbApi,
         private readonly LawcusOAuthService $lawcusOAuth,
         private readonly LawcusApiClient $lawcusApi,
+        private readonly WaveOAuthService $waveOAuth,
+        private readonly WaveApiClient $waveApi,
     ) {}
 
     public function handle(PaymentApproved $event): void
@@ -58,6 +63,7 @@ class SyncInvoicePaidListener
             'clio'       => $this->syncToClio($transaction, $invoice, $client),
             'quickbooks' => $this->syncToQuickBooks($transaction, $invoice, $client),
             'lawcus'     => $this->syncToLawcus($transaction, $invoice, $client),
+            'wave'       => $this->syncToWave($transaction, $invoice, $client),
             default      => null,
         };
     }
@@ -303,6 +309,65 @@ class SyncInvoicePaidListener
 
             AuditLogger::log('PMS_PAYMENT_RECORD_FAILED', 'invoice', $invoice->id, [
                 'pms_source'     => 'lawcus',
+                'transaction_id' => $transaction->id,
+                'gateway'        => $transaction->gateway,
+                'error'          => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    private function syncToWave(Transaction $transaction, mixed $invoice, mixed $client): void
+    {
+        try {
+            $connection = WaveConnection::query()
+                ->where('provider', 'wave')
+                ->where('pms_client_id', $invoice->pms_client_id)
+                ->latest('created_at')
+                ->first();
+
+            if (! $connection) {
+                throw new \RuntimeException('No Wave connection found for pms_client_id: ' . $invoice->pms_client_id);
+            }
+
+            $connection = $this->waveOAuth->ensureValidAccessToken($connection);
+
+            $amount = round(((int) $transaction->amount_cents) / 100, 2);
+
+            // The invoices listing query stores the Relay global ID in raw_payload.invoice.id
+            $invoiceRelayId = (string) Arr::get((array) $invoice->raw_payload, 'invoice.id', '');
+
+            if ($invoiceRelayId === '') {
+                $invoiceRelayId = base64_encode('Invoice:' . $invoice->external_invoice_id);
+            }
+
+            $clientAccountId = is_string($client->wave_default_account_id) && trim($client->wave_default_account_id) !== ''
+                ? $client->wave_default_account_id
+                : null;
+
+            $this->waveApi->recordInvoicePayment(
+                $connection,
+                $invoiceRelayId,
+                $amount,
+                (string) $transaction->gateway_txn_id,
+                now()->toDateString(),
+                clientAccountId: $clientAccountId,
+            );
+
+            $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
+
+            AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
+                'pms_source'          => 'wave',
+                'transaction_id'      => $transaction->id,
+                'gateway'             => $transaction->gateway,
+                'gateway_txn_id'      => $transaction->gateway_txn_id,
+                'external_invoice_id' => $invoice->external_invoice_id,
+                'invoice_relay_id'    => $invoiceRelayId,
+            ]);
+        } catch (\Throwable $exception) {
+            $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
+
+            AuditLogger::log('PMS_PAYMENT_RECORD_FAILED', 'invoice', $invoice->id, [
+                'pms_source'     => 'wave',
                 'transaction_id' => $transaction->id,
                 'gateway'        => $transaction->gateway,
                 'error'          => $exception->getMessage(),

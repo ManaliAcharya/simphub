@@ -86,6 +86,190 @@ class WaveApiClient
     }
 
     /**
+     * Fetch all non-archived Wave accounts suitable for payment recording.
+     * Returns a normalized array matching the structure used by other PMS API clients.
+     */
+    public function fetchPaymentAccounts(WaveConnection $connection): array
+    {
+        $businessId = $this->fetchBusinessId($connection);
+
+        $query = <<<'GQL'
+        query GetAccounts($businessId: ID!, $page: Int!, $pageSize: Int!) {
+            business(id: $businessId) {
+                accounts(page: $page, pageSize: $pageSize) {
+                    edges {
+                        node {
+                            id
+                            name
+                            type { value }
+                            isArchived
+                        }
+                    }
+                }
+            }
+        }
+        GQL;
+
+        $data  = $this->graphqlPost($connection, [
+            'query'     => $query,
+            'variables' => ['businessId' => $businessId, 'page' => 1, 'pageSize' => 200],
+        ], $connection->access_token);
+
+        $edges    = Arr::get($data, 'data.business.accounts.edges', []);
+        $accounts = [];
+
+        foreach ($edges as $edge) {
+            $node = $edge['node'] ?? [];
+            if ($node['isArchived'] ?? false) {
+                continue;
+            }
+            $accounts[] = [
+                'account_id'   => (string) ($node['id'] ?? ''),
+                'account_name' => (string) ($node['name'] ?? ''),
+                'account_type' => (string) ($node['type']['value'] ?? ''),
+            ];
+        }
+
+        usort($accounts, fn ($a, $b) => strcasecmp($a['account_name'], $b['account_name']));
+
+        return array_values(array_filter($accounts, fn ($a) => $a['account_id'] !== ''));
+    }
+
+    /**
+     * Resolve the account ID to use for payment recording.
+     * Priority: client-configured account → connection meta cache → first ASSET account from API.
+     */
+    public function fetchDefaultPaymentAccountId(WaveConnection $connection, ?string $clientAccountId = null): string
+    {
+        if (is_string($clientAccountId) && $clientAccountId !== '') {
+            return $clientAccountId;
+        }
+
+        $cached = Arr::get($connection->meta ?? [], 'default_payment_account_id');
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $businessId = $this->fetchBusinessId($connection);
+
+        $query = <<<'GQL'
+        query GetAccounts($businessId: ID!, $page: Int!, $pageSize: Int!) {
+            business(id: $businessId) {
+                accounts(page: $page, pageSize: $pageSize) {
+                    edges {
+                        node {
+                            id
+                            name
+                            type { value }
+                            isArchived
+                        }
+                    }
+                }
+            }
+        }
+        GQL;
+
+        $data  = $this->graphqlPost($connection, [
+            'query'     => $query,
+            'variables' => ['businessId' => $businessId, 'page' => 1, 'pageSize' => 50],
+        ], $connection->access_token);
+
+        $edges = Arr::get($data, 'data.business.accounts.edges', []);
+
+        $accountId = '';
+        foreach ($edges as $edge) {
+            $node = $edge['node'] ?? [];
+            if (! ($node['isArchived'] ?? false) && strtoupper($node['type']['value'] ?? '') === 'ASSET') {
+                $accountId = (string) ($node['id'] ?? '');
+                break;
+            }
+        }
+
+        if ($accountId === '') {
+            foreach ($edges as $edge) {
+                $node = $edge['node'] ?? [];
+                if (! ($node['isArchived'] ?? false)) {
+                    $accountId = (string) ($node['id'] ?? '');
+                    break;
+                }
+            }
+        }
+
+        if ($accountId === '') {
+            throw new RuntimeException('No Wave accounts found to record payment against.');
+        }
+
+        $connection->forceFill(['meta' => array_merge($connection->meta ?? [], [
+            'default_payment_account_id' => $accountId,
+        ])])->save();
+
+        return $accountId;
+    }
+
+    /**
+     * Record an external payment against a Wave invoice via moneyTransactionCreate mutation.
+     * $invoiceRelayId is the base64 Relay global ID returned by the invoices listing query.
+     */
+    public function recordInvoicePayment(
+        WaveConnection $connection,
+        string $invoiceRelayId,
+        float $amount,
+        string $externalRef,
+        string $date,
+        string $description = 'Payment recorded from Payment Middleware checkout',
+        ?string $clientAccountId = null,
+    ): void {
+        $plainBusinessId   = $this->fetchBusinessId($connection);
+        $graphqlBusinessId = base64_encode('Business:' . $plainBusinessId);
+        $accountId         = $this->fetchDefaultPaymentAccountId($connection, $clientAccountId);
+
+        $mutation = <<<'GQL'
+        mutation RecordPayment($input: MoneyTransactionCreateInput!) {
+            moneyTransactionCreate(input: $input) {
+                didSucceed
+                inputErrors {
+                    code
+                    message
+                    path
+                }
+                transaction {
+                    id
+                }
+            }
+        }
+        GQL;
+
+        $data = $this->graphqlPost($connection, [
+            'query'     => $mutation,
+            'variables' => [
+                'input' => [
+                    'businessId'  => $graphqlBusinessId,
+                    'externalId'  => $externalRef,
+                    'date'        => $date,
+                    'description' => $description,
+                    'anchor'      => [
+                        'id'   => $invoiceRelayId,
+                        'type' => 'INVOICE',
+                    ],
+                    'lineItems' => [[
+                        'accountId' => $accountId,
+                        'amount'    => $amount,
+                        'balance'   => 'DEBIT',
+                    ]],
+                ],
+            ],
+        ], $connection->access_token);
+
+        $didSucceed  = (bool) Arr::get($data, 'data.moneyTransactionCreate.didSucceed', false);
+        $inputErrors = Arr::get($data, 'data.moneyTransactionCreate.inputErrors', []);
+
+        if (! $didSucceed) {
+            $errorMsg = collect($inputErrors)->pluck('message')->filter()->implode('; ');
+            throw new RuntimeException("Wave payment recording failed: {$errorMsg}");
+        }
+    }
+
+    /**
      * Fetch a Wave invoice by its webhook integer ID.
      * Wave's invoices() connection returns Relay global IDs; we decode each to match the plain integer.
      * Returns an empty array if the invoice is not found within the first page.

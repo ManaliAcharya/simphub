@@ -181,6 +181,44 @@
                 </div>
             @endif
 
+            @if ($provider === 'wave' && $client && $connection)
+                <div class="summary-card" style="margin-top: 18px;">
+                    <span>Default Wave payment account</span>
+                    <strong>{{ $client->wave_default_account_name ?: 'Not selected' }}</strong>
+                    <span>{{ $client->wave_default_account_id ?: '--' }}</span>
+
+                    @if (! empty($wave_account_load_error))
+                        <div class="notice error" style="margin-top: 8px;">{{ $wave_account_load_error }}</div>
+                    @endif
+
+                    @if (! empty($wave_payment_accounts))
+                        <form method="POST" action="{{ route('inbound.wave.default-account') }}" class="form-grid" style="margin-top: 10px;">
+                            @csrf
+                            <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                            <label class="field">
+                                <span>Default payment account</span>
+                                <select name="wave_default_account_id" required>
+                                    <option value="">Select account</option>
+                                    @foreach ($wave_payment_accounts as $account)
+                                        <option
+                                            value="{{ $account['account_id'] }}"
+                                            @selected((string) $client->wave_default_account_id === (string) $account['account_id'])
+                                        >
+                                            {{ $account['account_name'] }}{{ $account['account_type'] ? ' ('.$account['account_type'].')' : '' }}
+                                        </option>
+                                    @endforeach
+                                </select>
+                            </label>
+                            <button type="submit" class="button primary">Save default account</button>
+                        </form>
+                    @elseif (empty($wave_account_load_error))
+                        <div class="notice error" style="margin-top: 8px;">
+                            No Wave accounts were returned. Reconnect Wave or verify the connected user has access to accounts.
+                        </div>
+                    @endif
+                </div>
+            @endif
+
             @if ($provider === 'zoho' && $client && $connection)
                 <div class="summary-card" style="margin-top: 18px;">
                     <span>Default Zoho deposit account</span>
