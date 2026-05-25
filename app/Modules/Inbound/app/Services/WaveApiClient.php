@@ -313,7 +313,13 @@ class WaveApiClient
 
         $mutation = <<<'GQL'
         mutation RecordPayment($input: InvoicePaymentCreateManualInput!) {
-            invoiceManualPaymentCreate(input: $input) {
+            invoicePaymentCreateManual(input: $input) {
+                didSucceed
+                inputErrors {
+                    code
+                    message
+                    path
+                }
                 invoicePayment {
                     id
                 }
@@ -322,7 +328,7 @@ class WaveApiClient
         GQL;
 
         logger()->info('Wave: recordInvoicePayment — request', [
-            'mutation'              => 'invoiceManualPaymentCreate',
+            'mutation'              => 'invoicePaymentCreateManual',
             'raw_invoice_relay_id'  => $rawInvoiceRelayId,
             'decoded_relay_id'      => $decoded,
             'normalized_invoice_id' => $invoiceRelayId,
@@ -349,17 +355,20 @@ class WaveApiClient
             'response' => $data,
         ]);
 
-        // graphqlPost already throws on top-level errors; additionally verify a payment ID was returned.
-        $paymentId = Arr::get($data, 'data.invoiceManualPaymentCreate.invoicePayment.id', '');
+        $didSucceed  = (bool) Arr::get($data, 'data.invoicePaymentCreateManual.didSucceed', false);
+        $inputErrors = Arr::get($data, 'data.invoicePaymentCreateManual.inputErrors', []);
+        $paymentId   = Arr::get($data, 'data.invoicePaymentCreateManual.invoicePayment.id', '');
 
         logger()->info('Wave: recordInvoicePayment — result', [
+            'did_succeed'    => $didSucceed,
             'payment_id'     => $paymentId,
-            'success'        => $paymentId !== '',
+            'input_errors'   => $inputErrors,
             'full_data_path' => $data['data'] ?? null,
         ]);
 
-        if ($paymentId === '') {
-            throw new RuntimeException('Wave payment recording failed: no invoicePayment id returned.');
+        if (! $didSucceed) {
+            $errorMsg = collect($inputErrors)->pluck('message')->filter()->implode('; ');
+            throw new RuntimeException("Wave payment recording failed: {$errorMsg}");
         }
     }
 
