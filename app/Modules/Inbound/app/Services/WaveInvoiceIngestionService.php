@@ -25,9 +25,28 @@ class WaveInvoiceIngestionService
     {
         $pmsClientId = $this->resolvePmsClientId($triggerPayload);
         $connection  = $this->oauth->ensureValidAccessToken($this->resolveConnection($pmsClientId));
-        $invoiceData = $this->client->fetchInvoice($connection, $externalInvoiceId);
-        $normalized  = $this->normalizeInvoice($invoiceData, $triggerPayload);
-        $emails      = $this->extractClientEmails($invoiceData);
+
+        // Wave's webhook already contains all invoice fields; the internal integer invoice_id
+        // does not map to the Relay global ID the GraphQL invoice(id:) field expects, so we
+        // build the invoice record from the webhook payload and fetch only the customer email.
+        $webhookData = $triggerPayload['data'] ?? [];
+        $customerId  = (string) ($webhookData['customer_id'] ?? '');
+        $email       = $customerId !== '' ? $this->client->fetchCustomerEmail($connection, $customerId) : '';
+
+        $invoiceData = [
+            'id'        => $externalInvoiceId,
+            'status'    => 'SENT',
+            'amountDue' => ['value' => $webhookData['amount'] ?? 0],
+            'dueDate'   => $webhookData['due_date'] ?? null,
+            'customer'  => [
+                'id'    => $customerId,
+                'email' => $email,
+                'name'  => '',
+            ],
+        ];
+
+        $normalized = $this->normalizeInvoice($invoiceData, $triggerPayload);
+        $emails     = $this->extractClientEmails($invoiceData);
 
         $result = DB::transaction(function () use ($normalized, $invoiceData, $triggerPayload, $emails, $pmsClientId) {
             $invoice = Invoice::query()->updateOrCreate(

@@ -90,10 +90,45 @@ class WaveApiClient
         return $businessId;
     }
 
+    public function fetchCustomerEmail(WaveConnection $connection, string $customerId): string
+    {
+        $businessId = $this->fetchBusinessId($connection);
+
+        $query = <<<'GQL'
+        query GetCustomer($businessId: ID!, $customerId: ID!) {
+            business(id: $businessId) {
+                customer(id: $customerId) {
+                    id
+                    email
+                }
+            }
+        }
+        GQL;
+
+        // Try plain integer ID first; fall back to Relay global ID if Wave rejects it
+        foreach ([$customerId, base64_encode('Customer:' . $customerId)] as $id) {
+            try {
+                $data  = $this->graphqlPost($connection, [
+                    'query'     => $query,
+                    'variables' => ['businessId' => $businessId, 'customerId' => $id],
+                ], $connection->access_token);
+                $email = (string) Arr::get($data, 'data.business.customer.email', '');
+                if ($email !== '') {
+                    return $email;
+                }
+            } catch (\Throwable) {
+                // try next format
+            }
+        }
+
+        return '';
+    }
+
     public function fetchInvoice(WaveConnection $connection, string $invoiceId): array
     {
-        // business(id:) takes the plain UUID stored during OAuth; invoice(id:) takes the raw ID from the webhook.
-        $businessId = $this->fetchBusinessId($connection);
+        // business(id:) takes the plain UUID; invoice(id:) requires a Relay global ID: base64("Invoice:{id}")
+        $businessId   = $this->fetchBusinessId($connection);
+        $graphqlInvoiceId = base64_encode('Invoice:' . $invoiceId);
 
         // Wave's Business type has invoice(id:) singular — fields confirmed against Wave's schema.
         // amountDue only returns `value`, not nested currency; currency comes from the webhook payload.
@@ -121,7 +156,7 @@ class WaveApiClient
 
         $data = $this->graphqlPost($connection, [
             'query'     => $query,
-            'variables' => ['businessId' => $businessId, 'invoiceId' => $invoiceId],
+            'variables' => ['businessId' => $businessId, 'invoiceId' => $graphqlInvoiceId],
         ], $connection->access_token);
 
         $invoice = Arr::get($data, 'data.business.invoice');
