@@ -14,6 +14,17 @@ class WaveApiClient
         return rtrim(config('services.wave.graphql_url', 'https://gql.waveapps.com/graphql/public'), '/');
     }
 
+    // Wave's business(id:) expects a Relay global ID: base64("Business:{uuid}").
+    // fetchBusinessId() stores the plain UUID for webhook matching — re-encode here before GraphQL use.
+    private function toBusinessRelayId(string $businessId): string
+    {
+        $decoded = base64_decode($businessId, true);
+        if ($decoded !== false && str_starts_with($decoded, 'Business:')) {
+            return $businessId; // already a Relay ID
+        }
+        return base64_encode('Business:' . $businessId);
+    }
+
     private function graphqlToken(?WaveConnection $connection = null): string
     {
         $token = config('services.wave.full_access_token') ?: $connection?->access_token;
@@ -112,7 +123,7 @@ class WaveApiClient
 
         $data  = $this->graphqlPost($connection, [
             'query'     => $query,
-            'variables' => ['businessId' => $businessId, 'page' => 1, 'pageSize' => 200],
+            'variables' => ['businessId' => $this->toBusinessRelayId($businessId), 'page' => 1, 'pageSize' => 200],
         ], $connection->access_token);
 
         $edges    = Arr::get($data, 'data.business.accounts.edges', []);
@@ -167,7 +178,7 @@ class WaveApiClient
 
         $data  = $this->graphqlPost($connection, [
             'query'     => $query,
-            'variables' => ['businessId' => $businessId, 'page' => 1, 'pageSize' => 200],
+            'variables' => ['businessId' => $this->toBusinessRelayId($businessId), 'page' => 1, 'pageSize' => 200],
         ], $connection->access_token);
 
         $edges = Arr::get($data, 'data.business.accounts.edges', []);
@@ -244,7 +255,7 @@ class WaveApiClient
 
         $data  = $this->graphqlPost($connection, [
             'query'     => $query,
-            'variables' => ['businessId' => $businessId, 'page' => 1, 'pageSize' => 50],
+            'variables' => ['businessId' => $this->toBusinessRelayId($businessId), 'page' => 1, 'pageSize' => 50],
         ], $connection->access_token);
 
         $edges = Arr::get($data, 'data.business.accounts.edges', []);
@@ -404,7 +415,7 @@ class WaveApiClient
         while ($page <= 10) {
             $data  = $this->graphqlPost($connection, [
                 'query'     => $query,
-                'variables' => ['businessId' => $businessId, 'page' => $page, 'pageSize' => $pageSize],
+                'variables' => ['businessId' => $this->toBusinessRelayId($businessId), 'page' => $page, 'pageSize' => $pageSize],
             ], $connection->access_token);
 
             $edges = Arr::get($data, 'data.business.invoices.edges', []);
@@ -468,7 +479,7 @@ class WaveApiClient
 
         $data = $this->graphqlPost($connection, [
             'query'     => $query,
-            'variables' => ['businessId' => $businessId, 'invoiceId' => $graphqlInvoiceId],
+            'variables' => ['businessId' => $this->toBusinessRelayId($businessId), 'invoiceId' => $graphqlInvoiceId],
         ], $connection->access_token);
 
         $invoice = Arr::get($data, 'data.business.invoice');
