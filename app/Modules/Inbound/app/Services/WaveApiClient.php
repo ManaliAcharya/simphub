@@ -74,17 +74,22 @@ class WaveApiClient
         }
 
         // GraphQL returns base64 global ID e.g. "Business:7c6e10e4-..."
-        // Webhook sends the plain UUID — decode and strip the type prefix
+        // Webhook sends the plain UUID — decode and strip the type prefix.
+        // Store both: plain UUID for webhook routing, original base64 for GraphQL queries.
         $decoded    = base64_decode($graphqlId);
         $businessId = str_contains($decoded, ':')
             ? substr($decoded, strrpos($decoded, ':') + 1)
             : $graphqlId;
 
-        $connection->forceFill(['meta' => array_merge($connection->meta ?? [], ['business_id' => $businessId])])->save();
+        $connection->forceFill(['meta' => array_merge($connection->meta ?? [], [
+            'business_id'    => $businessId,
+            'graphql_business_id' => $graphqlId,
+        ])])->save();
 
         logger()->info('Wave: business_id stored', [
-            'pms_client_id' => $connection->pms_client_id,
-            'business_id'   => $businessId,
+            'pms_client_id'       => $connection->pms_client_id,
+            'business_id'         => $businessId,
+            'graphql_business_id' => $graphqlId,
         ]);
 
         return $businessId;
@@ -92,9 +97,17 @@ class WaveApiClient
 
     public function fetchInvoice(WaveConnection $connection, string $invoiceId): array
     {
-        $plainBusinessId   = $this->fetchBusinessId($connection);
-        $graphqlBusinessId = base64_encode('Business:' . $plainBusinessId);
-        $graphqlInvoiceId  = base64_encode('Invoice:' . $invoiceId);
+        $this->fetchBusinessId($connection); // ensures meta is populated
+
+        // Use the exact base64 global ID Wave originally returned — re-encoding from the
+        // stored plain UUID risks padding or charset differences that cause "not found".
+        $graphqlBusinessId = (string) Arr::get($connection->fresh()->meta ?? [], 'graphql_business_id', '');
+
+        if ($graphqlBusinessId === '') {
+            throw new RuntimeException('Wave connection is missing graphql_business_id in meta. Re-authenticate to refresh it.');
+        }
+
+        $graphqlInvoiceId = base64_encode('Invoice:' . $invoiceId);
 
         // Wave's Business type has invoice(id:) singular — fields confirmed against Wave's schema.
         // amountDue only returns `value`, not nested currency; currency comes from the webhook payload.
