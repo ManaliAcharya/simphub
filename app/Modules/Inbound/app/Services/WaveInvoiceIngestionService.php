@@ -26,24 +26,25 @@ class WaveInvoiceIngestionService
         $pmsClientId = $this->resolvePmsClientId($triggerPayload);
         $connection  = $this->oauth->ensureValidAccessToken($this->resolveConnection($pmsClientId));
 
-        // Wave's webhook already contains all invoice fields; the internal integer invoice_id
-        // does not map to the Relay global ID the GraphQL invoice(id:) field expects, so we
-        // build the invoice record from the webhook payload and fetch only the customer email.
-        $webhookData = $triggerPayload['data'] ?? [];
-        $customerId  = (string) ($webhookData['customer_id'] ?? '');
-        $email       = $customerId !== '' ? $this->client->fetchCustomerEmail($connection, $customerId) : '';
+        // Wave's webhook integer invoice_id doesn't map to the Relay global ID the GraphQL
+        // invoice(id:) field expects, so we list invoices and match by decoded Relay ID.
+        $invoiceData = $this->client->findInvoiceByWebhookId($connection, $externalInvoiceId);
 
-        $invoiceData = [
-            'id'        => $externalInvoiceId,
-            'status'    => 'SENT',
-            'amountDue' => ['value' => $webhookData['amount'] ?? 0],
-            'dueDate'   => $webhookData['due_date'] ?? null,
-            'customer'  => [
-                'id'    => $customerId,
-                'email' => $email,
-                'name'  => '',
-            ],
-        ];
+        if (empty($invoiceData)) {
+            // Fallback: build from webhook payload; customer email will be missing.
+            $webhookData = $triggerPayload['data'] ?? [];
+            $invoiceData = [
+                'id'        => $externalInvoiceId,
+                'status'    => 'SENT',
+                'amountDue' => ['value' => $webhookData['amount'] ?? 0],
+                'dueDate'   => $webhookData['due_date'] ?? null,
+                'customer'  => ['id' => (string) ($webhookData['customer_id'] ?? ''), 'email' => '', 'name' => ''],
+            ];
+            logger()->warning('Wave: invoice not found via API listing, falling back to webhook data', [
+                'invoice_id'    => $externalInvoiceId,
+                'pms_client_id' => $pmsClientId,
+            ]);
+        }
 
         $normalized = $this->normalizeInvoice($invoiceData, $triggerPayload);
         $emails     = $this->extractClientEmails($invoiceData);

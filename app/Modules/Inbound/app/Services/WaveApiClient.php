@@ -90,38 +90,70 @@ class WaveApiClient
         return $businessId;
     }
 
-    public function fetchCustomerEmail(WaveConnection $connection, string $customerId): string
+    /**
+     * Fetch a Wave invoice by its webhook integer ID.
+     * Wave's invoices() connection returns Relay global IDs; we decode each to match the plain integer.
+     * Returns an empty array if the invoice is not found within the first page.
+     */
+    public function findInvoiceByWebhookId(WaveConnection $connection, string $webhookInvoiceId): array
     {
         $businessId = $this->fetchBusinessId($connection);
 
         $query = <<<'GQL'
-        query GetCustomer($businessId: ID!, $customerId: ID!) {
+        query ListInvoices($businessId: ID!, $page: Int!, $pageSize: Int!) {
             business(id: $businessId) {
-                customer(id: $customerId) {
-                    id
-                    email
+                invoices(page: $page, pageSize: $pageSize) {
+                    edges {
+                        node {
+                            id
+                            invoiceNumber
+                            status
+                            amountDue { value }
+                            customer { id name email }
+                            dueDate
+                        }
+                    }
                 }
             }
         }
         GQL;
 
-        // Try plain integer ID first; fall back to Relay global ID if Wave rejects it
-        foreach ([$customerId, base64_encode('Customer:' . $customerId)] as $id) {
-            try {
-                $data  = $this->graphqlPost($connection, [
-                    'query'     => $query,
-                    'variables' => ['businessId' => $businessId, 'customerId' => $id],
-                ], $connection->access_token);
-                $email = (string) Arr::get($data, 'data.business.customer.email', '');
-                if ($email !== '') {
-                    return $email;
-                }
-            } catch (\Throwable) {
-                // try next format
+        $page     = 1;
+        $pageSize = 50;
+
+        while ($page <= 10) {
+            $data  = $this->graphqlPost($connection, [
+                'query'     => $query,
+                'variables' => ['businessId' => $businessId, 'page' => $page, 'pageSize' => $pageSize],
+            ], $connection->access_token);
+
+            $edges = Arr::get($data, 'data.business.invoices.edges', []);
+
+            if (empty($edges)) {
+                break;
             }
+
+            foreach ($edges as $edge) {
+                $node    = $edge['node'] ?? [];
+                $decoded = base64_decode($node['id'] ?? '');
+                // Relay global ID decodes to "Invoice:2530533149167878162"
+                $numericId = str_contains($decoded, ':')
+                    ? substr($decoded, strrpos($decoded, ':') + 1)
+                    : ($node['id'] ?? '');
+
+                if ($numericId === $webhookInvoiceId) {
+                    return $node;
+                }
+            }
+
+            if (count($edges) < $pageSize) {
+                break; // last page
+            }
+
+            $page++;
         }
 
-        return '';
+        return [];
     }
 
     public function fetchInvoice(WaveConnection $connection, string $invoiceId): array
