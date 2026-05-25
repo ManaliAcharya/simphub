@@ -407,7 +407,7 @@ class SyncInvoicePaidListener
     {
         return match (strtolower($gateway)) {
             'fluidpay' => 'CREDIT_CARD',
-            'paya'     => 'ACH',
+            'paya'     => 'BANK_TRANSFER',
             default    => 'OTHER',
         };
     }
