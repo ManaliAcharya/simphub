@@ -63,6 +63,7 @@ class WaveInvoiceIngestionService
                     'fund_type'          => $normalized['fund_type'],
                     'amount_cents'       => $normalized['amount_cents'],
                     'currency'           => $normalized['currency'],
+                    'invoice_number'     => $normalized['invoice_number'] ?: null,
                     'pms_sync_status'    => 'SYNCED',
                     'raw_payload'        => [
                         'trigger'  => $triggerPayload,
@@ -160,6 +161,7 @@ class WaveInvoiceIngestionService
             'fund_type'           => 'OPERATING',
             'amount_cents'        => $this->toCents($resolvedAmount),
             'currency'            => strtoupper(trim($currency)) ?: 'USD',
+            'invoice_number'      => (string) Arr::get($invoice, 'invoiceNumber', ''),
         ];
     }
 
