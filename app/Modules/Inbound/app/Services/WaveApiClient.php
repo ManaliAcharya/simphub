@@ -92,28 +92,28 @@ class WaveApiClient
 
     public function fetchInvoice(WaveConnection $connection, string $invoiceId): array
     {
-        $plainBusinessId = $this->fetchBusinessId($connection);
-
-        // Wave GraphQL expects base64 global IDs: "Business:{uuid}" and "Invoice:{id}"
+        $plainBusinessId   = $this->fetchBusinessId($connection);
         $graphqlBusinessId = base64_encode('Business:' . $plainBusinessId);
         $graphqlInvoiceId  = base64_encode('Invoice:' . $invoiceId);
 
+        // Wave's Business type exposes invoices() (plural, paginated) with an optional
+        // invoiceId filter — there is no singular invoice(id:) field.
         $query = <<<'GQL'
         query GetInvoice($businessId: ID!, $invoiceId: ID!) {
             business(id: $businessId) {
-                invoice(id: $invoiceId) {
-                    id
-                    invoiceNumber
-                    title
-                    status
-                    amountDue { value currency { code } }
-                    amountPaid { value currency { code } }
-                    total { value currency { code } }
-                    subTotal { value currency { code } }
-                    customer { id name email }
-                    dueDate
-                    invoiceDate
-                    memo
+                invoices(page: 1, pageSize: 1, invoiceId: $invoiceId) {
+                    edges {
+                        node {
+                            id
+                            invoiceNumber
+                            status
+                            amountDue { value currency { code } }
+                            amountPaid { value currency { code } }
+                            total { value currency { code } }
+                            customer { id name email }
+                            dueDate
+                        }
+                    }
                 }
             }
         }
@@ -124,7 +124,7 @@ class WaveApiClient
             'variables' => ['businessId' => $graphqlBusinessId, 'invoiceId' => $graphqlInvoiceId],
         ], $connection->access_token);
 
-        $invoice = Arr::get($data, 'data.business.invoice');
+        $invoice = Arr::get($data, 'data.business.invoices.edges.0.node');
 
         if (! $invoice) {
             throw new RuntimeException("Wave invoice [{$invoiceId}] not found.");
