@@ -311,9 +311,7 @@ class WaveApiClient
                 }
                 invoicePayment {
                     id
-                    amount {
-                        value
-                    }
+                    amount
                 }
             }
         }
