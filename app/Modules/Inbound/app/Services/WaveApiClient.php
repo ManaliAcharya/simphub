@@ -280,8 +280,7 @@ class WaveApiClient
     }
 
     /**
-     * Record an external payment against a Wave invoice via moneyTransactionCreate.
-     * The anchor links to the invoice via the AR account; lineItems debit the payment account.
+     * Record an external payment against a Wave invoice via invoicePaymentCreateManual.
      */
     public function recordInvoicePayment(
         WaveConnection $connection,
@@ -291,6 +290,7 @@ class WaveApiClient
         string $date,
         string $description = 'Payment recorded from Payment Middleware checkout',
         ?string $clientAccountId = null,
+        string $paymentMethod = 'OTHER',
     ): void {
         // Normalize compound Relay IDs like "Business:uuid;Invoice:id" — extract just the Invoice portion.
         $decoded = base64_decode($invoiceRelayId);
@@ -298,22 +298,22 @@ class WaveApiClient
             $invoiceRelayId = base64_encode(substr($decoded, (int) strpos($decoded, 'Invoice:')));
         }
 
-        $plainBusinessId   = $this->fetchBusinessId($connection);
-        $graphqlBusinessId = base64_encode('Business:' . $plainBusinessId);
-        $accountId         = $this->fetchDefaultPaymentAccountId($connection, $clientAccountId);
-        $arAccountId       = $this->fetchArAccountId($connection);
+        $paymentAccountId = $this->fetchDefaultPaymentAccountId($connection, $clientAccountId);
 
         $mutation = <<<'GQL'
-        mutation RecordPayment($input: MoneyTransactionCreateInput!) {
-            moneyTransactionCreate(input: $input) {
+        mutation RecordPayment($input: InvoicePaymentCreateManualInput!) {
+            invoicePaymentCreateManual(input: $input) {
                 didSucceed
                 inputErrors {
                     code
                     message
                     path
                 }
-                transaction {
+                invoicePayment {
                     id
+                    amount {
+                        value
+                    }
                 }
             }
         }
@@ -323,27 +323,17 @@ class WaveApiClient
             'query'     => $mutation,
             'variables' => [
                 'input' => [
-                    'businessId'  => $graphqlBusinessId,
-                    'externalId'  => $externalRef,
-                    'date'        => $date,
-                    'description' => $description,
-                    'anchor'      => [
-                        'accountId' => $arAccountId,
-                        'amount'    => $amount,
-                        'id'        => $invoiceRelayId,
-                        'type'      => 'INVOICE',
-                    ],
-                    'lineItems' => [[
-                        'accountId' => $accountId,
-                        'amount'    => $amount,
-                        'balance'   => 'DEBIT',
-                    ]],
+                    'invoiceId'        => $invoiceRelayId,
+                    'paymentAccountId' => $paymentAccountId,
+                    'amount'           => number_format($amount, 2, '.', ''),
+                    'paymentDate'      => $date,
+                    'paymentMethod'    => $paymentMethod,
                 ],
             ],
         ], $connection->access_token);
 
-        $didSucceed  = (bool) Arr::get($data, 'data.moneyTransactionCreate.didSucceed', false);
-        $inputErrors = Arr::get($data, 'data.moneyTransactionCreate.inputErrors', []);
+        $didSucceed  = (bool) Arr::get($data, 'data.invoicePaymentCreateManual.didSucceed', false);
+        $inputErrors = Arr::get($data, 'data.invoicePaymentCreateManual.inputErrors', []);
 
         if (! $didSucceed) {
             $errorMsg = collect($inputErrors)->pluck('message')->filter()->implode('; ');
