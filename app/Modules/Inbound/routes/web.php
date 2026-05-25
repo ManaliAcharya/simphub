@@ -37,6 +37,9 @@ Route::middleware('web')->group(function (): void {
     Route::post('/inbound/lawcus/default-bank-account', [PmsIntegrationController::class, 'saveLawcusDefaultBankAccount'])
        ->name('inbound.lawcus.default-bank-account');
 
+    Route::post('/inbound/wave/default-account', [PmsIntegrationController::class, 'saveWaveDefaultAccount'])
+       ->name('inbound.wave.default-account');
+
     // OAuth callbacks — initiated by external provider, no session cookie present
     foreach (['clio', 'zoho', 'lawcus', 'wave'] as $provider) {
         Route::prefix("inbound/{$provider}")->name("inbound.{$provider}.")->group(function () use ($provider): void {
