@@ -181,13 +181,27 @@ class PaymentCheckoutService
                 }
 
                 if ($bankDetails['missing'] !== []) {
-                    throw new RuntimeException('Payment cannot be done because account number and routing number are missing in invoice custom fields.');
-                }
+                    // Fall back to the system-configured default ACH credentials.
+                    $defaultRouting = env('PAYA_ROUTING_NUMBER', '');
+                    $defaultAccount = env('PAYA_ACCOUNT_NUMBER', '');
 
-                $billing = [
-                    'account_number' => $bankDetails['account_number'],
-                    'routing_number' => $bankDetails['routing_number'],
-                ];
+                    if ($defaultRouting === '' || $defaultAccount === '') {
+                        throw new RuntimeException('Payment cannot be done because account number and routing number are missing in invoice custom fields and no default PAYA_ROUTING_NUMBER / PAYA_ACCOUNT_NUMBER is configured.');
+                    }
+
+                    $payaToken = $this->payaTokenizer->tokenizeViaPaya([
+                        'routing_number' => $defaultRouting,
+                        'account_number' => $defaultAccount,
+                        'account_type'   => 'checking',
+                    ], $decision->midCredentials);
+
+                    $billing = ['paya_token' => $payaToken];
+                } else {
+                    $billing = [
+                        'account_number' => $bankDetails['account_number'],
+                        'routing_number' => $bankDetails['routing_number'],
+                    ];
+                }
             }
         }
 

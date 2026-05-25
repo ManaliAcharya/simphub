@@ -329,6 +329,7 @@ class WaveApiClient
                     'description' => $description,
                     'anchor'      => [
                         'accountId' => $arAccountId,
+                        'amount'    => $amount,
                         'id'        => $invoiceRelayId,
                         'type'      => 'INVOICE',
                     ],
