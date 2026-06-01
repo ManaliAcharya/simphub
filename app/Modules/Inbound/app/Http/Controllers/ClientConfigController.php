@@ -6,6 +6,7 @@ namespace Modules\Inbound\Http\Controllers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -187,8 +188,56 @@ class ClientConfigController extends Controller
                 ->unique()->values()->all(),
         ]);
 
-        return redirect()->route('inbound.clients.api-docs', [
-            'pms_client_id' => $pmsClientId,
-        ])->with('success', 'Allowed gateways updated.');
+        return redirect()->back()->with('success', 'Allowed gateways updated.');
+    }
+
+    public function updateFees(Request $request, string $pmsClientId): RedirectResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        $validated = $request->validate([
+            'cc_fee_percent'        => ['nullable', 'numeric', 'min:0', 'max:10'],
+            'ach_fee_percent'       => ['nullable', 'numeric', 'min:0', 'max:10'],
+            'fee_surcharge_enabled' => ['nullable', 'boolean'],
+        ]);
+
+        $client->update([
+            'cc_fee_percent'        => $validated['cc_fee_percent'] ?? null,
+            'ach_fee_percent'       => $validated['ach_fee_percent'] ?? null,
+            'fee_surcharge_enabled' => (bool) ($validated['fee_surcharge_enabled'] ?? false),
+        ]);
+
+        return redirect()->back()->with('success', 'Processing fee configuration saved.');
+    }
+
+    public function uploadLogo(Request $request, string $pmsClientId): RedirectResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        $request->validate([
+            'logo' => ['required', 'file', 'mimes:jpg,jpeg,png', 'max:2048'],
+        ]);
+
+        if ($client->logo_path) {
+            Storage::disk('public')->delete($client->logo_path);
+        }
+
+        $path = $request->file('logo')->store("client-logos/{$pmsClientId}", 'public');
+
+        $client->update(['logo_path' => $path]);
+
+        return redirect()->back()->with('success', 'Logo uploaded successfully.');
+    }
+
+    public function removeLogo(Request $request, string $pmsClientId): RedirectResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        if ($client->logo_path) {
+            Storage::disk('public')->delete($client->logo_path);
+            $client->update(['logo_path' => null]);
+        }
+
+        return redirect()->back()->with('success', 'Logo removed.');
     }
 }
