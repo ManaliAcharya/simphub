@@ -5,6 +5,12 @@
     <title>Invoice Payment Link</title>
 </head>
 <body style="font-family: Arial, sans-serif; color: #14213d; line-height: 1.5;">
+    @if(!empty($logoUrl))
+    <div style="margin-bottom: 24px;">
+        <img src="{{ $logoUrl }}" alt="Company Logo"
+             style="max-height: 60px; max-width: 200px; object-fit: contain; display: block;">
+    </div>
+    @endif
     <h2>Invoice ready for payment</h2>
     <p>Your invoice is ready. Use the secure payment link below to complete payment.</p>
     <p><strong>Invoice:</strong> {{ $invoice->invoice_number ? '#'.$invoice->invoice_number : $invoice->external_invoice_id }}</p>

@@ -18,6 +18,7 @@ use Modules\Inbound\Services\LawcusApiClient;
 use Modules\Inbound\Services\LawcusOAuthService;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Modules\Inbound\Services\QuickBooksApiClient;
+use Modules\Routing\Models\RoutingRule;
 use Modules\Inbound\Services\QuickBooksOAuthService;
 use Modules\Inbound\Models\WaveConnection;
 use Modules\Inbound\Services\WaveApiClient;
@@ -283,12 +284,23 @@ class PmsIntegrationController extends Controller
         $connection = $connector->connection($pmsClientId);
         $data = $connector->integrationData($client, $connection);
 
+        $availableGateways = RoutingRule::query()
+            ->where('is_active', true)
+            ->distinct()
+            ->orderBy('gateway')
+            ->pluck('gateway')
+            ->filter()
+            ->map(fn ($g) => strtoupper((string) $g))
+            ->values()
+            ->all();
+
         return view('inbound::pms-integration', [
             'provider' => $provider,
             'providerLabel' => $connector->label(),
             'client' => $client,
             'clients' => Client::query()->where('client_pms', strtoupper($provider))->latest('created_at')->get(),
             'connection' => $connection,
+            'availableGateways' => $availableGateways,
             'success' => request()->query('success'),
             'error' => request()->query('error'),
             'connectUrl' => $client

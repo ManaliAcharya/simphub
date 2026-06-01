@@ -1,4 +1,10 @@
 <x-payment::layouts.master>
+    @if(!empty($logoUrl))
+    <div style="background:#ffffff;border-bottom:1px solid #e5e7eb;padding:14px 24px;text-align:center;">
+        <img src="{{ $logoUrl }}" alt="Company Logo"
+             style="max-height:56px;max-width:220px;object-fit:contain;display:inline-block;">
+    </div>
+    @endif
     <div class="shell">
         <section class="panel hero">
             <p class="eyebrow">Secure Invoice Payment</p>
@@ -12,6 +18,20 @@
                 <div>
                     <span>Status</span>
                     <strong id="session-status">--</strong>
+                </div>
+            </div>
+            <div id="fee-breakdown" style="display:none;margin-top:16px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-size:13px;background:#fff;">
+                <div style="display:flex;justify-content:space-between;padding:9px 14px;background:#f9fafb;">
+                    <span style="color:#6b7280;">Invoice Amount</span>
+                    <span id="fee-base-amount" style="font-weight:500;font-family:monospace;">--</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:9px 14px;border-top:1px solid #f3f4f6;">
+                    <span id="fee-label-pct" style="color:#6b7280;">Processing Fee (0%)</span>
+                    <span id="fee-processing" style="font-weight:500;font-family:monospace;">--</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;padding:9px 14px;border-top:1px solid #e5e7eb;background:#f9fafb;">
+                    <span style="font-weight:600;color:#111827;">Total Charge</span>
+                    <span id="fee-total-amount" style="font-weight:700;color:#111827;font-family:monospace;">--</span>
                 </div>
             </div>
         </section>
@@ -73,6 +93,7 @@
 
     <script>
         window.paymentSessionToken = @json($sessionToken);
+        window.feeConfig = @json($feeConfig);
     </script>
     <script>
         const sessionToken = window.paymentSessionToken;
@@ -181,6 +202,42 @@
 
             resetToken('');
             setupCardEntry();
+            updateFeeDisplay(option);
+        }
+
+        function updateFeeDisplay(option) {
+            const breakdown = document.getElementById('fee-breakdown');
+            const config = window.feeConfig;
+            if (!breakdown || !config || !config.fee_surcharge_enabled || !state.details) {
+                if (breakdown) breakdown.style.display = 'none';
+                return;
+            }
+
+            const method = (
+                option.payment_method ||
+                (option.hosted_fields && option.hosted_fields.metadata && option.hosted_fields.metadata.payment_method) ||
+                'CARD'
+            ).toUpperCase();
+
+            const feePercent = parseFloat(method === 'ACH' ? (config.ach_fee_percent || 0) : (config.cc_fee_percent || 0));
+            if (!feePercent) {
+                breakdown.style.display = 'none';
+                return;
+            }
+
+            const baseCents   = state.details.invoice.amount_cents;
+            const feeCents    = Math.round(baseCents * feePercent / 100);
+            const totalCents  = baseCents + feeCents;
+            const currency    = state.details.invoice.currency || 'USD';
+            const fmt         = (cents) => `$${(cents / 100).toFixed(2)}`;
+
+            document.getElementById('fee-base-amount').textContent  = fmt(baseCents);
+            document.getElementById('fee-label-pct').textContent     = `Processing Fee (${feePercent}%)`;
+            document.getElementById('fee-processing').textContent    = fmt(feeCents);
+            document.getElementById('fee-total-amount').textContent  = `${fmt(totalCents)} ${currency}`;
+
+            els.amount.textContent = `${fmt(totalCents)} ${currency}`;
+            breakdown.style.display = 'block';
         }
 
         function loadScript(src) {

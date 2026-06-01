@@ -16,7 +16,9 @@
     .doc-header .lead { font-size:14px; color:#6b7280; line-height:1.7; margin:0 0 28px; max-width:680px; }
 
     /* ── Client card ── */
-    .client-card { margin:0 32px 32px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:20px 24px; display:flex; flex-wrap:wrap; gap:28px; align-items:flex-start; }
+    .client-card { margin:0 32px 32px; background:#fff; border:1px solid #e5e7eb; border-radius:10px; overflow:hidden; display:grid; grid-template-columns:1fr 1fr; }
+    .client-col { padding:20px 24px; display:flex; flex-direction:column; gap:20px; }
+    .client-col-left { border-right:1px solid #e5e7eb; }
     .client-meta label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#9ca3af; display:block; margin-bottom:6px; }
     .copy-row { display:flex; align-items:center; gap:8px; }
     .copy-row code { font-family:ui-monospace,monospace; font-size:12px; background:#f3f4f6; border:1px solid #e5e7eb; border-radius:6px; padding:5px 10px; color:#374151; }
@@ -26,10 +28,24 @@
     .env-toggle { display:flex; border:1px solid #e5e7eb; border-radius:6px; overflow:hidden; }
     .env-toggle span { padding:5px 14px; font-size:12px; font-weight:600; color:#6b7280; background:#f9fafb; cursor:default; }
     .env-toggle span.active { background:#eff6ff; color:#2563eb; }
-    .gw-badge { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; margin-right:4px; }
+    .gw-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 8px 3px 10px; border-radius:999px; font-size:12px; font-weight:600; background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; }
+    .gw-remove-btn { background:none; border:none; cursor:pointer; color:#93c5fd; font-size:14px; line-height:1; padding:0; font-weight:700; transition:color .15s; }
+    .gw-remove-btn:hover { color:#1d4ed8; }
 
     .add-gw-btn { margin-left:8px; padding:2px 10px; background:#ecfdf5; color:#059669; border:1px solid #6ee7b7; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; vertical-align:middle; transition:all .15s; }
     .add-gw-btn:hover { background:#d1fae5; }
+
+    .add-gw-wrap { position:relative; display:inline-block; }
+    .add-gw-pill-btn { display:inline-flex; align-items:center; gap:3px; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:600; background:#f9fafb; color:#6b7280; border:1px dashed #d1d5db; cursor:pointer; transition:all .15s; }
+    .add-gw-pill-btn:hover { background:#eff6ff; color:#2563eb; border-color:#93c5fd; }
+    .gw-dropdown { display:none; position:absolute; top:calc(100% + 6px); left:0; min-width:190px; background:#fff; border:1px solid #e5e7eb; border-radius:8px; box-shadow:0 4px 16px rgba(0,0,0,.1); z-index:200; overflow:hidden; }
+    .gw-dropdown.open { display:block; }
+    .gw-dropdown-header { padding:7px 12px 5px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#9ca3af; background:#f9fafb; border-bottom:1px solid #f3f4f6; }
+    .gw-dropdown-item { display:flex; align-items:center; justify-content:space-between; padding:9px 12px; font-size:13px; font-weight:500; color:#374151; cursor:pointer; transition:background .12s; border-top:1px solid #f3f4f6; }
+    .gw-dropdown-item:first-of-type { border-top:none; }
+    .gw-dropdown-item:hover:not(.gw-item-added) { background:#eff6ff; color:#2563eb; }
+    .gw-dropdown-item.gw-item-added { color:#9ca3af; cursor:default; }
+    .gw-dropdown-check { color:#10b981; font-size:14px; font-weight:700; }
 
     /* ── Content shell ── */
     .doc-body { padding:0 32px 60px; }
@@ -121,65 +137,193 @@
     </p>
 </div>
 
-{{-- Client identity card --}}
+{{-- Client identity card: left = credentials, right = settings --}}
 <div class="client-card">
-    <div class="client-meta">
-        <label>Client ID</label>
-        <div class="copy-row">
-            <code id="client-id-val">{{ $client->pms_client_id }}</code>
-            <button class="copy-btn" onclick="copyText('client-id-val', this)">Copy</button>
-        </div>
-    </div>
-    <div class="client-meta">
-        <label>Base URL</label>
-        <div class="copy-row">
-            <code id="base-url-val">{{ $baseUrl }}</code>
-            <button class="copy-btn" onclick="copyText('base-url-val', this)">Copy</button>
-        </div>
-    </div>
-    @if($client->webhook_secret)
-    <div class="client-meta">
-        <label>Webhook Secret</label>
-        <div class="copy-row">
-            <code id="webhook-secret-val" style="font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $client->webhook_secret }}</code>
-            <button class="copy-btn" onclick="copyText('webhook-secret-val', this)">Copy</button>
-        </div>
-        <p style="font-size:11px;color:#9ca3af;margin:4px 0 0;">Use this to verify the <code style="font-family:ui-monospace,monospace;font-size:11px;background:#f3f4f6;padding:1px 5px;border-radius:3px;">Middleware-Signature</code> header on incoming webhooks.</p>
-    </div>
-    <div class="client-meta" style="min-width:280px;">
-        <label>Webhook URL</label>
-        <div id="whurl-display" style="display:flex;align-items:center;gap:8px;">
-            @if($client->webhook_url)
-                <code style="font-size:11px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $client->webhook_url }}</code>
-            @else
-                <span style="font-size:13px;color:#9ca3af;">Not set</span>
-            @endif
-            <button type="button" class="add-gw-btn" onclick="toggleWhUrlEdit(true)">Edit</button>
-        </div>
-        <form id="whurl-form" method="POST"
-              action="{{ route('inbound.clients.update-webhook-url', $client->pms_client_id) }}"
-              style="display:none;margin-top:6px;">
-            @csrf
-            <div style="display:flex;align-items:center;gap:6px;">
-                <input type="url" name="webhook_url" value="{{ $client->webhook_url }}"
-                       placeholder="https://your-server.com/webhook"
-                       style="flex:1;padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:0;">
-                <button type="submit" class="copy-btn" style="white-space:nowrap;">Save</button>
-                <button type="button" class="copy-btn" style="background:#f3f4f6;color:#374151;border-color:#e5e7eb;" onclick="toggleWhUrlEdit(false)">Cancel</button>
+
+    {{-- ── Left column ── --}}
+    <div class="client-col client-col-left">
+        <div class="client-meta">
+            <label>Client ID</label>
+            <div class="copy-row">
+                <code id="client-id-val">{{ $client->pms_client_id }}</code>
+                <button class="copy-btn" onclick="copyText('client-id-val', this)">Copy</button>
             </div>
-        </form>
-        <p style="font-size:11px;color:#9ca3af;margin:4px 0 0;">Payment events (<code style="font-family:ui-monospace;font-size:11px;background:#f3f4f6;padding:1px 4px;border-radius:3px;">invoice.paid</code>, <code style="font-family:ui-monospace;font-size:11px;background:#f3f4f6;padding:1px 4px;border-radius:3px;">refund.completed</code>, etc.) will be POSTed here.</p>
+        </div>
+        <div class="client-meta">
+            <label>Base URL</label>
+            <div class="copy-row">
+                <code id="base-url-val">{{ $baseUrl }}</code>
+                <button class="copy-btn" onclick="copyText('base-url-val', this)">Copy</button>
+            </div>
+        </div>
+        @if($client->webhook_secret)
+        <div class="client-meta">
+            <label>Webhook Secret</label>
+            <div class="copy-row">
+                <code id="webhook-secret-val" style="font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $client->webhook_secret }}</code>
+                <button class="copy-btn" onclick="copyText('webhook-secret-val', this)">Copy</button>
+            </div>
+            <p style="font-size:11px;color:#9ca3af;margin:4px 0 0;">Use this to verify the <code style="font-family:ui-monospace,monospace;font-size:11px;background:#f3f4f6;padding:1px 5px;border-radius:3px;">Middleware-Signature</code> header on incoming webhooks.</p>
+        </div>
+        <div class="client-meta">
+            <label>Webhook URL</label>
+            <div id="whurl-display" style="display:flex;align-items:center;gap:8px;">
+                @if($client->webhook_url)
+                    <code style="font-size:11px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $client->webhook_url }}</code>
+                @else
+                    <span style="font-size:13px;color:#9ca3af;">Not set</span>
+                @endif
+                <button type="button" class="add-gw-btn" onclick="toggleWhUrlEdit(true)">Edit</button>
+            </div>
+            <form id="whurl-form" method="POST"
+                  action="{{ route('inbound.clients.update-webhook-url', $client->pms_client_id) }}"
+                  style="display:none;margin-top:6px;">
+                @csrf
+                <div style="display:flex;align-items:center;gap:6px;">
+                    <input type="url" name="webhook_url" value="{{ $client->webhook_url }}"
+                           placeholder="https://your-server.com/webhook"
+                           style="flex:1;padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:0;">
+                    <button type="submit" class="copy-btn" style="white-space:nowrap;">Save</button>
+                    <button type="button" class="copy-btn" style="background:#f3f4f6;color:#374151;border-color:#e5e7eb;" onclick="toggleWhUrlEdit(false)">Cancel</button>
+                </div>
+            </form>
+            <p style="font-size:11px;color:#9ca3af;margin:4px 0 0;">Payment events will be POSTed here.</p>
+        </div>
+        @endif
     </div>
-    @endif
+
+    {{-- ── Right column ── --}}
+    <div class="client-col">
     <div class="client-meta">
         <label>Allowed Gateways</label>
-        <div id="gw-badge-list" style="margin-top:4px;">
+        <div id="gw-badge-list" style="margin-top:4px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
             @forelse($client->allowed_payment_gateways ?? [] as $gw)
-                <span class="gw-badge">{{ strtoupper($gw) }}</span>
+                <span class="gw-badge" data-gw="{{ strtoupper($gw) }}">
+                    {{ strtoupper($gw) }}
+                    <button type="button" class="gw-remove-btn" onclick="removeGateway('{{ strtoupper($gw) }}')" title="Remove {{ strtoupper($gw) }}">&#x00D7;</button>
+                </span>
             @empty
-                <span style="font-size:13px;color:#9ca3af;">None configured</span>
+                <span id="gw-empty" style="font-size:13px;color:#9ca3af;">None configured</span>
             @endforelse
+
+            <div class="add-gw-wrap" id="add-gw-wrap">
+                <button type="button" class="add-gw-pill-btn" id="add-gw-toggle">+ Add</button>
+                <div class="gw-dropdown" id="gw-dropdown">
+                    <div class="gw-dropdown-header">Available gateways</div>
+                    @forelse($availableGateways as $gw)
+                        <div class="gw-dropdown-item {{ in_array($gw, $client->allowed_payment_gateways ?? []) ? 'gw-item-added' : '' }}"
+                             data-gw="{{ $gw }}">
+                            <span>{{ $gw }}</span>
+                            @if(in_array($gw, $client->allowed_payment_gateways ?? []))
+                                <span class="gw-dropdown-check">&#x2713;</span>
+                            @endif
+                        </div>
+                    @empty
+                        <div style="padding:10px 12px;font-size:13px;color:#9ca3af;">No gateways available</div>
+                    @endforelse
+                </div>
+            </div>
         </div>
+
+        {{-- Hidden form submitted by JS when gateways change --}}
+        <form id="gw-update-form" method="POST"
+              action="{{ route('inbound.clients.update-gateways', $client->pms_client_id) }}"
+              style="display:none;">
+            @csrf
+            <div id="gw-hidden-inputs"></div>
+        </form>
+    </div>
+    <div class="client-meta">
+        <label>Company Logo</label>
+        <div style="margin-top:4px;">
+            @if($client->logo_path)
+                <div style="margin-bottom:8px;">
+                    <img src="/storage/{{ $client->logo_path }}"
+                         alt="Company logo"
+                         style="max-height:56px;max-width:200px;object-fit:contain;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;">
+                </div>
+            @endif
+            <form method="POST"
+                  action="{{ route('inbound.clients.upload-logo', $client->pms_client_id) }}"
+                  enctype="multipart/form-data"
+                  style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                @csrf
+                <input type="file" name="logo" accept=".jpg,.jpeg,.png" id="logo-input-docs"
+                       style="font-size:12px;max-width:180px;">
+                <button type="submit" class="copy-btn" style="white-space:nowrap;">Upload</button>
+            </form>
+            @error('logo')
+                <p style="font-size:11px;color:#dc2626;margin:4px 0 0;">{{ $message }}</p>
+            @enderror
+            @if($client->logo_path)
+                <form method="POST"
+                      action="{{ route('inbound.clients.remove-logo', $client->pms_client_id) }}"
+                      style="margin-top:4px;">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="add-gw-btn"
+                            onclick="return confirm('Remove the company logo?')"
+                            style="background:#fee2e2;color:#991b1b;border-color:#fca5a5;">
+                        Remove logo
+                    </button>
+                </form>
+            @endif
+        </div>
+    </div>
+    <div class="client-meta" style="min-width:340px;">
+        <label>Processing Fee Configuration</label>
+        <form method="POST"
+              action="{{ route('inbound.clients.update-fees', $client->pms_client_id) }}"
+              id="fee-form-docs"
+              style="margin-top:8px;">
+            @csrf
+            <input type="hidden" name="fee_surcharge_enabled" id="fee-surcharge-val-docs"
+                   value="{{ $client->fee_surcharge_enabled ? '1' : '0' }}">
+
+            {{-- Enable Fee Surcharge toggle --}}
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:10px;">
+                <span style="font-size:13px;font-weight:500;color:#374151;">Enable Fee Surcharge</span>
+                <div style="display:flex;border:1px solid #d1d5db;border-radius:6px;overflow:hidden;font-size:12px;font-weight:600;">
+                    <button type="button" id="fee-on-docs"
+                            onclick="setFeeSurcharge('docs', true)"
+                            style="padding:5px 14px;border:none;cursor:pointer;transition:all .15s;
+                                   {{ $client->fee_surcharge_enabled ? 'background:#2563eb;color:#fff;' : 'background:#fff;color:#6b7280;' }}">
+                        ON
+                    </button>
+                    <button type="button" id="fee-off-docs"
+                            onclick="setFeeSurcharge('docs', false)"
+                            style="padding:5px 14px;border:none;border-left:1px solid #d1d5db;cursor:pointer;transition:all .15s;
+                                   {{ $client->fee_surcharge_enabled ? 'background:#fff;color:#6b7280;' : 'background:#f3f4f6;color:#374151;' }}">
+                        OFF
+                    </button>
+                </div>
+            </div>
+
+            {{-- Fee inputs (disabled when surcharge is OFF) --}}
+            <div id="fee-inputs-docs" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;
+                 {{ $client->fee_surcharge_enabled ? '' : 'opacity:0.45;pointer-events:none;' }}">
+                <div>
+                    <p style="font-size:11px;color:#6b7280;margin:0 0 4px;">CC Fee (%)</p>
+                    <input type="number" name="cc_fee_percent" step="0.01" min="0" max="10"
+                           value="{{ old('cc_fee_percent', $client->cc_fee_percent) }}"
+                           placeholder="e.g. 3.50"
+                           {{ $client->fee_surcharge_enabled ? '' : 'disabled' }}
+                           style="width:90px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                </div>
+                <div>
+                    <p style="font-size:11px;color:#6b7280;margin:0 0 4px;">ACH Fee (%)</p>
+                    <input type="number" name="ach_fee_percent" step="0.01" min="0" max="10"
+                           value="{{ old('ach_fee_percent', $client->ach_fee_percent) }}"
+                           placeholder="e.g. 0.50"
+                           {{ $client->fee_surcharge_enabled ? '' : 'disabled' }}
+                           style="width:90px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+                </div>
+            </div>
+
+            <button type="submit" class="copy-btn">Save fees</button>
+        </form>
+        @error('cc_fee_percent') <p style="font-size:11px;color:#dc2626;margin:4px 0 0;">{{ $message }}</p> @enderror
+        @error('ach_fee_percent') <p style="font-size:11px;color:#dc2626;margin:4px 0 0;">{{ $message }}</p> @enderror
     </div>
     <div class="client-meta">
         <label>Environment</label>
@@ -188,7 +332,9 @@
             <span>Live</span>
         </div>
     </div>
-</div>
+    </div>{{-- end right col --}}
+
+</div>{{-- end client-card --}}
 
 @if(session('success'))
 <div style="margin:0 32px 16px;padding:12px 18px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;font-size:13px;color:#065f46;">
@@ -792,11 +938,112 @@ if (abs(time() - (int)$timestamp) > 300) {
         });
     }
 
+    function setFeeSurcharge(ns, enabled) {
+        document.getElementById('fee-surcharge-val-' + ns).value = enabled ? '1' : '0';
+        const inputs = document.getElementById('fee-inputs-' + ns);
+        inputs.style.opacity = enabled ? '1' : '0.45';
+        inputs.style.pointerEvents = enabled ? '' : 'none';
+        inputs.querySelectorAll('input[type=number]').forEach(function(el) { el.disabled = !enabled; });
+        document.getElementById('fee-on-' + ns).style.background  = enabled ? '#2563eb' : '#fff';
+        document.getElementById('fee-on-' + ns).style.color       = enabled ? '#fff' : '#6b7280';
+        document.getElementById('fee-off-' + ns).style.background = enabled ? '#fff' : '#f3f4f6';
+        document.getElementById('fee-off-' + ns).style.color      = enabled ? '#6b7280' : '#374151';
+    }
+
     function toggleWhUrlEdit(show) {
         document.getElementById('whurl-display').style.display = show ? 'none' : 'flex';
         document.getElementById('whurl-form').style.display    = show ? 'block' : 'none';
         if (show) document.querySelector('#whurl-form input[name=webhook_url]').focus();
     }
+
+    // ── Allowed Gateways ──────────────────────────────────────────────────
+    let currentGateways = @json(array_map('strtoupper', $client->allowed_payment_gateways ?? []));
+
+    function renderGwBadges() {
+        const list  = document.getElementById('gw-badge-list');
+        const wrap  = document.getElementById('add-gw-wrap');
+
+        list.querySelectorAll('.gw-badge').forEach(b => b.remove());
+        const emptyEl = document.getElementById('gw-empty');
+        if (emptyEl) emptyEl.remove();
+
+        if (currentGateways.length === 0) {
+            const empty = document.createElement('span');
+            empty.id = 'gw-empty';
+            empty.style.cssText = 'font-size:13px;color:#9ca3af;';
+            empty.textContent = 'None configured';
+            list.insertBefore(empty, wrap);
+        } else {
+            [...currentGateways].reverse().forEach(gw => {
+                const badge = document.createElement('span');
+                badge.className = 'gw-badge';
+                badge.dataset.gw = gw;
+                badge.innerHTML = gw + ' <button type="button" class="gw-remove-btn" onclick="removeGateway(\'' + gw + '\')" title="Remove ' + gw + '">&#x00D7;</button>';
+                list.insertBefore(badge, list.firstChild);
+            });
+        }
+
+        document.querySelectorAll('.gw-dropdown-item').forEach(item => {
+            const added = currentGateways.includes(item.dataset.gw);
+            item.classList.toggle('gw-item-added', added);
+            let check = item.querySelector('.gw-dropdown-check');
+            if (added && !check) {
+                check = document.createElement('span');
+                check.className = 'gw-dropdown-check';
+                check.innerHTML = '&#x2713;';
+                item.appendChild(check);
+            } else if (!added && check) {
+                check.remove();
+            }
+        });
+    }
+
+    function addGateway(gw) {
+        if (currentGateways.includes(gw)) return;
+        currentGateways.push(gw);
+        submitGateways();
+    }
+
+    function removeGateway(gw) {
+        if (!confirm('Remove ' + gw + ' from allowed gateways?')) return;
+        currentGateways = currentGateways.filter(g => g !== gw);
+        submitGateways();
+    }
+
+    function submitGateways() {
+        const form      = document.getElementById('gw-update-form');
+        const container = document.getElementById('gw-hidden-inputs');
+        container.innerHTML = '';
+        currentGateways.forEach(gw => {
+            const input = document.createElement('input');
+            input.type  = 'hidden';
+            input.name  = 'allowed_payment_gateways[]';
+            input.value = gw;
+            container.appendChild(input);
+        });
+        document.getElementById('gw-dropdown').classList.remove('open');
+        form.submit();
+    }
+
+    document.getElementById('add-gw-toggle').addEventListener('click', function (e) {
+        e.stopPropagation();
+        document.getElementById('gw-dropdown').classList.toggle('open');
+    });
+
+    document.querySelectorAll('.gw-dropdown-item').forEach(item => {
+        item.addEventListener('click', function () {
+            if (!this.classList.contains('gw-item-added')) {
+                addGateway(this.dataset.gw);
+            }
+        });
+    });
+
+    document.addEventListener('click', function (e) {
+        const wrap = document.getElementById('add-gw-wrap');
+        if (wrap && !wrap.contains(e.target)) {
+            document.getElementById('gw-dropdown').classList.remove('open');
+        }
+    });
 
     // Highlight active nav on scroll
     const sections = ['auth','flow','endpoints','webhooks','errors','sandbox'];
