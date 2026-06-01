@@ -2,6 +2,20 @@
 
 @php $surcharge = (bool) $client->fee_surcharge_enabled; @endphp
 
+<style>
+.csc-tip-wrap { position:relative; display:inline-flex; align-items:center; }
+.csc-tip-icon { width:14px; height:14px; border-radius:50%; background:rgba(19,34,56,.12); color:#6b7c93;
+    font-size:9px; font-weight:700; display:inline-flex; align-items:center; justify-content:center;
+    margin-left:5px; cursor:help; flex-shrink:0; user-select:none; }
+.csc-tip-box { display:none; position:absolute; left:calc(100% + 8px); top:50%; transform:translateY(-50%);
+    background:#132238; color:#e8edf2; font-size:11.5px; font-weight:400; line-height:1.6;
+    padding:10px 13px; border-radius:10px; width:230px; z-index:400;
+    text-transform:none; letter-spacing:0; box-shadow:0 4px 18px rgba(0,0,0,.22); pointer-events:none; }
+.csc-tip-box::before { content:''; position:absolute; right:100%; top:50%; transform:translateY(-50%);
+    border:5px solid transparent; border-right-color:#132238; }
+.csc-tip-wrap:hover .csc-tip-box { display:block; }
+</style>
+
 <div class="panel" style="padding:0;overflow:hidden;margin-bottom:18px;">
     <div style="display:grid;grid-template-columns:1fr 1fr;">
 
@@ -29,7 +43,13 @@
 
             {{-- Allowed Gateways --}}
             <div>
-                <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;display:block;margin-bottom:6px;">Allowed Gateways</span>
+                <div style="display:flex;align-items:center;margin-bottom:6px;">
+                    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;">Allowed Gateways</span>
+                    <span class="csc-tip-wrap">
+                        <span class="csc-tip-icon">i</span>
+                        <span class="csc-tip-box">Control the payment options visible on this client's invoices. Add or remove gateways instantly.</span>
+                    </span>
+                </div>
                 <div id="csc-gw-list" style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;">
                     @forelse($client->allowed_payment_gateways ?? [] as $gw)
                         <span data-gw="{{ strtoupper($gw) }}"
@@ -68,7 +88,13 @@
 
             {{-- Company Logo --}}
             <div>
-                <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;display:block;margin-bottom:6px;">Company Logo</span>
+                <div style="display:flex;align-items:center;margin-bottom:6px;">
+                    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;">Company Logo</span>
+                    <span class="csc-tip-wrap">
+                        <span class="csc-tip-icon">i</span>
+                        <span class="csc-tip-box">The uploaded logo appears in two places: at the top of the hosted payment page your customers see, and at the top of the payment link email. Accepted formats: JPG, PNG. Max size: 2 MB. Replacing uploads a new logo immediately.</span>
+                    </span>
+                </div>
                 @if($client->logo_path)
                     <img src="/storage/{{ $client->logo_path }}" alt="Logo"
                          style="max-height:44px;max-width:140px;object-fit:contain;border:1px solid rgba(19,34,56,.1);border-radius:7px;padding:4px;background:#fff;display:block;margin-bottom:8px;">
@@ -91,7 +117,13 @@
 
             {{-- Processing Fee --}}
             <div>
-                <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;display:block;margin-bottom:6px;">Processing Fee</span>
+                <div style="display:flex;align-items:center;margin-bottom:6px;">
+                    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;">Processing Fee</span>
+                    <span class="csc-tip-wrap">
+                        <span class="csc-tip-icon">i</span>
+                        <span class="csc-tip-box">When surcharge is ON, the configured fee percentage is added to the invoice amount on the checkout page. Customers see a full breakdown: Invoice Amount + Processing Fee = Total Charge. The gateway is charged the total. Toggle OFF to absorb the fee yourself — customers pay only the invoice amount.</span>
+                    </span>
+                </div>
                 <form method="POST" action="{{ route('inbound.clients.update-fees', $client->pms_client_id) }}">
                     @csrf
                     <input type="hidden" name="fee_surcharge_enabled" id="csc-surcharge-val" value="{{ $surcharge ? '1' : '0' }}">
