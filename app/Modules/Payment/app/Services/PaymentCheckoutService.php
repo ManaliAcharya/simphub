@@ -104,6 +104,21 @@ class PaymentCheckoutService
     ): Transaction {
         $invoice = $session->invoice()->firstOrFail();
 
+        // ── Fee surcharge ──────────────────────────────────────────────────
+        $feeCents = 0;
+        if ($invoice->pms_client_id) {
+            $feeClient = Client::query()->where('pms_client_id', $invoice->pms_client_id)->first();
+            if ($feeClient && $feeClient->fee_surcharge_enabled) {
+                $isAch      = strtoupper($paymentMethod) === 'ACH';
+                $feePercent = (float) ($isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent);
+                if ($feePercent > 0) {
+                    $feeCents = (int) round($invoice->amount_cents * $feePercent / 100);
+                }
+            }
+        }
+        $totalAmountCents = (int) $invoice->amount_cents + $feeCents;
+        // ──────────────────────────────────────────────────────────────────
+
         if ($token === '') {
             throw new RuntimeException('Payment token is required.');
         }
@@ -208,16 +223,18 @@ class PaymentCheckoutService
         }
 
         \Log::debug('PaymentCheckoutService: dispatching charge', [
-            'gateway'    => $decision->gateway,
-            'invoice_id' => $invoice->id,
-            'pms_source' => $invoice->pms_source,
-            'amount'     => $invoice->amount_cents,
+            'gateway'      => $decision->gateway,
+            'invoice_id'   => $invoice->id,
+            'pms_source'   => $invoice->pms_source,
+            'amount'       => $invoice->amount_cents,
+            'fee_cents'    => $feeCents,
+            'total'        => $totalAmountCents,
             'billing_keys' => array_keys($billing),
         ]);
 
         $response = $this->gateways->make($decision->gateway)->charge(new ChargeRequest(
             token: $token,
-            amountInCents: (int) $invoice->amount_cents,
+            amountInCents: $totalAmountCents,
             currency: (string) $invoice->currency,
             idempotencyKey: (string) $session->idempotency_key,
             midCredentials: $decision->midCredentials,
@@ -259,7 +276,7 @@ class PaymentCheckoutService
             throw new RuntimeException($response->message ?? 'Payment was declined.');
         }
 
-        $transaction = DB::transaction(function () use ($session, $invoice, $decision, $response) {
+        $transaction = DB::transaction(function () use ($session, $invoice, $decision, $response, $feeCents, $totalAmountCents) {
             $transaction = Transaction::query()->create([
                 'payment_session_id' => $session->id,
                 'invoice_id'         => $invoice->id,
@@ -271,7 +288,8 @@ class PaymentCheckoutService
                 'status'             => 'CAPTURED',
                 'transaction_type'   => 'debit',
                 'fund_type'          => $session->fund_type,
-                'amount_cents'       => $invoice->amount_cents,
+                'amount_cents'       => $totalAmountCents,
+                'fee_cents'          => $feeCents,
                 'currency'           => $invoice->currency,
                 'gateway_response'   => $response->raw,
             ]);
