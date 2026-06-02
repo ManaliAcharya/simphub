@@ -156,39 +156,6 @@
                 </form>
             </div>
 
-            {{-- Cash Discount --}}
-            @php $cdEnabled = (bool) $client->cash_discount_enabled; @endphp
-            <div>
-                <div style="display:flex;align-items:center;margin-bottom:6px;">
-                    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;">Cash Discount</span>
-                    <span class="csc-tip-wrap">
-                        <span class="csc-tip-icon">i</span>
-                        <span class="csc-tip-box">When enabled, the configured discount percentage is deducted from the invoice amount at checkout. Customers see the reduced total. Useful for incentivising ACH or cash payments over card.</span>
-                    </span>
-                </div>
-                <form method="POST" action="{{ route('inbound.clients.update-cash-discount', $client->pms_client_id) }}">
-                    @csrf
-                    <input type="hidden" name="cash_discount_enabled" id="csc-cd-val" value="{{ $cdEnabled ? '1' : '0' }}">
-                    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 11px;background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;margin-bottom:10px;">
-                        <span style="font-size:13px;font-weight:500;color:#132238;">Enable Discount</span>
-                        <div style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:7px;overflow:hidden;font-size:11px;font-weight:700;">
-                            <button type="button" id="csc-cd-on" onclick="cscSetCd(true)"
-                                    style="padding:4px 12px;border:none;cursor:pointer;font-family:inherit;{{ $cdEnabled ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">ON</button>
-                            <button type="button" id="csc-cd-off" onclick="cscSetCd(false)"
-                                    style="padding:4px 12px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $cdEnabled ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
-                        </div>
-                    </div>
-                    <div id="csc-cd-fields" style="margin-bottom:10px;{{ $cdEnabled ? '' : 'opacity:0.4;pointer-events:none;' }}">
-                        <label style="display:block;font-size:11px;color:#6b7c93;margin-bottom:3px;">Discount (%)</label>
-                        <input type="number" name="cash_discount_percent" step="0.01" min="0" max="100" placeholder="0.00"
-                               value="{{ old('cash_discount_percent', $client->cash_discount_percent) }}" {{ $cdEnabled ? '' : 'disabled' }}
-                               style="width:110px;padding:6px 8px;border:1px solid rgba(19,34,56,.12);border-radius:9px;font:inherit;font-size:13px;">
-                    </div>
-                    <button type="submit" class="button primary" style="font-size:12px;padding:6px 14px;">Save discount</button>
-                    @error('cash_discount_percent')<p style="font-size:11px;color:#9a2f2f;margin:3px 0 0;">{{ $message }}</p>@enderror
-                </form>
-            </div>
-
         </div>
     </div>
 </div>
@@ -264,18 +231,5 @@
         document.getElementById('csc-toff').style.color      = on ? '#9ca3af' : '#374151';
     }
     window.cscSetSurcharge = cscSetSurcharge;
-
-    function cscSetCd(on) {
-        document.getElementById('csc-cd-val').value = on ? '1' : '0';
-        var fields = document.getElementById('csc-cd-fields');
-        fields.style.opacity = on ? '1' : '0.4';
-        fields.style.pointerEvents = on ? '' : 'none';
-        fields.querySelectorAll('input[type=number]').forEach(function (el) { el.disabled = !on; });
-        document.getElementById('csc-cd-on').style.background  = on ? '#132238' : '#fff';
-        document.getElementById('csc-cd-on').style.color       = on ? '#fff'    : '#9ca3af';
-        document.getElementById('csc-cd-off').style.background = on ? '#fff'    : '#f1f5f9';
-        document.getElementById('csc-cd-off').style.color      = on ? '#9ca3af' : '#374151';
-    }
-    window.cscSetCd = cscSetCd;
 })();
 </script>

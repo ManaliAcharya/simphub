@@ -354,42 +354,6 @@
         @error('ach_fee_percent') <p style="font-size:11px;color:#dc2626;margin:4px 0 0;">{{ $message }}</p> @enderror
     </div>
     <div class="client-meta">
-        @php $cdEnabled = (bool) $client->cash_discount_enabled; @endphp
-        <label style="display:flex;align-items:center;">Cash Discount
-            <span class="doc-tip-wrap">
-                <span class="doc-tip-icon">i</span>
-                <span class="doc-tip-box">When enabled, the configured discount percentage is deducted from the invoice amount at checkout. Customers see the reduced total. Useful for incentivising ACH or cash payments over card.</span>
-            </span>
-        </label>
-        <form method="POST"
-              action="{{ route('inbound.clients.update-cash-discount', $client->pms_client_id) }}"
-              id="cd-form-docs"
-              style="margin-top:8px;">
-            @csrf
-            <input type="hidden" name="cash_discount_enabled" id="cd-enabled-docs"
-                   value="{{ $cdEnabled ? '1' : '0' }}">
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:10px;">
-                <span style="font-size:13px;font-weight:500;color:#374151;">Enable Discount</span>
-                <div style="display:flex;border:1px solid #d1d5db;border-radius:6px;overflow:hidden;font-size:12px;font-weight:600;">
-                    <button type="button" id="cd-on-docs" onclick="setCdDocs(true)"
-                            style="padding:5px 14px;border:none;cursor:pointer;transition:all .15s;{{ $cdEnabled ? 'background:#2563eb;color:#fff;' : 'background:#fff;color:#6b7280;' }}">ON</button>
-                    <button type="button" id="cd-off-docs" onclick="setCdDocs(false)"
-                            style="padding:5px 14px;border:none;border-left:1px solid #d1d5db;cursor:pointer;transition:all .15s;{{ $cdEnabled ? 'background:#fff;color:#6b7280;' : 'background:#f3f4f6;color:#374151;' }}">OFF</button>
-                </div>
-            </div>
-            <div id="cd-fields-docs" style="margin-bottom:10px;{{ $cdEnabled ? '' : 'opacity:0.45;pointer-events:none;' }}">
-                <p style="font-size:11px;color:#6b7280;margin:0 0 4px;">Discount (%)</p>
-                <input type="number" name="cash_discount_percent" step="0.01" min="0" max="100"
-                       value="{{ old('cash_discount_percent', $client->cash_discount_percent) }}"
-                       placeholder="0.00"
-                       {{ $cdEnabled ? '' : 'disabled' }}
-                       style="width:110px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
-            </div>
-            <button type="submit" class="copy-btn">Save discount</button>
-        </form>
-        @error('cash_discount_percent') <p style="font-size:11px;color:#dc2626;margin:4px 0 0;">{{ $message }}</p> @enderror
-    </div>
-    <div class="client-meta">
         <label>Environment</label>
         <div class="env-toggle">
             <span class="active">Test</span>
@@ -1012,18 +976,6 @@ if (abs(time() - (int)$timestamp) > 300) {
         document.getElementById('fee-on-' + ns).style.color       = enabled ? '#fff' : '#6b7280';
         document.getElementById('fee-off-' + ns).style.background = enabled ? '#fff' : '#f3f4f6';
         document.getElementById('fee-off-' + ns).style.color      = enabled ? '#6b7280' : '#374151';
-    }
-
-    function setCdDocs(on) {
-        document.getElementById('cd-enabled-docs').value = on ? '1' : '0';
-        var fields = document.getElementById('cd-fields-docs');
-        fields.style.opacity = on ? '1' : '0.45';
-        fields.style.pointerEvents = on ? '' : 'none';
-        fields.querySelectorAll('input[type=number]').forEach(function(el) { el.disabled = !on; });
-        document.getElementById('cd-on-docs').style.background  = on ? '#2563eb' : '#fff';
-        document.getElementById('cd-on-docs').style.color       = on ? '#fff'    : '#6b7280';
-        document.getElementById('cd-off-docs').style.background = on ? '#fff'    : '#f3f4f6';
-        document.getElementById('cd-off-docs').style.color      = on ? '#6b7280' : '#374151';
     }
 
     function toggleWhUrlEdit(show) {

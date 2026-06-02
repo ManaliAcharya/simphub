@@ -210,23 +210,6 @@ class ClientConfigController extends Controller
         return redirect()->back()->with('success', 'Processing fee configuration saved.');
     }
 
-    public function updateCashDiscount(Request $request, string $pmsClientId): RedirectResponse
-    {
-        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
-
-        $validated = $request->validate([
-            'cash_discount_enabled'  => ['nullable', 'boolean'],
-            'cash_discount_percent'  => ['nullable', 'numeric', 'min:0', 'max:100'],
-        ]);
-
-        $client->update([
-            'cash_discount_enabled'  => (bool) ($validated['cash_discount_enabled'] ?? false),
-            'cash_discount_percent'  => $validated['cash_discount_percent'] ?? null,
-        ]);
-
-        return redirect()->back()->with('success', 'Cash discount configuration saved.');
-    }
-
     public function uploadLogo(Request $request, string $pmsClientId): RedirectResponse
     {
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();

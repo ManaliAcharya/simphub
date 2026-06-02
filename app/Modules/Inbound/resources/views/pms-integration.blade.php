@@ -21,9 +21,6 @@
                             <span style="width:32px;height:32px;border-radius:50%;background:#dcfce7;display:inline-flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">&#10003;</span>
                             <div>
                                 <strong style="color:#15803d;font-size:15px;">{{ $providerLabel }} Connected</strong>
-                                <span style="display:block;font-size:12px;color:#166534;margin-top:1px;">
-                                    Connected {{ $connection->created_at->diffForHumans() }}
-                                </span>
                             </div>
                         </div>
                         @if ($connectUrl)
@@ -35,7 +32,6 @@
                         if (!empty($realm_id))           $details['Company Realm ID']  = $realm_id;
                         if (!empty($organization_name))  $details['Organization']       = $organization_name;
                         if (!empty($organization_id))    $details['Organization ID']    = $organization_id;
-                        if ($connection->token_expires_at) $details['Token Expires']    = $connection->token_expires_at->format('M j, Y');
                     @endphp
                     @if(count($details))
                     <div style="padding:12px 20px;background:#fff;display:flex;flex-wrap:wrap;gap:20px;border-top:1px solid #dcfce7;">
@@ -91,11 +87,6 @@
             @endif
 
             @if ($provider === 'quickbooks' && $connection)
-                <div class="summary-card" style="margin-top: 18px;">
-                    <span>QuickBooks Company (Realm) ID</span>
-                    <strong>{{ $realm_id ?: 'Not connected yet' }}</strong>
-                </div>
-
                 @if ($client)
                     <div class="summary-card" style="margin-top: 18px;">
                         <span>Default deposit account</span>

@@ -12,7 +12,7 @@ Route::middleware('web')->group(function (): void {
 
     // ── Public / admin routes (no merchant login required) ────────────────
     Route::get('/setup/{provider}/{token}', [PmsIntegrationController::class, 'showByToken'])
-        ->whereIn('provider', ['clio', 'zoho', 'lawcus', 'wave'])
+        ->whereIn('provider', ['clio', 'zoho', 'lawcus', 'wave', 'quickbooks'])
         ->name('inbound.setup.share');
 
     Route::prefix('inbound/clients')->name('inbound.clients.')->group(function (): void {
@@ -21,7 +21,6 @@ Route::middleware('web')->group(function (): void {
         Route::post('/{pms_client_id}/gateways', [ClientConfigController::class, 'updateGateways'])->name('update-gateways');
         Route::post('/{pms_client_id}/webhook-url', [ClientConfigController::class, 'updateWebhookUrl'])->name('update-webhook-url');
         Route::post('/{pms_client_id}/fees', [ClientConfigController::class, 'updateFees'])->name('update-fees');
-        Route::post('/{pms_client_id}/cash-discount', [ClientConfigController::class, 'updateCashDiscount'])->name('update-cash-discount');
         Route::post('/{pms_client_id}/logo', [ClientConfigController::class, 'uploadLogo'])->name('upload-logo');
         Route::delete('/{pms_client_id}/logo', [ClientConfigController::class, 'removeLogo'])->name('remove-logo');
         Route::get('/terminal-created', [TerminalClientController::class, 'created'])->name('terminal-created');
