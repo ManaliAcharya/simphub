@@ -13,11 +13,53 @@
                 <div class="notice error">{{ $error ?? session('error') }}</div>
             @endif
 
-            @if (! empty($organization_name) || ! empty($organization_id))
-                <div class="summary-card" style="margin-bottom:14px;">
-                    <span>Zoho organization</span>
-                    <strong>{{ $organization_name ?? '--' }}</strong>
-                    <span>{{ $organization_id ?? '--' }}</span>
+            {{-- ── PMS Connection Status ── --}}
+            @if ($connection)
+                <div style="border:1px solid #bbf7d0;border-radius:18px;overflow:hidden;margin-bottom:18px;">
+                    <div style="background:#f0fdf4;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <span style="width:32px;height:32px;border-radius:50%;background:#dcfce7;display:inline-flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;">&#10003;</span>
+                            <div>
+                                <strong style="color:#15803d;font-size:15px;">{{ $providerLabel }} Connected</strong>
+                                <span style="display:block;font-size:12px;color:#166534;margin-top:1px;">
+                                    Connected {{ $connection->created_at->diffForHumans() }}
+                                </span>
+                            </div>
+                        </div>
+                        @if ($connectUrl)
+                            <a href="{{ $connectUrl }}" class="button secondary" style="font-size:12px;padding:7px 16px;">Reconnect</a>
+                        @endif
+                    </div>
+                    @php
+                        $details = [];
+                        if (!empty($realm_id))           $details['Company Realm ID']  = $realm_id;
+                        if (!empty($organization_name))  $details['Organization']       = $organization_name;
+                        if (!empty($organization_id))    $details['Organization ID']    = $organization_id;
+                        if ($connection->token_expires_at) $details['Token Expires']    = $connection->token_expires_at->format('M j, Y');
+                    @endphp
+                    @if(count($details))
+                    <div style="padding:12px 20px;background:#fff;display:flex;flex-wrap:wrap;gap:20px;border-top:1px solid #dcfce7;">
+                        @foreach($details as $label => $value)
+                            <div>
+                                <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7c93;display:block;margin-bottom:2px;">{{ $label }}</span>
+                                <strong style="font-size:13px;color:#132238;font-family:{{ str_contains($label,'ID') ? 'ui-monospace,monospace' : 'inherit' }};">{{ $value }}</strong>
+                            </div>
+                        @endforeach
+                    </div>
+                    @endif
+                </div>
+            @else
+                <div style="border:1px solid #fde68a;border-radius:18px;padding:16px 20px;background:#fffbeb;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:18px;">
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <span style="width:10px;height:10px;border-radius:50%;background:#f59e0b;display:inline-block;flex-shrink:0;"></span>
+                        <div>
+                            <strong style="color:#92400e;">{{ $providerLabel }} not connected</strong>
+                            <span style="display:block;font-size:12px;color:#78350f;margin-top:1px;">Complete the connection to start processing invoices.</span>
+                        </div>
+                    </div>
+                    @if ($connectUrl)
+                        <a href="{{ $connectUrl }}" class="button primary">Connect {{ $providerLabel }}</a>
+                    @endif
                 </div>
             @endif
 
@@ -29,13 +71,6 @@
                     <strong style="color:#6b7c93;margin-top:6px;display:block;">Pass a <code>pms_client_id</code> in the URL to manage client settings.</strong>
                 </div>
             @endif
-
-            <div class="actions">
-                <!-- <a class="button secondary" href="{{ route('inbound.clients.create') }}">Create New Client</a> -->
-                @if ($connectUrl)
-                    <a class="button primary" href="{{ $connectUrl }}">Connect {{ $providerLabel }}</a>
-                @endif
-            </div>
 
             @if ($shareUrl && ! $openedViaShareLink && ( empty($organization_name) ||  empty($organization_id)) && ! ($provider === 'wave' && $connection))
                 <div class="summary-card" style="margin-top: 18px;">

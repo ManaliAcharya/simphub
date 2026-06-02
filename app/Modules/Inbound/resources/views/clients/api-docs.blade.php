@@ -113,6 +113,19 @@
         .doc-header, .doc-body { padding-left:16px; padding-right:16px; }
         .client-card { margin-left:16px; margin-right:16px; }
     }
+
+    /* ── Tooltips ── */
+    .doc-tip-wrap { position:relative; display:inline-flex; align-items:center; }
+    .doc-tip-icon { width:14px; height:14px; border-radius:50%; background:rgba(0,0,0,.08); color:#9ca3af;
+        font-size:9px; font-weight:700; display:inline-flex; align-items:center; justify-content:center;
+        margin-left:5px; cursor:help; flex-shrink:0; user-select:none; }
+    .doc-tip-box { display:none; position:absolute; left:calc(100% + 8px); top:50%; transform:translateY(-50%);
+        background:#1e293b; color:#e2e8f0; font-size:11.5px; font-weight:400; line-height:1.6;
+        padding:10px 13px; border-radius:10px; width:230px; z-index:400;
+        text-transform:none; letter-spacing:0; box-shadow:0 4px 18px rgba(0,0,0,.22); pointer-events:none; }
+    .doc-tip-box::before { content:''; position:absolute; right:100%; top:50%; transform:translateY(-50%);
+        border:5px solid transparent; border-right-color:#1e293b; }
+    .doc-tip-wrap:hover .doc-tip-box { display:block; }
 </style>
 <div class="shell">
 <section class="panel">
@@ -195,7 +208,12 @@
     {{-- ── Right column ── --}}
     <div class="client-col">
     <div class="client-meta">
-        <label>Allowed Gateways</label>
+        <label style="display:flex;align-items:center;">Allowed Gateways
+            <span class="doc-tip-wrap">
+                <span class="doc-tip-icon">i</span>
+                <span class="doc-tip-box">Controls which payment gateways appear on the checkout page for this client's invoices. Customers only see options for enabled gateways. Changes take effect immediately on the next payment link opened.</span>
+            </span>
+        </label>
         <div id="gw-badge-list" style="margin-top:4px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
             @forelse($client->allowed_payment_gateways ?? [] as $gw)
                 <span class="gw-badge" data-gw="{{ strtoupper($gw) }}">
@@ -234,7 +252,12 @@
         </form>
     </div>
     <div class="client-meta">
-        <label>Company Logo</label>
+        <label style="display:flex;align-items:center;">Company Logo
+            <span class="doc-tip-wrap">
+                <span class="doc-tip-icon">i</span>
+                <span class="doc-tip-box">The uploaded logo appears at the top of the hosted payment page and in the payment link email sent to customers. Accepted: JPG, PNG. Max 2 MB. Uploading a new file replaces the previous one immediately.</span>
+            </span>
+        </label>
         <div style="margin-top:4px;">
             @if($client->logo_path)
                 <div style="margin-bottom:8px;">
@@ -271,7 +294,12 @@
         </div>
     </div>
     <div class="client-meta" style="min-width:340px;">
-        <label>Processing Fee Configuration</label>
+        <label style="display:flex;align-items:center;">Processing Fee Configuration
+            <span class="doc-tip-wrap">
+                <span class="doc-tip-icon">i</span>
+                <span class="doc-tip-box">When surcharge is ON, the fee percentage is added to the invoice amount at checkout. Customers see: Invoice Amount + Processing Fee = Total Charge. The gateway is charged the total. Toggle OFF to absorb the fee — customers pay only the invoice amount.</span>
+            </span>
+        </label>
         <form method="POST"
               action="{{ route('inbound.clients.update-fees', $client->pms_client_id) }}"
               id="fee-form-docs"
@@ -306,7 +334,7 @@
                     <p style="font-size:11px;color:#6b7280;margin:0 0 4px;">CC Fee (%)</p>
                     <input type="number" name="cc_fee_percent" step="0.01" min="0" max="10"
                            value="{{ old('cc_fee_percent', $client->cc_fee_percent) }}"
-                           placeholder="e.g. 3.50"
+                           placeholder="0.00"
                            {{ $client->fee_surcharge_enabled ? '' : 'disabled' }}
                            style="width:90px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
                 </div>
@@ -314,7 +342,7 @@
                     <p style="font-size:11px;color:#6b7280;margin:0 0 4px;">ACH Fee (%)</p>
                     <input type="number" name="ach_fee_percent" step="0.01" min="0" max="10"
                            value="{{ old('ach_fee_percent', $client->ach_fee_percent) }}"
-                           placeholder="e.g. 0.50"
+                           placeholder="0.00"
                            {{ $client->fee_surcharge_enabled ? '' : 'disabled' }}
                            style="width:90px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
                 </div>
@@ -324,6 +352,42 @@
         </form>
         @error('cc_fee_percent') <p style="font-size:11px;color:#dc2626;margin:4px 0 0;">{{ $message }}</p> @enderror
         @error('ach_fee_percent') <p style="font-size:11px;color:#dc2626;margin:4px 0 0;">{{ $message }}</p> @enderror
+    </div>
+    <div class="client-meta">
+        @php $cdEnabled = (bool) $client->cash_discount_enabled; @endphp
+        <label style="display:flex;align-items:center;">Cash Discount
+            <span class="doc-tip-wrap">
+                <span class="doc-tip-icon">i</span>
+                <span class="doc-tip-box">When enabled, the configured discount percentage is deducted from the invoice amount at checkout. Customers see the reduced total. Useful for incentivising ACH or cash payments over card.</span>
+            </span>
+        </label>
+        <form method="POST"
+              action="{{ route('inbound.clients.update-cash-discount', $client->pms_client_id) }}"
+              id="cd-form-docs"
+              style="margin-top:8px;">
+            @csrf
+            <input type="hidden" name="cash_discount_enabled" id="cd-enabled-docs"
+                   value="{{ $cdEnabled ? '1' : '0' }}">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:10px;">
+                <span style="font-size:13px;font-weight:500;color:#374151;">Enable Discount</span>
+                <div style="display:flex;border:1px solid #d1d5db;border-radius:6px;overflow:hidden;font-size:12px;font-weight:600;">
+                    <button type="button" id="cd-on-docs" onclick="setCdDocs(true)"
+                            style="padding:5px 14px;border:none;cursor:pointer;transition:all .15s;{{ $cdEnabled ? 'background:#2563eb;color:#fff;' : 'background:#fff;color:#6b7280;' }}">ON</button>
+                    <button type="button" id="cd-off-docs" onclick="setCdDocs(false)"
+                            style="padding:5px 14px;border:none;border-left:1px solid #d1d5db;cursor:pointer;transition:all .15s;{{ $cdEnabled ? 'background:#fff;color:#6b7280;' : 'background:#f3f4f6;color:#374151;' }}">OFF</button>
+                </div>
+            </div>
+            <div id="cd-fields-docs" style="margin-bottom:10px;{{ $cdEnabled ? '' : 'opacity:0.45;pointer-events:none;' }}">
+                <p style="font-size:11px;color:#6b7280;margin:0 0 4px;">Discount (%)</p>
+                <input type="number" name="cash_discount_percent" step="0.01" min="0" max="100"
+                       value="{{ old('cash_discount_percent', $client->cash_discount_percent) }}"
+                       placeholder="0.00"
+                       {{ $cdEnabled ? '' : 'disabled' }}
+                       style="width:110px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
+            </div>
+            <button type="submit" class="copy-btn">Save discount</button>
+        </form>
+        @error('cash_discount_percent') <p style="font-size:11px;color:#dc2626;margin:4px 0 0;">{{ $message }}</p> @enderror
     </div>
     <div class="client-meta">
         <label>Environment</label>
@@ -950,6 +1014,18 @@ if (abs(time() - (int)$timestamp) > 300) {
         document.getElementById('fee-off-' + ns).style.color      = enabled ? '#6b7280' : '#374151';
     }
 
+    function setCdDocs(on) {
+        document.getElementById('cd-enabled-docs').value = on ? '1' : '0';
+        var fields = document.getElementById('cd-fields-docs');
+        fields.style.opacity = on ? '1' : '0.45';
+        fields.style.pointerEvents = on ? '' : 'none';
+        fields.querySelectorAll('input[type=number]').forEach(function(el) { el.disabled = !on; });
+        document.getElementById('cd-on-docs').style.background  = on ? '#2563eb' : '#fff';
+        document.getElementById('cd-on-docs').style.color       = on ? '#fff'    : '#6b7280';
+        document.getElementById('cd-off-docs').style.background = on ? '#fff'    : '#f3f4f6';
+        document.getElementById('cd-off-docs').style.color      = on ? '#6b7280' : '#374151';
+    }
+
     function toggleWhUrlEdit(show) {
         document.getElementById('whurl-display').style.display = show ? 'none' : 'flex';
         document.getElementById('whurl-form').style.display    = show ? 'block' : 'none';
@@ -1005,6 +1081,10 @@ if (abs(time() - (int)$timestamp) > 300) {
     }
 
     function removeGateway(gw) {
+        if (currentGateways.length <= 1) {
+            alert('At least one payment gateway must remain. Add another gateway before removing this one.');
+            return;
+        }
         if (!confirm('Remove ' + gw + ' from allowed gateways?')) return;
         currentGateways = currentGateways.filter(g => g !== gw);
         submitGateways();
