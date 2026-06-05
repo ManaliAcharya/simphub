@@ -182,6 +182,7 @@
         </section>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>
     <script>
         window.paymentSessionToken = @json($sessionToken);
         window.feeConfig = @json($feeConfig);
@@ -342,9 +343,45 @@
                 returnBtn.addEventListener('click', function() { window.location.href = redirectUrl; });
             }
 
-            // Download receipt — placeholder (no PDF yet)
+            // Download receipt as PDF
             document.getElementById('conf-download').addEventListener('click', function() {
-                window.print();
+                var btn = this;
+                btn.disabled = true;
+                btn.textContent = 'Generating…';
+
+                var panel = document.querySelector('#payment-confirmation .panel');
+                if (!panel || typeof html2pdf === 'undefined') {
+                    window.print();
+                    btn.disabled = false;
+                    btn.innerHTML = '&#8681; Download receipt';
+                    return;
+                }
+
+                // Clone panel so we can add print-only styles without affecting the live page
+                var clone = panel.cloneNode(true);
+                clone.style.cssText = 'max-width:600px;margin:0;padding:28px;font-family:-apple-system,Segoe UI,Roboto,sans-serif;';
+
+                // Remove interactive buttons from PDF
+                clone.querySelectorAll('button').forEach(function(b) { b.remove(); });
+
+                var invoiceRef = document.getElementById('ci-reference')
+                    ? document.getElementById('ci-reference').textContent.trim()
+                    : 'receipt';
+                var filename = 'payment-' + invoiceRef.replace(/[^a-z0-9]/gi, '-') + '.pdf';
+
+                html2pdf()
+                    .set({
+                        margin:       10,
+                        filename:     filename,
+                        html2canvas:  { scale: 2, useCORS: true, logging: false },
+                        jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                    })
+                    .from(clone)
+                    .save()
+                    .then(function() {
+                        btn.disabled = false;
+                        btn.innerHTML = '&#8681; Download receipt';
+                    });
             });
         }
 
