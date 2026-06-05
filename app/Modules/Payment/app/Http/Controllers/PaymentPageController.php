@@ -107,7 +107,13 @@ class PaymentPageController extends Controller
     private function extractQbField(Invoice $invoice, string $fieldName): ?string
     {
         $payload = (array) ($invoice->raw_payload ?? []);
-        $fields  = $payload['CustomField'] ?? $payload['custom_field'] ?? [];
+
+        // Real QB invoices: raw_payload['invoice']['Invoice']['CustomField']
+        // Manually created test invoices: raw_payload['CustomField']
+        $fields = $payload['invoice']['Invoice']['CustomField']
+            ?? $payload['CustomField']
+            ?? $payload['custom_field']
+            ?? [];
 
         if (! is_array($fields)) {
             return null;
