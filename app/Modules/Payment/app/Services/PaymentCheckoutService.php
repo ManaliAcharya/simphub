@@ -113,8 +113,9 @@ class PaymentCheckoutService
 
         $applyFee = $feeClient && $feeClient->fee_surcharge_enabled;
 
-        // QB Per-Invoice Override: invoice field can override client-level default
-        if ($feeClient && $feeClient->qb_fee_override_enabled
+        // QB Multi-MID ON → Cash Discount field overrides fee_surcharge_enabled.
+        // QB Multi-MID OFF → fee_surcharge_enabled default applies, field is ignored.
+        if ($feeClient && $feeClient->qb_multi_mid_enabled
             && (string) $invoice->pms_source === 'quickbooks') {
             $fieldName  = (string) ($feeClient->qb_fee_override_field ?? 'Cash Discount');
             $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
@@ -391,21 +392,17 @@ class PaymentCheckoutService
             return null;
         }
 
-        if ($client->qb_fee_override_enabled) {
-            // Read the per-invoice QB field to determine route
-            $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
-            $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
+        // Multi-MID is ON → always read Cash Discount field to determine route
+        $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
+        $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
 
-            if ($fieldValue === null) {
-                $routeType = $client->fee_surcharge_enabled ? 'fees_on' : 'fees_off';
-            } elseif (strtolower($fieldValue) === 'yes') {
-                $routeType = 'fees_on';
-            } else {
-                $routeType = 'fees_off';
-            }
-        } else {
-            // Override disabled — use client-level default for all invoices
+        if ($fieldValue === null) {
+            // Field not set → fall back to client-level default
             $routeType = $client->fee_surcharge_enabled ? 'fees_on' : 'fees_off';
+        } elseif (strtolower($fieldValue) === 'yes') {
+            $routeType = 'fees_on';
+        } else {
+            $routeType = 'fees_off';
         }
 
         return ClientMidRoute::query()
