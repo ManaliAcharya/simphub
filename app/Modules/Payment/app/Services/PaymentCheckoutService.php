@@ -106,15 +106,30 @@ class PaymentCheckoutService
         $invoice = $session->invoice()->firstOrFail();
 
         // ── Fee surcharge ──────────────────────────────────────────────────
-        $feeCents = 0;
-        if ($invoice->pms_client_id) {
-            $feeClient = Client::query()->where('pms_client_id', $invoice->pms_client_id)->first();
-            if ($feeClient && $feeClient->fee_surcharge_enabled) {
-                $isAch      = strtoupper($paymentMethod) === 'ACH';
-                $feePercent = (float) ($isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent);
-                if ($feePercent > 0) {
-                    $feeCents = (int) round($invoice->amount_cents * $feePercent / 100);
-                }
+        $feeCents  = 0;
+        $feeClient = $invoice->pms_client_id
+            ? Client::query()->where('pms_client_id', $invoice->pms_client_id)->first()
+            : null;
+
+        $applyFee = $feeClient && $feeClient->fee_surcharge_enabled;
+
+        // QB Per-Invoice Override: invoice field can override client-level default
+        if ($feeClient && $feeClient->qb_fee_override_enabled
+            && (string) $invoice->pms_source === 'quickbooks') {
+            $fieldName  = (string) ($feeClient->qb_fee_override_field ?? 'Cash Discount');
+            $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
+
+            if ($fieldValue !== null) {
+                $applyFee = strtolower($fieldValue) === 'yes';
+            }
+            // null = not set → keeps $applyFee from client default
+        }
+
+        if ($applyFee) {
+            $isAch      = strtoupper($paymentMethod) === 'ACH';
+            $feePercent = (float) ($isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent);
+            if ($feePercent > 0) {
+                $feeCents = (int) round($invoice->amount_cents * $feePercent / 100);
             }
         }
         $totalAmountCents = (int) $invoice->amount_cents + $feeCents;

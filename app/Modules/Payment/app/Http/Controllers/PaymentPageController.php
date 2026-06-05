@@ -48,24 +48,26 @@ class PaymentPageController extends Controller
         $gatewayRates = null;   // null = use cc/ach fallback
         $routeType   = null;
 
-        // ── QB Multi-MID: determine route from invoice custom field ──────────
-        if ($client->qb_multi_mid_enabled && (string) $invoice->pms_source === 'quickbooks') {
-            if ($client->qb_fee_override_enabled) {
-                // Read the per-invoice QB field to determine route
-                $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
-                $fieldValue = $this->extractQbField($invoice, $fieldName);
+        // ── QB fee display: Per-Invoice Override (works independently of Multi-MID) ─
+        if ((string) $invoice->pms_source === 'quickbooks' && $client->qb_fee_override_enabled) {
+            $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
+            $fieldValue = $this->extractQbField($invoice, $fieldName);
 
-                if ($fieldValue === null) {
-                    $routeType = $feeEnabled ? 'fees_on' : 'fees_off';
-                } elseif (strtolower($fieldValue) === 'yes') {
-                    $routeType = 'fees_on';
-                } else {
-                    $routeType = 'fees_off';
-                }
-            } else {
-                // Override disabled — use client-level default for all invoices
+            if ($fieldValue === null) {
                 $routeType = $feeEnabled ? 'fees_on' : 'fees_off';
+            } elseif (strtolower($fieldValue) === 'yes') {
+                $routeType = 'fees_on';
+            } else {
+                $routeType = 'fees_off';
             }
+
+            // Override fee display based on invoice field
+            $feeEnabled = ($routeType === 'fees_on');
+        }
+
+        // ── QB Multi-MID: load per-gateway rates (requires multi-MID enabled) ─────
+        if ($client->qb_multi_mid_enabled && (string) $invoice->pms_source === 'quickbooks'
+            && $routeType !== null) {
 
             // Load per-gateway rates for this route
             $midRoutes = ClientMidRoute::query()
