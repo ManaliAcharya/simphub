@@ -450,14 +450,15 @@
                         </div>
                         <div style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700;">
                             <input type="hidden" name="qb_multi_mid_enabled" id="qb-mid-val" value="{{ $client->qb_multi_mid_enabled ? '1' : '0' }}">
-                            <button type="button" id="qb-mid-on" onclick="qbToggle('qb-mid-val','qb-mid-on','qb-mid-off',true,'qb-mid-section')"
+                            <button type="button" id="qb-mid-on" onclick="qbToggle('qb-mid-val','qb-mid-on','qb-mid-off',true)"
                                     style="padding:5px 14px;border:none;cursor:pointer;font-family:inherit;{{ $client->qb_multi_mid_enabled ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">ON</button>
-                            <button type="button" id="qb-mid-off" onclick="qbToggle('qb-mid-val','qb-mid-on','qb-mid-off',false,'qb-mid-section')"
+                            <button type="button" id="qb-mid-off" onclick="qbToggle('qb-mid-val','qb-mid-on','qb-mid-off',false)"
                                     style="padding:5px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $client->qb_multi_mid_enabled ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
                         </div>
                     </div>
 
-                    <div id="qb-mid-section" style="{{ $client->qb_multi_mid_enabled ? '' : 'display:none;' }}">
+                    <div id="qb-mid-section">
+                        
                     @foreach(['fees_on' => ['label' => 'TOGGLE ON — Fees Passed Through', 'desc' => 'Used when the QB custom field = Yes. Customer pays the processing fee.', 'color' => '#f0fdf4', 'border' => '#a7f3d0', 'pill_bg' => '#065f46', 'pill_color' => '#fff'], 'fees_off' => ['label' => 'TOGGLE OFF — Fees Absorbed', 'desc' => 'Used when the QB custom field = No or not set. Merchant absorbs the fee.', 'color' => '#f9fafb', 'border' => '#e5e7eb', 'pill_bg' => '#6b7280', 'pill_color' => '#fff']] as $routeType => $routeConfig)
                     <div style="margin-bottom:16px;border:1px solid {{ $routeConfig['border'] }};border-radius:var(--cc-r-md);overflow:hidden;">
                         <div style="background:{{ $routeConfig['color'] }};padding:10px 16px;border-bottom:1px solid {{ $routeConfig['border'] }};display:flex;align-items:center;gap:10px;">
