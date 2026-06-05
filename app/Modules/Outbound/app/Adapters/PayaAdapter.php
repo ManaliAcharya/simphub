@@ -85,14 +85,19 @@ class PayaAdapter implements GatewayAdapterInterface
 
     public function hostedFieldsConfig(string $mid, array $midCredentials = []): HostedFieldsConfig
     {
+        // Use the hosted AccountForm iframe only when developer credentials are configured.
+        // Without them, fall back to 'direct' mode which auto-tokenises the static
+        // PAYA_ROUTING_NUMBER / PAYA_ACCOUNT_NUMBER from .env via PaymentCheckoutService.
+        $mode = env('PAYA_DEVELOPER_ID') ? 'paya_ach' : 'direct';
+
         return new HostedFieldsConfig(
             gateway: 'paya',
             fields: [
                 'button_label' => 'Pay with Paya',
             ],
             metadata: [
-                'mid' => $mid,
-                'mode' => 'direct',
+                'mid'            => $mid,
+                'mode'           => $mode,
                 'payment_method' => 'ACH',
             ],
         );

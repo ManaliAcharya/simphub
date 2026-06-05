@@ -1,4 +1,12 @@
-@props(['client', 'availableGateways' => []])
+@props([
+    'client',
+    'availableGateways' => [],
+    'showLeftCol'  => true,   // client name + ID
+    'showFees'     => true,   // processing fee section
+    'showLogo'     => true,   // company logo section
+    'showGateways' => true,   // allowed gateways section
+    'compact'      => false,  // when true: each section as its own cc-card
+])
 
 @php $surcharge = (bool) $client->fee_surcharge_enabled; @endphp
 
@@ -16,10 +24,13 @@
 .csc-tip-wrap:hover .csc-tip-box { display:block; }
 </style>
 
+@if(!$compact)
 <div class="panel" style="padding:0;overflow:hidden;margin-bottom:18px;">
-    <div style="display:grid;grid-template-columns:1fr 1fr;">
+<div style="display:grid;grid-template-columns:{{ $showLeftCol ? '1fr 1fr' : '1fr' }};">
+@endif
 
         {{-- ── Left: client identity ── --}}
+        @if($showLeftCol)
         <div style="padding:20px 22px;display:flex;flex-direction:column;gap:18px;border-right:1px solid rgba(19,34,56,.1);">
 
             <div>
@@ -37,30 +48,59 @@
             </div>
 
         </div>
+        @endif
 
         {{-- ── Right: gateways / logo / fees ── --}}
+        @if(!$compact)
         <div style="padding:20px 22px;display:flex;flex-direction:column;gap:18px;">
+        @endif
 
             {{-- Allowed Gateways --}}
-            <div>
-                <div style="display:flex;align-items:center;margin-bottom:6px;">
-                    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;">Allowed Gateways</span>
+            @if($showGateways)
+            @if($compact)<div class="cc-card">@else<div>@endif
+                <div style="display:flex;align-items:center;margin-bottom:{{ $compact ? '10' : '6' }}px;">
+                    @if($compact)
+                        <div class="cc-card-title">Allowed Gateways</div>
+                    @else
+                        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;">Allowed Gateways</span>
+                    @endif
                     <span class="csc-tip-wrap">
                         <span class="csc-tip-icon">i</span>
                         <span class="csc-tip-box">Control the payment options visible on this client's invoices. Add or remove gateways instantly.</span>
                     </span>
                 </div>
+                @php $pausedGateways = array_map('strtoupper', $client->paused_payment_gateways ?? []); @endphp
                 <div id="csc-gw-list" style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;">
+
+                    {{-- Active gateways --}}
                     @forelse($client->allowed_payment_gateways ?? [] as $gw)
-                        <span data-gw="{{ strtoupper($gw) }}"
-                              style="display:inline-flex;align-items:center;gap:3px;padding:3px 8px 3px 10px;border-radius:999px;font-size:11px;font-weight:600;background:#e9eef5;color:#132238;border:1px solid rgba(19,34,56,.12);">
-                            {{ strtoupper($gw) }}
-                            <button type="button" onclick="cscRemoveGw('{{ strtoupper($gw) }}')"
-                                    style="background:none;border:none;cursor:pointer;color:#6b7c93;font-size:12px;line-height:1;padding:0;font-weight:700;">&#x00D7;</button>
+                        @php $gwUp = strtoupper($gw); $isPaused = in_array($gwUp, $pausedGateways); @endphp
+                        <span data-gw="{{ $gwUp }}"
+                              style="display:inline-flex;align-items:center;gap:4px;padding:3px 7px 3px 10px;border-radius:999px;font-size:11px;font-weight:600;
+                                     {{ $isPaused ? 'background:#f3f4f6;color:#9ca3af;border:1px dashed #d1d5db;' : 'background:#e9eef5;color:#132238;border:1px solid rgba(19,34,56,.12);' }}">
+                            {{ $gwUp }}
+                            @if($isPaused)
+                                <span style="font-size:10px;font-weight:500;color:#9ca3af;margin:0 2px;">(paused)</span>
+                            @endif
+                            {{-- Pause / Resume --}}
+                            <form method="POST" action="{{ route('inbound.clients.toggle-gateway-pause', $client->pms_client_id) }}" style="display:inline;">
+                                @csrf
+                                <input type="hidden" name="gateway" value="{{ $gwUp }}">
+                                <input type="hidden" name="paused" value="{{ $isPaused ? '0' : '1' }}">
+                                <button type="submit"
+                                        title="{{ $isPaused ? 'Resume' : 'Pause' }}"
+                                        style="background:none;border:none;cursor:pointer;font-size:11px;padding:0;line-height:1;color:{{ $isPaused ? '#15803d' : '#f59e0b' }};">
+                                    {{ $isPaused ? '▶' : '⏸' }}
+                                </button>
+                            </form>
+                            {{-- Remove --}}
+                            <button type="button" onclick="cscRemoveGw('{{ $gwUp }}')"
+                                    style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:12px;line-height:1;padding:0;font-weight:700;">&#x00D7;</button>
                         </span>
                     @empty
                         <span id="csc-gw-empty" style="font-size:13px;color:#6b7c93;">None configured</span>
                     @endforelse
+
                     <div style="position:relative;" id="csc-add-wrap">
                         <button type="button" id="csc-add-btn"
                                 style="display:inline-flex;align-items:center;gap:2px;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;background:#fff;color:#6b7c93;border:1px dashed rgba(19,34,56,.2);cursor:pointer;">
@@ -72,7 +112,7 @@
                                 <div data-gw="{{ $gw }}" class="{{ in_array($gw, $client->allowed_payment_gateways ?? []) ? 'csc-dd-added' : '' }}"
                                      style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;font-size:13px;cursor:pointer;border-top:1px solid rgba(19,34,56,.05);">
                                     <span>{{ $gw }}</span>
-                                    @if(in_array($gw, $client->allowed_payment_gateways ?? []))<span style="color:#15643b;font-weight:700;">&#x2713;</span>@endif
+                                    @if(in_array($gw, $client->allowed_payment_gateways ?? []))<span style="color:#15803d;font-weight:700;">&#x2713;</span>@endif
                                 </div>
                             @empty
                                 <div style="padding:10px 12px;font-size:13px;color:#6b7c93;">No gateways available</div>
@@ -86,10 +126,17 @@
                 </form>
             </div>
 
+            @endif {{-- showGateways --}}
+
             {{-- Company Logo --}}
-            <div>
-                <div style="display:flex;align-items:center;margin-bottom:6px;">
-                    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;">Company Logo</span>
+            @if($showLogo)
+            @if($compact)<div class="cc-card">@else<div>@endif
+                <div style="display:flex;align-items:center;margin-bottom:{{ $compact ? '10' : '6' }}px;">
+                    @if($compact)
+                        <div class="cc-card-title">Company Logo</div>
+                    @else
+                        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;">Company Logo</span>
+                    @endif
                     <span class="csc-tip-wrap">
                         <span class="csc-tip-icon">i</span>
                         <span class="csc-tip-box">The uploaded logo appears in two places: at the top of the hosted payment page your customers see, and at the top of the payment link email. Accepted formats: JPG, PNG. Max size: 2 MB. Replacing uploads a new logo immediately.</span>
@@ -114,51 +161,35 @@
                 @endif
                 @error('logo')<p style="font-size:11px;color:#9a2f2f;margin:3px 0 0;">{{ $message }}</p>@enderror
             </div>
+            @endif {{-- showLogo --}}
 
             {{-- Processing Fee --}}
-            <div>
-                <div style="display:flex;align-items:center;margin-bottom:6px;">
-                    <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;">Processing Fee</span>
+            @if($showFees)
+            @if($compact)<div class="cc-card">@else<div>@endif
+                <div style="display:flex;align-items:center;margin-bottom:{{ $compact ? '10' : '8' }}px;">
+                    @if($compact)
+                        <div class="cc-card-title">Processing Fee</div>
+                    @else
+                        <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;">Processing Fee</span>
+                    @endif
                     <span class="csc-tip-wrap">
                         <span class="csc-tip-icon">i</span>
-                        <span class="csc-tip-box">When surcharge is ON, the configured fee percentage is added to the invoice amount on the checkout page. Customers see a full breakdown: Invoice Amount + Processing Fee = Total Charge. The gateway is charged the total. Toggle OFF to absorb the fee yourself — customers pay only the invoice amount.</span>
+                        <span class="csc-tip-box">When enabled, a processing fee is added to the invoice amount at checkout. Choose Surcharge to add the fee on top, or Cash Discount to also offer customers an offline cash/check option at the original price.</span>
                     </span>
                 </div>
-                <form method="POST" action="{{ route('inbound.clients.update-fees', $client->pms_client_id) }}">
-                    @csrf
-                    <input type="hidden" name="fee_surcharge_enabled" id="csc-surcharge-val" value="{{ $surcharge ? '1' : '0' }}">
-                    <div style="display:flex;align-items:center;justify-content:space-between;padding:7px 11px;background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;margin-bottom:10px;">
-                        <span style="font-size:13px;font-weight:500;color:#132238;">Enable Surcharge</span>
-                        <div style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:7px;overflow:hidden;font-size:11px;font-weight:700;">
-                            <button type="button" id="csc-ton" onclick="cscSetSurcharge(true)"
-                                    style="padding:4px 12px;border:none;cursor:pointer;font-family:inherit;{{ $surcharge ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">ON</button>
-                            <button type="button" id="csc-toff" onclick="cscSetSurcharge(false)"
-                                    style="padding:4px 12px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $surcharge ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
-                        </div>
-                    </div>
-                    <div id="csc-fee-fields" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;{{ $surcharge ? '' : 'opacity:0.4;pointer-events:none;' }}">
-                        <div>
-                            <label style="display:block;font-size:11px;color:#6b7c93;margin-bottom:3px;">CC Fee (%)</label>
-                            <input type="number" name="cc_fee_percent" step="0.01" min="0" max="10" placeholder="0.00"
-                                   value="{{ old('cc_fee_percent', $client->cc_fee_percent) }}" {{ $surcharge ? '' : 'disabled' }}
-                                   style="width:86px;padding:6px 8px;border:1px solid rgba(19,34,56,.12);border-radius:9px;font:inherit;font-size:13px;">
-                        </div>
-                        <div>
-                            <label style="display:block;font-size:11px;color:#6b7c93;margin-bottom:3px;">ACH Fee (%)</label>
-                            <input type="number" name="ach_fee_percent" step="0.01" min="0" max="10" placeholder="0.00"
-                                   value="{{ old('ach_fee_percent', $client->ach_fee_percent) }}" {{ $surcharge ? '' : 'disabled' }}
-                                   style="width:86px;padding:6px 8px;border:1px solid rgba(19,34,56,.12);border-radius:9px;font:inherit;font-size:13px;">
-                        </div>
-                    </div>
-                    <button type="submit" class="button primary" style="font-size:12px;padding:6px 14px;">Save fees</button>
-                    @error('cc_fee_percent')<p style="font-size:11px;color:#9a2f2f;margin:3px 0 0;">{{ $message }}</p>@enderror
-                    @error('ach_fee_percent')<p style="font-size:11px;color:#9a2f2f;margin:3px 0 0;">{{ $message }}</p>@enderror
-                </form>
+                <x-inbound::fee-config-form
+                    :client="$client"
+                    :form-action="route('inbound.clients.update-fees', $client->pms_client_id)"
+                    btn-class="button primary"
+                />
             </div>
+            @endif {{-- showFees --}}
 
-        </div>
-    </div>
-</div>
+        @if(!$compact)
+        </div>{{-- right col --}}
+    </div>{{-- grid --}}
+</div>{{-- panel --}}
+        @endif
 
 <script>
 (function () {
@@ -219,17 +250,5 @@
         if (wrap && !wrap.contains(e.target)) document.getElementById('csc-dd').style.display = 'none';
     });
 
-    function cscSetSurcharge(on) {
-        document.getElementById('csc-surcharge-val').value = on ? '1' : '0';
-        var fields = document.getElementById('csc-fee-fields');
-        fields.style.opacity = on ? '1' : '0.4';
-        fields.style.pointerEvents = on ? '' : 'none';
-        fields.querySelectorAll('input[type=number]').forEach(function (el) { el.disabled = !on; });
-        document.getElementById('csc-ton').style.background  = on ? '#132238' : '#fff';
-        document.getElementById('csc-ton').style.color       = on ? '#fff'    : '#9ca3af';
-        document.getElementById('csc-toff').style.background = on ? '#fff'    : '#f1f5f9';
-        document.getElementById('csc-toff').style.color      = on ? '#9ca3af' : '#374151';
-    }
-    window.cscSetSurcharge = cscSetSurcharge;
 })();
 </script>

@@ -9,6 +9,7 @@ use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Models\Transaction;
 use Modules\Billing\States\SessionStateMachine;
 use Modules\Inbound\Models\Client;
+use Modules\Inbound\Models\ClientMidRoute;
 use Modules\Outbound\DTOs\ChargeRequest;
 use Modules\Outbound\Factory\GatewayAdapterFactory;
 use Modules\Payment\Events\PaymentApproved;
@@ -160,7 +161,10 @@ class PaymentCheckoutService
 
         $billing = [];
         if (strtolower((string) $decision->gateway) === 'paya') {
-            if (! empty($extraBilling)) {
+            if (! empty($extraBilling) && isset($extraBilling['paya_bank_token'])) {
+                // AccountForm vault token received directly from Paya's hosted iframe.
+                $billing = ['paya_token' => $extraBilling['paya_bank_token']];
+            } elseif (! empty($extraBilling)) {
                 // Caller already resolved billing (e.g. a Paya vault token from tokenizeViaPaya()).
                 $billing = $extraBilling;
             } elseif (in_array((string) $invoice->pms_source, ['custom', 'wave'], true)) {
@@ -222,6 +226,29 @@ class PaymentCheckoutService
             }
         }
 
+        // ── QB Multi-MID override ──────────────────────────────────────────
+        $qbMidRoute = null;
+        if ($invoice->pms_client_id && (string) $invoice->pms_source === 'quickbooks') {
+            $qbMidRoute = $this->resolveQbMidRoute($invoice, $feeClient, $decision->gateway);
+        }
+        if ($qbMidRoute) {
+            // Override MID credentials with route-specific ones
+            $decision->mid            = $qbMidRoute->mid_identifier;
+            $decision->midCredentials = (array) ($qbMidRoute->credentials ?? $decision->midCredentials);
+
+            if ($qbMidRoute->route_type === 'fees_off') {
+                // Merchant absorbs fee — customer is charged flat invoice amount
+                $feeCents         = 0;
+                $totalAmountCents = (int) $invoice->amount_cents;
+            } elseif ($qbMidRoute->rate_percent !== null) {
+                // fees_on: use route-specific rate for the gateway
+                $overridePercent  = (float) $qbMidRoute->rate_percent;
+                $feeCents         = (int) round($invoice->amount_cents * $overridePercent / 100);
+                $totalAmountCents = (int) $invoice->amount_cents + $feeCents;
+            }
+        }
+        // ──────────────────────────────────────────────────────────────────
+
         \Log::debug('PaymentCheckoutService: dispatching charge', [
             'gateway'      => $decision->gateway,
             'invoice_id'   => $invoice->id,
@@ -229,6 +256,7 @@ class PaymentCheckoutService
             'amount'       => $invoice->amount_cents,
             'fee_cents'    => $feeCents,
             'total'        => $totalAmountCents,
+            'qb_mid_route' => $qbMidRoute?->id,
             'billing_keys' => array_keys($billing),
         ]);
 
@@ -331,6 +359,69 @@ class PaymentCheckoutService
         return $transaction;
     }
 
+    /**
+     * Resolve the QB multi-MID route for this invoice, if configured.
+     * Returns the matching ClientMidRoute or null if multi-MID is not enabled
+     * or no matching route is configured.
+     */
+    private function resolveQbMidRoute(
+        Invoice $invoice,
+        ?Client $client,
+        string  $gateway
+    ): ?ClientMidRoute {
+        if (! $client || ! $client->qb_multi_mid_enabled) {
+            return null;
+        }
+
+        if ($client->qb_fee_override_enabled) {
+            // Read the per-invoice QB field to determine route
+            $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
+            $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
+
+            if ($fieldValue === null) {
+                $routeType = $client->fee_surcharge_enabled ? 'fees_on' : 'fees_off';
+            } elseif (strtolower($fieldValue) === 'yes') {
+                $routeType = 'fees_on';
+            } else {
+                $routeType = 'fees_off';
+            }
+        } else {
+            // Override disabled — use client-level default for all invoices
+            $routeType = $client->fee_surcharge_enabled ? 'fees_on' : 'fees_off';
+        }
+
+        return ClientMidRoute::query()
+            ->where('client_id',  $client->id)
+            ->where('route_type', $routeType)
+            ->where('gateway',    strtolower($gateway))
+            ->where('is_active',  true)
+            ->first();
+    }
+
+    /**
+     * Extract a QuickBooks invoice custom field value by name.
+     * QB stores custom fields as: CustomField[{Name: "...", StringValue: "..."}]
+     */
+    private function extractQbCustomField(Invoice $invoice, string $fieldName): ?string
+    {
+        $payload = (array) ($invoice->raw_payload ?? []);
+        $fields  = $payload['CustomField'] ?? $payload['custom_field'] ?? [];
+
+        if (! is_array($fields)) {
+            return null;
+        }
+
+        foreach ($fields as $field) {
+            $name  = $field['Name'] ?? $field['name'] ?? '';
+            $value = $field['StringValue'] ?? $field['string_value'] ?? $field['value'] ?? null;
+            if (strcasecmp((string) $name, $fieldName) === 0 && $value !== null) {
+                return (string) $value;
+            }
+        }
+
+        return null;
+    }
+
     private function makeRoutingContext(PaymentSession $session, string $paymentMethod): RoutingContext
     {
         $invoice = $session->invoice()->firstOrFail();
@@ -361,12 +452,20 @@ class PaymentCheckoutService
             ->filter()
             ->values();
 
+        $pausedGateways = collect($client?->paused_payment_gateways ?? [])
+            ->map(fn ($gateway) => strtolower((string) $gateway))
+            ->filter()
+            ->values();
+
         if ($allowedGateways->isEmpty()) {
             return $options;
         }
 
         return $options
-            ->filter(fn ($decision) => $allowedGateways->contains(strtolower((string) $decision->gateway)))
+            ->filter(fn ($decision) =>
+                $allowedGateways->contains(strtolower((string) $decision->gateway)) &&
+                ! $pausedGateways->contains(strtolower((string) $decision->gateway))
+            )
             ->values();
     }
 
@@ -397,6 +496,14 @@ class PaymentCheckoutService
         }
 
         if ($details['missing'] !== []) {
+            // Fall back to env-configured default ACH credentials before marking unavailable
+            $defaultRouting = env('PAYA_ROUTING_NUMBER', '');
+            $defaultAccount = env('PAYA_ACCOUNT_NUMBER', '');
+
+            if ($defaultRouting !== '' && $defaultAccount !== '') {
+                return ['available' => true, 'reason' => null];
+            }
+
             return [
                 'available' => false,
                 'reason'    => 'Missing account number / routing number in customer custom fields.',

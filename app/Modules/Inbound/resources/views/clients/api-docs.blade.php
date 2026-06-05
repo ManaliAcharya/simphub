@@ -1,3 +1,12 @@
+@php
+$apiDocsTabs = [
+    ['id' => 'credentials', 'label' => 'Credentials'],
+    ['id' => 'gateways',    'label' => 'Gateways'],
+    ['id' => 'fees',        'label' => 'Fee Configuration'],
+    ['id' => 'apidocs',     'label' => 'API Docs'],
+];
+@endphp
+
 <x-inbound::layouts.master>
 <style>
     body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#f7f8fa; margin:0; }
@@ -127,248 +136,136 @@
         border:5px solid transparent; border-right-color:#1e293b; }
     .doc-tip-wrap:hover .doc-tip-box { display:block; }
 </style>
-<div class="shell">
-<section class="panel">
-{{-- Nav tabs --}}
-<div class="doc-nav">
-    <a href="#auth" class="active" onclick="setActive(this)">Authentication</a>
-    <a href="#flow" onclick="setActive(this)">Payment flow</a>
-    <a href="#endpoints" onclick="setActive(this)">Endpoints</a>
-    <a href="#webhooks" onclick="setActive(this)">Webhooks</a>
-    <a href="#errors" onclick="setActive(this)">Errors</a>
-    <a href="#sandbox" onclick="setActive(this)">Sandbox</a>
-</div>
+<x-inbound::client-config-layout
+    :client="$client"
+    provider-label="Custom CRM"
+    :tabs="$apiDocsTabs">
 
-{{-- Header --}}
-<div class="doc-header">
-    <p class="eyebrow">Custom CRM Integration — API Reference</p>
-    <h1>{{ $client->client_name }} <span class="mode-badge">Test mode</span></h1>
-    <p class="lead">
-        Integrate your in-house CRM with the payment middleware. You create an invoice, we return a hosted
-        payment URL, your payer pays on our page, we send you a webhook when it settles. Card and ACH data
-        never touches your server — PCI and NACHA scope stays with our PCI-certified gateway partners.
-    </p>
-</div>
+    {{-- ── Credentials tab ── --}}
+    <div id="cc-panel-credentials" class="cc-tab-panel active">
 
-{{-- Client identity card: left = credentials, right = settings --}}
-<div class="client-card">
-
-    {{-- ── Left column ── --}}
-    <div class="client-col client-col-left">
-        <div class="client-meta">
-            <label>Client ID</label>
-            <div class="copy-row">
-                <code id="client-id-val">{{ $client->pms_client_id }}</code>
-                <button class="copy-btn" onclick="copyText('client-id-val', this)">Copy</button>
-            </div>
-        </div>
-        <div class="client-meta">
-            <label>Base URL</label>
-            <div class="copy-row">
-                <code id="base-url-val">{{ $baseUrl }}</code>
-                <button class="copy-btn" onclick="copyText('base-url-val', this)">Copy</button>
-            </div>
-        </div>
-        @if($client->webhook_secret)
-        <div class="client-meta">
-            <label>Webhook Secret</label>
-            <div class="copy-row">
-                <code id="webhook-secret-val" style="font-size:11px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $client->webhook_secret }}</code>
-                <button class="copy-btn" onclick="copyText('webhook-secret-val', this)">Copy</button>
-            </div>
-            <p style="font-size:11px;color:#9ca3af;margin:4px 0 0;">Use this to verify the <code style="font-family:ui-monospace,monospace;font-size:11px;background:#f3f4f6;padding:1px 5px;border-radius:3px;">Middleware-Signature</code> header on incoming webhooks.</p>
-        </div>
-        <div class="client-meta">
-            <label>Webhook URL</label>
-            <div id="whurl-display" style="display:flex;align-items:center;gap:8px;">
-                @if($client->webhook_url)
-                    <code style="font-size:11px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $client->webhook_url }}</code>
-                @else
-                    <span style="font-size:13px;color:#9ca3af;">Not set</span>
-                @endif
-                <button type="button" class="add-gw-btn" onclick="toggleWhUrlEdit(true)">Edit</button>
-            </div>
-            <form id="whurl-form" method="POST"
-                  action="{{ route('inbound.clients.update-webhook-url', $client->pms_client_id) }}"
-                  style="display:none;margin-top:6px;">
-                @csrf
-                <div style="display:flex;align-items:center;gap:6px;">
-                    <input type="url" name="webhook_url" value="{{ $client->webhook_url }}"
-                           placeholder="https://your-server.com/webhook"
-                           style="flex:1;padding:6px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:13px;min-width:0;">
-                    <button type="submit" class="copy-btn" style="white-space:nowrap;">Save</button>
-                    <button type="button" class="copy-btn" style="background:#f3f4f6;color:#374151;border-color:#e5e7eb;" onclick="toggleWhUrlEdit(false)">Cancel</button>
-                </div>
-            </form>
-            <p style="font-size:11px;color:#9ca3af;margin:4px 0 0;">Payment events will be POSTed here.</p>
+        @if(session('success'))
+        <div style="padding:12px 16px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;font-size:13px;color:#065f46;margin-bottom:14px;">
+            {{ session('success') }}
         </div>
         @endif
-    </div>
 
-    {{-- ── Right column ── --}}
-    <div class="client-col">
-    <div class="client-meta">
-        <label style="display:flex;align-items:center;">Allowed Gateways
-            <span class="doc-tip-wrap">
-                <span class="doc-tip-icon">i</span>
-                <span class="doc-tip-box">Controls which payment gateways appear on the checkout page for this client's invoices. Customers only see options for enabled gateways. Changes take effect immediately on the next payment link opened.</span>
-            </span>
-        </label>
-        <div id="gw-badge-list" style="margin-top:4px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
-            @forelse($client->allowed_payment_gateways ?? [] as $gw)
-                <span class="gw-badge" data-gw="{{ strtoupper($gw) }}">
-                    {{ strtoupper($gw) }}
-                    <button type="button" class="gw-remove-btn" onclick="removeGateway('{{ strtoupper($gw) }}')" title="Remove {{ strtoupper($gw) }}">&#x00D7;</button>
-                </span>
-            @empty
-                <span id="gw-empty" style="font-size:13px;color:#9ca3af;">None configured</span>
-            @endforelse
+        {{-- API Credentials card --}}
+        <div class="cc-card">
+            <div class="cc-card-title">API Credentials</div>
+            <div class="cc-card-desc">Use these values to authenticate your CRM with the payment middleware.</div>
 
-            <div class="add-gw-wrap" id="add-gw-wrap">
-                <button type="button" class="add-gw-pill-btn" id="add-gw-toggle">+ Add</button>
-                <div class="gw-dropdown" id="gw-dropdown">
-                    <div class="gw-dropdown-header">Available gateways</div>
-                    @forelse($availableGateways as $gw)
-                        <div class="gw-dropdown-item {{ in_array($gw, $client->allowed_payment_gateways ?? []) ? 'gw-item-added' : '' }}"
-                             data-gw="{{ $gw }}">
-                            <span>{{ $gw }}</span>
-                            @if(in_array($gw, $client->allowed_payment_gateways ?? []))
-                                <span class="gw-dropdown-check">&#x2713;</span>
-                            @endif
+            <div style="display:grid;gap:16px;">
+                {{-- Client ID --}}
+                <div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:5px;">Client ID
+                        <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#b0b8c4;"> — use as Bearer token</span>
+                    </div>
+                    <div class="cc-copy-row">
+                        <code class="cc-copy-val" id="client-id-val">{{ $client->pms_client_id }}</code>
+                        <button class="cc-copy-btn" onclick="copyText('client-id-val', this)">Copy</button>
+                    </div>
+                </div>
+
+                {{-- Base URL --}}
+                <div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:5px;">Base URL</div>
+                    <div class="cc-copy-row">
+                        <code class="cc-copy-val" id="base-url-val">{{ $baseUrl }}</code>
+                        <button class="cc-copy-btn" onclick="copyText('base-url-val', this)">Copy</button>
+                    </div>
+                </div>
+
+                @if($client->webhook_secret)
+                <hr class="cc-card-divider" style="margin:4px 0;">
+
+                {{-- Webhook Secret --}}
+                <div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:5px;">Webhook Secret</div>
+                    <div class="cc-copy-row">
+                        <code class="cc-copy-val" id="webhook-secret-val" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:340px;">{{ $client->webhook_secret }}</code>
+                        <button class="cc-copy-btn" onclick="copyText('webhook-secret-val', this)">Copy</button>
+                    </div>
+                    <div style="font-size:12px;color:#9ca3af;margin-top:4px;">Verify the <code style="font-family:ui-monospace,monospace;font-size:11px;background:#f3f4f6;padding:1px 5px;border-radius:4px;">Middleware-Signature</code> header on incoming webhooks.</div>
+                </div>
+
+                {{-- Webhook URL --}}
+                <div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#9ca3af;margin-bottom:5px;">Webhook Callback URL</div>
+                    <div id="whurl-display" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        @if($client->webhook_url)
+                            <code class="cc-copy-val" style="flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $client->webhook_url }}</code>
+                        @else
+                            <span style="font-size:13px;color:#9ca3af;flex:1;">Not set</span>
+                        @endif
+                        <button type="button" class="cc-copy-btn" style="background:#f3f4f6;color:#374151;" onclick="toggleWhUrlEdit(true)">Edit</button>
+                    </div>
+                    <form id="whurl-form" method="POST"
+                          action="{{ route('inbound.clients.update-webhook-url', $client->pms_client_id) }}"
+                          style="display:none;margin-top:8px;">
+                        @csrf
+                        <div style="display:flex;align-items:center;gap:6px;">
+                            <input type="url" name="webhook_url" value="{{ $client->webhook_url }}"
+                                   placeholder="https://your-server.com/webhook"
+                                   style="flex:1;padding:8px 12px;border:1px solid var(--cc-border);border-radius:var(--cc-r-sm);font:inherit;font-size:13px;min-width:0;">
+                            <button type="submit" class="cc-copy-btn" style="white-space:nowrap;">Save</button>
+                            <button type="button" class="cc-copy-btn" style="background:#f3f4f6;color:#374151;white-space:nowrap;" onclick="toggleWhUrlEdit(false)">Cancel</button>
                         </div>
-                    @empty
-                        <div style="padding:10px 12px;font-size:13px;color:#9ca3af;">No gateways available</div>
-                    @endforelse
+                    </form>
+                    <div style="font-size:12px;color:#9ca3af;margin-top:4px;">Payment events (<code style="font-family:ui-monospace;font-size:11px;background:#f3f4f6;padding:1px 4px;border-radius:3px;">invoice.paid</code>, <code style="font-family:ui-monospace;font-size:11px;background:#f3f4f6;padding:1px 4px;border-radius:3px;">refund.completed</code>) are POSTed here.</div>
                 </div>
+                @endif
             </div>
         </div>
 
-        {{-- Hidden form submitted by JS when gateways change --}}
-        <form id="gw-update-form" method="POST"
-              action="{{ route('inbound.clients.update-gateways', $client->pms_client_id) }}"
-              style="display:none;">
-            @csrf
-            <div id="gw-hidden-inputs"></div>
-        </form>
+        {{-- Environment card --}}
+        <div class="cc-card">
+            <div class="cc-card-title">Environment</div>
+            <div class="cc-card-desc">This client is currently in test mode. No live charges are processed.</div>
+            <div style="display:inline-flex;border:1px solid var(--cc-border);border-radius:var(--cc-r-sm);overflow:hidden;font-size:13px;font-weight:600;">
+                <span style="padding:7px 18px;background:var(--cc-primary-light);color:var(--cc-primary);border-right:1px solid var(--cc-primary-border);">Test</span>
+                <span style="padding:7px 18px;background:#f9fafb;color:#9ca3af;">Live</span>
+            </div>
+        </div>
+
+    </div>{{-- end credentials tab --}}
+
+    {{-- ── Gateways tab ── --}}
+    <div id="cc-panel-gateways" class="cc-tab-panel">
+        <x-inbound::client-settings-card
+            :client="$client"
+            :available-gateways="$availableGateways"
+            :show-left-col="false"
+            :show-fees="false"
+            :compact="true"
+        />
     </div>
-    <div class="client-meta">
-        <label style="display:flex;align-items:center;">Company Logo
-            <span class="doc-tip-wrap">
-                <span class="doc-tip-icon">i</span>
-                <span class="doc-tip-box">The uploaded logo appears at the top of the hosted payment page and in the payment link email sent to customers. Accepted: JPG, PNG. Max 2 MB. Uploading a new file replaces the previous one immediately.</span>
-            </span>
-        </label>
-        <div style="margin-top:4px;">
-            @if($client->logo_path)
-                <div style="margin-bottom:8px;">
-                    <img src="/storage/{{ $client->logo_path }}"
-                         alt="Company logo"
-                         style="max-height:56px;max-width:200px;object-fit:contain;border:1px solid #e5e7eb;border-radius:6px;padding:4px;background:#fff;">
-                </div>
-            @endif
-            <form method="POST"
-                  action="{{ route('inbound.clients.upload-logo', $client->pms_client_id) }}"
-                  enctype="multipart/form-data"
-                  style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-                @csrf
-                <input type="file" name="logo" accept=".jpg,.jpeg,.png" id="logo-input-docs"
-                       style="font-size:12px;max-width:180px;">
-                <button type="submit" class="copy-btn" style="white-space:nowrap;">Upload</button>
-            </form>
-            @error('logo')
-                <p style="font-size:11px;color:#dc2626;margin:4px 0 0;">{{ $message }}</p>
-            @enderror
-            @if($client->logo_path)
-                <form method="POST"
-                      action="{{ route('inbound.clients.remove-logo', $client->pms_client_id) }}"
-                      style="margin-top:4px;">
-                    @csrf
-                    @method('DELETE')
-                    <button type="submit" class="add-gw-btn"
-                            onclick="return confirm('Remove the company logo?')"
-                            style="background:#fee2e2;color:#991b1b;border-color:#fca5a5;">
-                        Remove logo
-                    </button>
-                </form>
-            @endif
+
+    {{-- ── Fee Configuration tab ── --}}
+    <div id="cc-panel-fees" class="cc-tab-panel">
+        <div class="cc-card">
+            <div class="cc-card-title">Processing Fee Configuration</div>
+            <div class="cc-card-desc">Configure processing fees passed to customers at checkout.</div>
+            <x-inbound::fee-config-form
+                :client="$client"
+                :form-action="route('inbound.clients.update-fees', $client->pms_client_id)"
+                btn-class="button primary"
+            />
         </div>
     </div>
-    <div class="client-meta" style="min-width:340px;">
-        <label style="display:flex;align-items:center;">Processing Fee Configuration
-            <span class="doc-tip-wrap">
-                <span class="doc-tip-icon">i</span>
-                <span class="doc-tip-box">When surcharge is ON, the fee percentage is added to the invoice amount at checkout. Customers see: Invoice Amount + Processing Fee = Total Charge. The gateway is charged the total. Toggle OFF to absorb the fee — customers pay only the invoice amount.</span>
-            </span>
-        </label>
-        <form method="POST"
-              action="{{ route('inbound.clients.update-fees', $client->pms_client_id) }}"
-              id="fee-form-docs"
-              style="margin-top:8px;">
-            @csrf
-            <input type="hidden" name="fee_surcharge_enabled" id="fee-surcharge-val-docs"
-                   value="{{ $client->fee_surcharge_enabled ? '1' : '0' }}">
 
-            {{-- Enable Fee Surcharge toggle --}}
-            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:10px;">
-                <span style="font-size:13px;font-weight:500;color:#374151;">Enable Fee Surcharge</span>
-                <div style="display:flex;border:1px solid #d1d5db;border-radius:6px;overflow:hidden;font-size:12px;font-weight:600;">
-                    <button type="button" id="fee-on-docs"
-                            onclick="setFeeSurcharge('docs', true)"
-                            style="padding:5px 14px;border:none;cursor:pointer;transition:all .15s;
-                                   {{ $client->fee_surcharge_enabled ? 'background:#2563eb;color:#fff;' : 'background:#fff;color:#6b7280;' }}">
-                        ON
-                    </button>
-                    <button type="button" id="fee-off-docs"
-                            onclick="setFeeSurcharge('docs', false)"
-                            style="padding:5px 14px;border:none;border-left:1px solid #d1d5db;cursor:pointer;transition:all .15s;
-                                   {{ $client->fee_surcharge_enabled ? 'background:#fff;color:#6b7280;' : 'background:#f3f4f6;color:#374151;' }}">
-                        OFF
-                    </button>
-                </div>
-            </div>
-
-            {{-- Fee inputs (disabled when surcharge is OFF) --}}
-            <div id="fee-inputs-docs" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px;
-                 {{ $client->fee_surcharge_enabled ? '' : 'opacity:0.45;pointer-events:none;' }}">
-                <div>
-                    <p style="font-size:11px;color:#6b7280;margin:0 0 4px;">CC Fee (%)</p>
-                    <input type="number" name="cc_fee_percent" step="0.01" min="0" max="10"
-                           value="{{ old('cc_fee_percent', $client->cc_fee_percent) }}"
-                           placeholder="0.00"
-                           {{ $client->fee_surcharge_enabled ? '' : 'disabled' }}
-                           style="width:90px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
-                </div>
-                <div>
-                    <p style="font-size:11px;color:#6b7280;margin:0 0 4px;">ACH Fee (%)</p>
-                    <input type="number" name="ach_fee_percent" step="0.01" min="0" max="10"
-                           value="{{ old('ach_fee_percent', $client->ach_fee_percent) }}"
-                           placeholder="0.00"
-                           {{ $client->fee_surcharge_enabled ? '' : 'disabled' }}
-                           style="width:90px;padding:6px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;">
-                </div>
-            </div>
-
-            <button type="submit" class="copy-btn">Save fees</button>
-        </form>
-        @error('cc_fee_percent') <p style="font-size:11px;color:#dc2626;margin:4px 0 0;">{{ $message }}</p> @enderror
-        @error('ach_fee_percent') <p style="font-size:11px;color:#dc2626;margin:4px 0 0;">{{ $message }}</p> @enderror
+    {{-- ── API Docs tab ── --}}
+    <div id="cc-panel-apidocs" class="cc-tab-panel">
+    <section class="panel" style="padding:0;overflow:hidden;">
+    {{-- Internal doc-nav: offset top to sit below the sticky shell topnav --}}
+    <div class="doc-nav" style="top:52px;">
+        <a href="#auth" class="active" onclick="setActive(this)">Authentication</a>
+        <a href="#flow" onclick="setActive(this)">Payment flow</a>
+        <a href="#endpoints" onclick="setActive(this)">Endpoints</a>
+        <a href="#webhooks" onclick="setActive(this)">Webhooks</a>
+        <a href="#errors" onclick="setActive(this)">Errors</a>
+        <a href="#sandbox" onclick="setActive(this)">Sandbox</a>
     </div>
-    <div class="client-meta">
-        <label>Environment</label>
-        <div class="env-toggle">
-            <span class="active">Test</span>
-            <span>Live</span>
-        </div>
-    </div>
-    </div>{{-- end right col --}}
-
-</div>{{-- end client-card --}}
-
-@if(session('success'))
-<div style="margin:0 32px 16px;padding:12px 18px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;font-size:13px;color:#065f46;">
-    {{ session('success') }}
-</div>
-@endif
 
 
 <div class="doc-body">
@@ -966,18 +863,6 @@ if (abs(time() - (int)$timestamp) > 300) {
         });
     }
 
-    function setFeeSurcharge(ns, enabled) {
-        document.getElementById('fee-surcharge-val-' + ns).value = enabled ? '1' : '0';
-        const inputs = document.getElementById('fee-inputs-' + ns);
-        inputs.style.opacity = enabled ? '1' : '0.45';
-        inputs.style.pointerEvents = enabled ? '' : 'none';
-        inputs.querySelectorAll('input[type=number]').forEach(function(el) { el.disabled = !enabled; });
-        document.getElementById('fee-on-' + ns).style.background  = enabled ? '#2563eb' : '#fff';
-        document.getElementById('fee-on-' + ns).style.color       = enabled ? '#fff' : '#6b7280';
-        document.getElementById('fee-off-' + ns).style.background = enabled ? '#fff' : '#f3f4f6';
-        document.getElementById('fee-off-' + ns).style.color      = enabled ? '#6b7280' : '#374151';
-    }
-
     function toggleWhUrlEdit(show) {
         document.getElementById('whurl-display').style.display = show ? 'none' : 'flex';
         document.getElementById('whurl-form').style.display    = show ? 'block' : 'none';
@@ -1090,4 +975,8 @@ if (abs(time() - (int)$timestamp) > 300) {
         });
     });
 </script>
+    </section>
+    </div>{{-- end apidocs tab --}}
+
+</x-inbound::client-config-layout>
 </x-inbound::layouts.master>

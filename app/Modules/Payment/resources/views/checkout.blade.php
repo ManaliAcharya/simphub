@@ -12,7 +12,7 @@
             <p id="invoice-copy">We are preparing your secure payment session.</p>
             <div class="summary">
                 <div>
-                    <span>Amount</span>
+                    <span>Amount due</span>
                     <strong id="invoice-amount">--</strong>
                 </div>
                 <div>
@@ -20,29 +20,16 @@
                     <strong id="session-status">--</strong>
                 </div>
             </div>
-            <div id="fee-breakdown" style="display:none;margin-top:16px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;font-size:13px;background:#fff;">
-                <div style="display:flex;justify-content:space-between;padding:9px 14px;background:#f9fafb;">
-                    <span style="color:#6b7280;">Invoice Amount</span>
-                    <span id="fee-base-amount" style="font-weight:500;font-family:monospace;">--</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;padding:9px 14px;border-top:1px solid #f3f4f6;">
-                    <span id="fee-label-pct" style="color:#6b7280;">Processing Fee (0%)</span>
-                    <span id="fee-processing" style="font-weight:500;font-family:monospace;">--</span>
-                </div>
-                <div style="display:flex;justify-content:space-between;padding:9px 14px;border-top:1px solid #e5e7eb;background:#f9fafb;">
-                    <span style="font-weight:600;color:#111827;">Total Charge</span>
-                    <span id="fee-total-amount" style="font-weight:700;color:#111827;font-family:monospace;">--</span>
-                </div>
-            </div>
         </section>
 
         <section class="panel checkout">
-            <div class="checkout-header">
-                <div>
-                    <h2>Choose how you want to pay</h2>
-                </div>
-                <div id="gateway-options" class="gateway-options"></div>
-            </div>
+            <h2 style="margin:0 0 16px;">How would you like to pay?</h2>
+
+            {{-- Payment option tiles (rendered by JS) --}}
+            <div id="gateway-options" style="display:flex;gap:10px;flex-wrap:wrap;"></div>
+
+            {{-- Disclosure text --}}
+            <p id="fee-disclosure-text" style="display:none;margin:12px 0 0;font-size:12px;color:#6b7280;line-height:1.5;"></p>
 
             <div id="card-panel" class="card-panel hidden">
                 <!-- <h3>Enter card details in the secure gateway fields</h3> -->
@@ -79,14 +66,118 @@
                     <p class="muted">A hosted tokenizer is not configured in this environment, so a gateway token can be entered directly for testing.</p>
                 </div>
 
+                <div id="paya-ach-panel" class="hidden">
+                    <p class="muted" style="margin-bottom:12px;">Enter your bank account details securely via Paya's hosted form.</p>
+                    <div id="paya-iframe-wrap" style="border:1px solid rgba(16,33,58,.1);border-radius:14px;overflow:hidden;min-height:320px;background:#f8f9fb;display:flex;align-items:center;justify-content:center;">
+                        <p class="muted" id="paya-iframe-loading">Loading secure bank entry form…</p>
+                        <iframe id="paya-accountform-iframe"
+                                style="display:none;width:100%;border:none;min-height:320px;"
+                                allowfullscreen></iframe>
+                    </div>
+                </div>
+
                 <!-- <div id="direct-pay-panel" class="mock-panel hidden">
                     <p class="muted">This gateway charges the invoice amount directly in sandbox mode when you submit the payment.</p>
                 </div> -->
 
-                <div class="actions">
-                    <button id="submit-button" class="primary-button" type="button" disabled>Submit payment</button>
-                    <span id="submit-status" class="muted"></span>
+            </div>
+
+            {{-- Cash payment details panel (shown when cash tile is selected) --}}
+            <div id="cash-details-panel" class="card-panel hidden" style="padding-top:16px;">
+                <div id="cash-details-content" style="font-size:14px;color:#374151;display:grid;gap:8px;"></div>
+            </div>
+
+            {{-- Submit button — always visible below card/cash panels --}}
+            <div class="actions" style="margin-top:16px;">
+                <button id="submit-button" class="primary-button" type="button" disabled>Submit payment</button>
+                <span id="submit-status" class="muted"></span>
+            </div>
+        </section>
+        {{-- Cash / check instructions page --}}
+        <section id="cash-instructions-page" style="display:none;max-width:520px;margin:0 auto;">
+            <div class="panel" style="padding:1.75rem;">
+
+                <h2 style="margin:0 0 10px;font-size:20px;">Pay by cash or check</h2>
+                <p style="margin:0 0 1.25rem;font-size:14px;color:var(--muted);line-height:1.6;">You've chosen to pay offline. Please follow the instructions below to complete your payment.</p>
+
+                {{-- Invoice amount --}}
+                <div style="background:rgba(16,33,58,.04);border-radius:14px;padding:13px 16px;margin-bottom:1.25rem;display:flex;justify-content:space-between;align-items:baseline;">
+                    <span style="font-size:13px;color:var(--muted);">Invoice amount</span>
+                    <span id="ci-amount" style="font-size:20px;font-weight:600;color:#10213a;">--</span>
                 </div>
+
+                {{-- Savings --}}
+                <div id="ci-savings" style="display:none;border-radius:14px;padding:13px 16px;margin-bottom:1.25rem;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);">
+                    <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#15803d;">Your savings by paying offline</p>
+                    <div id="ci-savings-rows" style="color:#15803d;"></div>
+                </div>
+
+                {{-- Payment instructions --}}
+                <div style="border-top:1px solid rgba(16,33,58,.1);padding-top:1.25rem;margin-bottom:1.25rem;">
+                    <p style="margin:0 0 14px;font-size:14px;font-weight:600;color:#10213a;">To complete your payment</p>
+                    <div style="display:grid;gap:14px;font-size:14px;">
+                        <div id="ci-payable-row" style="display:none;">
+                            <p style="margin:0;font-size:12px;color:var(--muted);">Make your check payable to</p>
+                            <p id="ci-payable" style="margin:3px 0 0;font-weight:600;"></p>
+                        </div>
+                        <div id="ci-address-row" style="display:none;">
+                            <p style="margin:0;font-size:12px;color:var(--muted);">Mail to</p>
+                            <p id="ci-address" style="margin:3px 0 0;line-height:1.6;"></p>
+                        </div>
+                        <div>
+                            <p style="margin:0;font-size:12px;color:var(--muted);">Reference / Invoice</p>
+                            <p id="ci-reference" style="margin:3px 0 0;font-family:ui-monospace,monospace;font-weight:600;"></p>
+                        </div>
+                    </div>
+                    <div id="ci-instructions" style="display:none;margin-top:14px;background:rgba(37,99,235,.08);border-radius:10px;padding:11px 14px;font-size:13px;color:#1e40af;line-height:1.55;">
+                        &#9432; <span id="ci-instructions-text"></span>
+                    </div>
+                </div>
+
+                {{-- Contact --}}
+                <div id="ci-contact" style="display:none;border-top:1px solid rgba(16,33,58,.1);padding-top:1.25rem;margin-bottom:1.25rem;">
+                    <p id="ci-contact-label" style="margin:0 0 10px;font-size:13px;color:var(--muted);"></p>
+                    <div id="ci-contact-details"></div>
+                </div>
+
+                <p style="margin:0 0 1.25rem;font-size:12px;color:var(--muted);text-align:center;line-height:1.55;">Once your payment is received, your invoice will be marked as paid.</p>
+
+                <button onclick="window.location.reload();"
+                        class="primary-button" style="width:100%;background:rgba(16,33,58,.07);color:#10213a;">
+                    &#8592; Back to payment options
+                </button>
+
+            </div>
+        </section>
+
+        {{-- Payment confirmation screen (shown after successful submit) --}}
+        <section id="payment-confirmation" style="display:none;max-width:520px;margin:0 auto;">
+            <div class="panel" style="text-align:center;padding:2rem 1.75rem 1.5rem;">
+
+                {{-- Icon --}}
+                <div id="conf-icon" style="width:56px;height:56px;border-radius:50%;margin:0 auto 14px;display:flex;align-items:center;justify-content:center;font-size:26px;"></div>
+                <h2 id="conf-title" style="margin:0 0 6px;font-size:22px;"></h2>
+                <p id="conf-subtitle" style="margin:0 0 1.5rem;font-size:13px;color:var(--muted);"></p>
+
+                {{-- Details table --}}
+                <div style="border-top:1px solid rgba(16,33,58,.1);padding-top:1.25rem;margin-bottom:1.25rem;text-align:left;">
+                    <table id="conf-details" style="width:100%;font-size:14px;border-collapse:collapse;"></table>
+                </div>
+
+                {{-- Amount breakdown --}}
+                <div id="conf-breakdown" style="display:none;background:rgba(16,33,58,.04);border-radius:14px;padding:14px 16px;margin-bottom:1.25rem;text-align:left;"></div>
+
+                {{-- ACH pending notice --}}
+                <div id="conf-ach-notice" style="display:none;border-radius:12px;padding:12px 14px;margin-bottom:1.25rem;font-size:13px;line-height:1.55;text-align:left;background:rgba(245,158,11,.1);color:#92400e;">
+                    &#9432; ACH payments typically take 2–5 business days to settle. You will receive a confirmation once the payment clears.
+                </div>
+
+                {{-- Buttons --}}
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                    <button id="conf-download" class="primary-button" style="background:rgba(16,33,58,.08);color:#10213a;">&#8681; Download receipt</button>
+                    <button id="conf-return"   class="primary-button" style="display:none;">Return to merchant &#8250;</button>
+                </div>
+
             </div>
         </section>
     </div>
@@ -101,6 +192,7 @@
             details: null,
             token: '',
             selectedOption: null,
+            cashSelected: false,
             fluidpayTokenizer: null,
             currentScript: null,
         };
@@ -111,17 +203,221 @@
             status: document.getElementById('session-status'),
             gatewayOptions: document.getElementById('gateway-options'),
             cardPanel: document.getElementById('card-panel'),
+            cashDetailsPanel: document.getElementById('cash-details-panel'),
+            cashDetailsContent: document.getElementById('cash-details-content'),
             hostedFields: document.getElementById('hosted-fields'),
             fluidpayPanel: document.getElementById('fluidpay-panel'),
             fluidpayForm: document.getElementById('fluidpay-payment-form'),
             mockTokenPanel: document.getElementById('mock-token-panel'),
-            //directPayPanel: document.getElementById('direct-pay-panel'),
+            payaAchPanel: document.getElementById('paya-ach-panel'),
+            payaIframe: document.getElementById('paya-accountform-iframe'),
+            payaIframeLoading: document.getElementById('paya-iframe-loading'),
             tokenInput: document.getElementById('token-input'),
             submitButton: document.getElementById('submit-button'),
             submitStatus: document.getElementById('submit-status'),
-            //gatewayMode: document.getElementById('gateway-mode'),
             tokenizeButton: document.getElementById('tokenize-button'),
         };
+
+        async function loadPayaAccountForm() {
+            if (!els.payaIframe) return;
+            try {
+                const res = await fetch(`/api/v1/payment/sessions/${sessionToken}/paya-form-url`);
+                const data = await res.json();
+                if (!res.ok) {
+                    if (els.payaIframeLoading) els.payaIframeLoading.textContent = data.message || 'Unable to load Paya form.';
+                    return;
+                }
+                els.payaIframe.src = data.url;
+                els.payaIframe.style.display = 'block';
+                if (els.payaIframeLoading) els.payaIframeLoading.style.display = 'none';
+            } catch (e) {
+                if (els.payaIframeLoading) els.payaIframeLoading.textContent = 'Network error loading Paya form.';
+            }
+        }
+
+        // Listen for Paya AccountForm postMessage (vault token)
+        window.addEventListener('message', function(event) {
+            if (!event.data || typeof event.data !== 'object') return;
+
+            // Paya sends back account_vault_id or token on success
+            const vaultId = event.data.account_vault_id || event.data.id || null;
+            if (!vaultId) return;
+
+            state.payaBankToken = vaultId;
+            state.token = '__paya_ach__';
+
+            // Shrink iframe, show ready state
+            if (els.payaIframe) {
+                els.payaIframe.style.minHeight = '60px';
+                els.payaIframe.style.opacity   = '0.5';
+                els.payaIframe.style.pointerEvents = 'none';
+            }
+            els.submitButton.disabled = false;
+            els.submitStatus.textContent = 'Bank account secured. Click Submit payment to continue.';
+        });
+
+        function showConfirmation(payload) {
+            // Hide hero + checkout panels, show confirmation
+            document.querySelectorAll('.shell > section.panel, .shell > section.panel.hero, .shell > section.panel.checkout')
+                .forEach(function(s) { s.style.display = 'none'; });
+            const conf = document.getElementById('payment-confirmation');
+            if (!conf) return;
+            conf.style.display = 'block';
+
+            const config    = window.feeConfig || {};
+            const invoice   = state.details ? state.details.invoice : {};
+            const option    = state.selectedOption || {};
+            const isAch     = (option.payment_method || '').toUpperCase() === 'ACH';
+            const fmt       = function(cents) { return '$' + (cents / 100).toFixed(2); };
+
+            // Fee calc
+            const baseCents = invoice.amount_cents || 0;
+            const feeEnabled = config.fee_surcharge_enabled;
+            const feePercent = feeEnabled
+                ? parseFloat(isAch ? (config.ach_fee_percent || 0) : (config.cc_fee_percent || 0))
+                : 0;
+            const feeCents   = feePercent > 0 ? Math.round(baseCents * feePercent / 100) : 0;
+            const totalCents = baseCents + feeCents;
+
+            // Icon + title
+            const icon = document.getElementById('conf-icon');
+            const title = document.getElementById('conf-title');
+            const subtitle = document.getElementById('conf-subtitle');
+            if (isAch) {
+                icon.style.background = 'rgba(245,158,11,.15)';
+                icon.style.color = '#92400e';
+                icon.innerHTML = '&#9203;';
+                title.textContent = 'Payment submitted';
+                subtitle.textContent = 'Your ACH payment is pending settlement.';
+                document.getElementById('conf-ach-notice').style.display = 'block';
+            } else {
+                icon.style.background = 'rgba(34,197,94,.15)';
+                icon.style.color = '#15803d';
+                icon.innerHTML = '&#10003;';
+                title.textContent = 'Payment successful';
+                subtitle.textContent = 'Your payment has been processed.';
+            }
+
+            // Details table
+            const invoiceRef = invoice.invoice_number
+                ? '#' + invoice.invoice_number
+                : (invoice.external_invoice_id || '--');
+            const rows = [
+                ['Invoice',        invoiceRef],
+                config.client_name ? ['Paid to', config.client_name] : null,
+                ['Payment via',    (option.gateway || '--').toUpperCase() + ' · ' + (isAch ? 'ACH' : 'Card')],
+                ['Transaction ID', payload.gateway_txn_id || '--'],
+            ].filter(Boolean);
+
+            const table = document.getElementById('conf-details');
+            table.innerHTML = rows.map(function(r) {
+                return '<tr>'
+                    + '<td style="color:#60708a;padding:5px 0;font-size:14px;">' + r[0] + '</td>'
+                    + '<td style="text-align:right;padding:5px 0;font-size:14px;font-weight:500;'
+                    + (r[0] === 'Transaction ID' ? 'font-family:ui-monospace,monospace;font-size:12px;' : '')
+                    + '">' + r[1] + '</td>'
+                    + '</tr>';
+            }).join('');
+
+            // Amount breakdown (only if fee applied)
+            const breakdown = document.getElementById('conf-breakdown');
+            if (feeCents > 0) {
+                breakdown.style.display = 'block';
+                breakdown.innerHTML = [
+                    '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">',
+                    '<span style="color:#60708a;">Invoice amount</span><span>' + fmt(baseCents) + '</span></div>',
+                    '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">',
+                    '<span style="color:#60708a;">Processing fee (' + feePercent + '%)</span><span>+' + fmt(feeCents) + '</span></div>',
+                    '<div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:6px;',
+                    'border-top:1px solid rgba(16,33,58,.1);font-weight:600;">',
+                    '<span>Total charged</span><span>' + fmt(totalCents) + '</span></div>',
+                ].join('');
+            }
+
+            // Return to merchant button
+            const returnBtn = document.getElementById('conf-return');
+            const redirectUrl = payload.redirect_url || invoice.success_redirect_url;
+            if (redirectUrl) {
+                returnBtn.style.display = 'block';
+                returnBtn.addEventListener('click', function() { window.location.href = redirectUrl; });
+            }
+
+            // Download receipt — placeholder (no PDF yet)
+            document.getElementById('conf-download').addEventListener('click', function() {
+                window.print();
+            });
+        }
+
+        function showCashInstructions() {
+            document.querySelectorAll('.shell > section').forEach(function(s) { s.style.display = 'none'; });
+            const page = document.getElementById('cash-instructions-page');
+            if (!page) return;
+            page.style.display = 'block';
+
+            const config  = window.feeConfig || {};
+            const invoice = state.details ? state.details.invoice : {};
+            const cd      = (config.cash_discount_details) || {};
+            const options = state.details ? (state.details.payment_options || []) : [];
+            const fmt     = function(cents) { return '$' + (cents / 100).toFixed(2); };
+            const baseCents = invoice.amount_cents || 0;
+            const invoiceRef = invoice.invoice_number
+                ? '#' + invoice.invoice_number
+                : (invoice.external_invoice_id || '--');
+
+            // Invoice amount
+            document.getElementById('ci-amount').textContent = fmt(baseCents);
+
+            // Savings vs each gateway
+            const savingsWrap = document.getElementById('ci-savings-rows');
+            const feeEnabled  = config.fee_surcharge_enabled;
+            if (feeEnabled && options.length) {
+                const rows = [];
+                options.filter(function(o) { return o.is_available !== false; }).forEach(function(o) {
+                    const pm = (o.payment_method || (o.hosted_fields && o.hosted_fields.metadata && o.hosted_fields.metadata.payment_method) || 'CARD').toUpperCase();
+                    const pct = parseFloat(pm === 'ACH' ? (config.ach_fee_percent || 0) : (config.cc_fee_percent || 0));
+                    if (pct > 0) {
+                        const saving = Math.round(baseCents * pct / 100);
+                        rows.push('<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">'
+                            + '<span>' + o.gateway.toUpperCase() + ' (' + pct + '%)</span>'
+                            + '<span style="font-weight:600;">' + fmt(saving) + '</span></div>');
+                    }
+                });
+                if (rows.length) {
+                    document.getElementById('ci-savings').style.display = 'block';
+                    savingsWrap.innerHTML = rows.join('');
+                }
+            }
+
+            // Payment instructions
+            if (cd.business_name) document.getElementById('ci-payable-row').style.display = 'grid';
+            document.getElementById('ci-payable').textContent = cd.business_name || '';
+
+            const addrParts = [cd.address, [cd.city, [cd.state, cd.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean);
+            if (addrParts.length) {
+                document.getElementById('ci-address-row').style.display = 'grid';
+                document.getElementById('ci-address').innerHTML = addrParts.join('<br>');
+            }
+
+            document.getElementById('ci-reference').textContent = invoiceRef;
+
+            if (cd.instructions) {
+                document.getElementById('ci-instructions').style.display = 'block';
+                document.getElementById('ci-instructions-text').textContent = cd.instructions;
+            }
+
+            // Contact
+            const hasContact = cd.phone || cd.email;
+            if (hasContact) {
+                document.getElementById('ci-contact').style.display = 'block';
+                document.getElementById('ci-contact-label').textContent = 'Questions? Contact ' + (config.client_name || 'the merchant');
+                const lines = [];
+                if (cd.phone) lines.push('&#9990; ' + cd.phone);
+                if (cd.email) lines.push('&#9993; <a href="mailto:' + cd.email + '" style="color:#10213a;">' + cd.email + '</a>');
+                document.getElementById('ci-contact-details').innerHTML = lines.map(function(l) {
+                    return '<div style="font-size:14px;padding:3px 0;">' + l + '</div>';
+                }).join('');
+            }
+        }
 
         async function loadDetails() {
             const response = await fetch(`/api/v1/payment/sessions/${sessionToken}`);
@@ -151,38 +447,150 @@
 
         function renderOptions(options) {
             els.gatewayOptions.innerHTML = '';
-            const availableOptions = options.filter((option) => option.is_available !== false);
+            const config = window.feeConfig || {};
+            const feeEnabled = config.fee_surcharge_enabled;
+            const baseCents = state.details.invoice.amount_cents;
+            const currency  = state.details.invoice.currency || 'USD';
+            const fmt = (cents) => '$' + (cents / 100).toFixed(2);
 
-            options.forEach((option, index) => {
-                const label = document.createElement('label');
-                label.className = `gateway-choice ${option.is_available === false ? 'is-disabled' : ''}`;
-                label.innerHTML = `
-                    <input type="radio" name="payment_gateway" value="${option.routing_rule_id}" ${option.is_available === false ? 'disabled' : ''}>
-                    <span class="gateway-choice-copy">
-                        <strong>Pay with ${option.gateway.toUpperCase()}</strong>
-                        <small>${option.is_available === false ? (option.unavailable_reason || 'This payment option is unavailable.') : describeOption(option)}</small>
-                    </span>
-                `;
+            const availableOptions = options.filter((o) => o.is_available !== false);
 
-                const input = label.querySelector('input');
-                input.addEventListener('change', () => {
-                    if (input.checked) {
-                        selectOption(option, label);
+            options.forEach((option) => {
+                const available = option.is_available !== false;
+                const payMethod = (
+                    option.payment_method ||
+                    (option.hosted_fields && option.hosted_fields.metadata && option.hosted_fields.metadata.payment_method) ||
+                    'CARD'
+                ).toUpperCase();
+
+                const isAch = payMethod === 'ACH';
+                const gwLower = option.gateway.toLowerCase();
+                let feePercent = 0;
+                if (feeEnabled) {
+                    if (config.gateway_rates && config.gateway_rates[gwLower] !== undefined) {
+                        // QB multi-MID: per-gateway rate from client_mid_routes
+                        feePercent = parseFloat(config.gateway_rates[gwLower] || 0);
+                    } else {
+                        // Standard: cc/ach fallback
+                        feePercent = parseFloat(isAch ? (config.ach_fee_percent || 0) : (config.cc_fee_percent || 0));
                     }
-                });
-
-                els.gatewayOptions.appendChild(label);
-
-                if (option.is_available !== false && availableOptions.length > 0 && option.routing_rule_id === availableOptions[0].routing_rule_id) {
-                    input.checked = true;
-                    selectOption(option, label);
                 }
+                const feeCents   = feePercent > 0 ? Math.round(baseCents * feePercent / 100) : 0;
+                const totalCents = baseCents + feeCents;
+
+                const tile = document.createElement('div');
+                tile.className = 'pay-tile' + (available ? '' : ' pay-tile-disabled');
+                tile.dataset.routingRuleId = option.routing_rule_id;
+                tile.style.cssText = [
+                    'display:flex;justify-content:space-between;align-items:center',
+                    'padding:14px 16px;border:1px solid #e5e7eb;border-radius:14px',
+                    'cursor:' + (available ? 'pointer' : 'default'),
+                    'background:#fff;transition:border-color .15s',
+                    'flex:1;min-width:180px',
+                    available ? '' : 'opacity:0.45',
+                ].join(';');
+
+                tile.innerHTML = [
+                    '<div>',
+                    `  <p style="margin:0;font-size:14px;font-weight:600;color:#10213a;">${option.gateway.toUpperCase()} <span style="font-size:12px;font-weight:500;color:#60708a;">(${isAch ? 'ACH' : 'CC'})</span></p>`,
+                    available
+                        ? (feeEnabled && feePercent > 0
+                            ? `  <p style="margin:3px 0 0;font-size:12px;color:#6b7c93;">Includes ${feePercent}% processing fee</p>`
+                            : `  <p style="margin:3px 0 0;font-size:12px;color:#6b7c93;">${describeOption(option)}</p>`)
+                        : `  <p style="margin:3px 0 0;font-size:12px;color:#e24b4a;">${option.unavailable_reason || 'Unavailable'}</p>`,
+                    '</div>',
+                    `<div style="text-align:right;">`,
+                    `  <p style="margin:0;font-size:17px;font-weight:600;color:#10213a;">${fmt(totalCents)}</p>`,
+                    `</div>`,
+                ].join('');
+
+                if (available) {
+                    tile.addEventListener('click', () => selectOption(option, tile));
+                    tile.addEventListener('mouseenter', () => { if (!tile.classList.contains('pay-tile-selected')) { tile.style.borderColor = 'rgba(239,131,84,0.5)'; tile.style.transform = 'translateY(-1px)'; } });
+                    tile.addEventListener('mouseleave', () => { if (!tile.classList.contains('pay-tile-selected')) { tile.style.borderColor = '#e5e7eb'; tile.style.transform = ''; } });
+                }
+
+                els.gatewayOptions.appendChild(tile);
             });
 
-            if (availableOptions.length === 0) {
+            // Cash / check tile — show whenever cash details are configured
+            const cd = (config && config.cash_discount_details) || {};
+            const hasCashDetails = Object.values(cd).some(function(v) { return v && String(v).trim() !== ''; });
+            if (hasCashDetails) {
+                const cashTile = document.createElement('div');
+                cashTile.className = 'pay-tile pay-tile-cash';
+                cashTile.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border:1px solid #e5e7eb;border-radius:14px;cursor:pointer;background:#fff;transition:border-color .15s,box-shadow .15s,background .15s;flex:1;min-width:180px;';
+                cashTile.innerHTML = [
+                    '<div>',
+                    '  <p style="margin:0;font-size:14px;font-weight:600;color:#10213a;">Pay by Cash / Check</p>',
+                    '  <p style="margin:3px 0 0;font-size:12px;color:#60708a;">No processing fee</p>',
+                    '</div>',
+                    `<div><p style="margin:0;font-size:17px;font-weight:600;color:#10213a;">${fmt(baseCents)}</p></div>`,
+                ].join('');
+                cashTile.addEventListener('click', () => selectCashOption(cashTile));
+                cashTile.addEventListener('mouseenter', () => { if (!cashTile.classList.contains('pay-tile-selected')) { cashTile.style.borderColor = 'rgba(239,131,84,0.5)'; cashTile.style.transform = 'translateY(-1px)'; } });
+                cashTile.addEventListener('mouseleave', () => { if (!cashTile.classList.contains('pay-tile-selected')) { cashTile.style.borderColor = '#e5e7eb'; cashTile.style.transform = ''; } });
+                els.gatewayOptions.appendChild(cashTile);
+            }
+
+            // Disclosure text is set dynamically per tile in selectOption() / selectCashOption()
+
+            // Auto-select first available gateway tile
+            if (availableOptions.length > 0) {
+                const firstTile = els.gatewayOptions.querySelector('.pay-tile:not(.pay-tile-cash)');
+                if (firstTile) firstTile.click();
+            } else {
                 els.submitButton.disabled = true;
                 els.submitStatus.textContent = 'Payment cannot be done because required bank details are missing from invoice custom fields.';
             }
+        }
+
+        function selectCashOption(tile) {
+            // Always hide the gateway fee disclosure when cash is selected
+            const discEl = document.getElementById('fee-disclosure-text');
+            if (discEl) discEl.style.display = 'none';
+
+            // Deselect all tiles
+            document.querySelectorAll('.pay-tile').forEach((t) => {
+                t.classList.remove('pay-tile-selected');
+                t.style.borderColor = '#e5e7eb';
+                t.style.boxShadow = '';
+                t.style.background = '#fff';
+                t.style.transform = '';
+            });
+            tile.classList.add('pay-tile-selected');
+            tile.style.borderColor = 'rgba(239,131,84,0.8)';
+            tile.style.boxShadow  = '0 0 0 3px rgba(239,131,84,0.18)';
+            tile.style.background = 'rgba(255,245,239,0.96)';
+
+            // Hide gateway card panel, show cash details
+            els.cardPanel.classList.add('hidden');
+            if (els.cashDetailsPanel) {
+                const cd = (window.feeConfig && window.feeConfig.cash_discount_details) || {};
+                const rows = [];
+                if (cd.business_name) rows.push(`<strong>Make check payable to:</strong> ${cd.business_name}`);
+                const addr = [cd.address, cd.city, [cd.state, cd.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+                if (addr)         rows.push(`<strong>Mail to:</strong> ${addr}`);
+                if (cd.phone)     rows.push(`<strong>Phone:</strong> ${cd.phone}`);
+                if (cd.email)     rows.push(`<strong>Email:</strong> <a href="mailto:${cd.email}" style="color:#10213a;">${cd.email}</a>`);
+                if (cd.instructions) rows.push(`<em style="color:#6b7c93;">${cd.instructions}</em>`);
+
+                const detailRows = rows.length
+                    ? rows.map((r) => `<div style="padding:4px 0;border-bottom:1px solid #f3f4f6;font-size:13px;">${r}</div>`).join('')
+                    : '<p style="color:#6b7c93;font-size:13px;">Contact the merchant for offline payment details.</p>';
+                const cdDisclosure = cd.disclosure
+                    ? `<p style="margin:10px 0 0;font-size:12px;color:#6b7280;line-height:1.5;">${cd.disclosure}</p>`
+                    : '';
+                els.cashDetailsContent.innerHTML = detailRows + cdDisclosure;
+
+                els.cashDetailsPanel.classList.remove('hidden');
+            }
+
+            state.selectedOption = null;
+            state.cashSelected   = true;
+            els.submitButton.disabled = false;
+            els.submitButton.textContent = 'Submit payment';
+            els.submitStatus.textContent = '';
         }
 
         function describeOption(option) {
@@ -195,49 +603,42 @@
             return `${paymentMethod} secure tokenization`;
         }
 
-        function selectOption(option, choice) {
+        function selectOption(option, tile) {
             state.selectedOption = option;
-            Array.from(els.gatewayOptions.children).forEach((child) => child.classList.remove('is-selected'));
-            choice?.classList.add('is-selected');
 
+            // Deselect all tiles
+            document.querySelectorAll('.pay-tile').forEach((t) => {
+                t.classList.remove('pay-tile-selected');
+                t.style.borderColor = '#e5e7eb';
+                t.style.boxShadow = '';
+                t.style.background = '#fff';
+                t.style.transform = '';
+            });
+            if (tile) {
+                tile.classList.add('pay-tile-selected');
+                tile.style.borderColor = 'rgba(239,131,84,0.8)';
+                tile.style.boxShadow  = '0 0 0 3px rgba(239,131,84,0.18)';
+                tile.style.background = 'rgba(255,245,239,0.96)';
+            }
+
+            // Show matching disclosure text
+            const disclosureEl = document.getElementById('fee-disclosure-text');
+            if (disclosureEl) {
+                const config = window.feeConfig || {};
+                const gwKey2 = state.selectedOption && state.selectedOption.gateway
+                    ? state.selectedOption.gateway.toLowerCase() : '';
+                const text = config.fee_disclosure;
+                disclosureEl.textContent = text || '';
+                disclosureEl.style.display = text ? 'block' : 'none';
+            }
+
+            state.cashSelected = false;
+            els.submitButton.textContent = 'Submit payment';
+
+            // Hide cash panel, show card entry
+            if (els.cashDetailsPanel) els.cashDetailsPanel.classList.add('hidden');
             resetToken('');
             setupCardEntry();
-            updateFeeDisplay(option);
-        }
-
-        function updateFeeDisplay(option) {
-            const breakdown = document.getElementById('fee-breakdown');
-            const config = window.feeConfig;
-            if (!breakdown || !config || !config.fee_surcharge_enabled || !state.details) {
-                if (breakdown) breakdown.style.display = 'none';
-                return;
-            }
-
-            const method = (
-                option.payment_method ||
-                (option.hosted_fields && option.hosted_fields.metadata && option.hosted_fields.metadata.payment_method) ||
-                'CARD'
-            ).toUpperCase();
-
-            const feePercent = parseFloat(method === 'ACH' ? (config.ach_fee_percent || 0) : (config.cc_fee_percent || 0));
-            if (!feePercent) {
-                breakdown.style.display = 'none';
-                return;
-            }
-
-            const baseCents   = state.details.invoice.amount_cents;
-            const feeCents    = Math.round(baseCents * feePercent / 100);
-            const totalCents  = baseCents + feeCents;
-            const currency    = state.details.invoice.currency || 'USD';
-            const fmt         = (cents) => `$${(cents / 100).toFixed(2)}`;
-
-            document.getElementById('fee-base-amount').textContent  = fmt(baseCents);
-            document.getElementById('fee-label-pct').textContent     = `Processing Fee (${feePercent}%)`;
-            document.getElementById('fee-processing').textContent    = fmt(feeCents);
-            document.getElementById('fee-total-amount').textContent  = `${fmt(totalCents)} ${currency}`;
-
-            els.amount.textContent = `${fmt(totalCents)} ${currency}`;
-            breakdown.style.display = 'block';
         }
 
         function loadScript(src) {
@@ -280,6 +681,7 @@
             els.hostedFields.classList.add('hidden');
             els.fluidpayPanel.classList.add('hidden');
             els.mockTokenPanel.classList.add('hidden');
+            if (els.payaAchPanel) els.payaAchPanel.classList.add('hidden');
             //els.directPayPanel.classList.add('hidden');
             els.tokenInput.value = '';
             els.tokenizeButton.disabled = false;
@@ -407,6 +809,14 @@
                 return;
             }
 
+            if (mode === 'paya_ach') {
+                if (els.payaAchPanel) els.payaAchPanel.classList.remove('hidden');
+                els.submitButton.disabled = true;
+                els.submitStatus.textContent = 'Complete the bank details form above to continue.';
+                loadPayaAccountForm();
+                return;
+            }
+
             els.mockTokenPanel.classList.remove('hidden');
         }
 
@@ -437,6 +847,7 @@
                     token: state.token,
                     routing_rule_id: state.selectedOption.routing_rule_id,
                     payment_method: state.selectedOption.payment_method || state.selectedOption.hosted_fields.metadata.payment_method || 'CARD',
+                    ...(state.payaBankToken ? { paya_bank_token: state.payaBankToken } : {}),
                 }),
             });
 
@@ -453,19 +864,24 @@
                 return;
             }
 
-            els.submitStatus.textContent = `Payment approved. Gateway reference: ${payload.gateway_txn_id}`;
-            els.status.textContent = 'COMPLETED';
-            const redirectUrl = payload.redirect_url;
-            if (redirectUrl) {
-                els.submitStatus.textContent += ' Redirecting...';
-                setTimeout(() => { window.location.href = redirectUrl; }, 1500);
-            }
+            showConfirmation(payload);
         }
 
         els.submitButton.addEventListener('click', async () => {
+            if (state.cashSelected) { showCashInstructions(); return; }
             if (!state.selectedOption) return;
 
             const mode = state.selectedOption.hosted_fields.metadata.mode;
+
+            // Paya ACH: token already received via postMessage from iframe
+            if (mode === 'paya_ach') {
+                if (!state.payaBankToken) {
+                    els.submitStatus.textContent = 'Please complete the bank details in the form above.';
+                    return;
+                }
+                await submitPayment();
+                return;
+            }
 
             if (mode === 'tokenizer') {
                 if (!state.fluidpayTokenizer || typeof state.fluidpayTokenizer.submit !== 'function') {
