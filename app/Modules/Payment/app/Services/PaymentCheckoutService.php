@@ -248,12 +248,17 @@ class PaymentCheckoutService
             $qbMidRoute = $this->resolveQbMidRoute($invoice, $feeClient, $decision->gateway);
         }
         if ($qbMidRoute) {
-            // RoutingDecision is readonly — replace with new instance using overridden MID
+            // RoutingDecision is readonly — replace with new instance using overridden MID.
+            // Merge environment into credentials so adapters can derive the correct base URL.
+            $overrideCredentials = array_merge(
+                (array) ($qbMidRoute->credentials ?? $decision->midCredentials),
+                ['environment' => $qbMidRoute->environment ?? 'sandbox']
+            );
             $decision = new \Modules\Routing\DTOs\RoutingDecision(
                 gateway:        $decision->gateway,
                 mid:            $qbMidRoute->mid_identifier,
                 routingRuleId:  $decision->routingRuleId,
-                midCredentials: (array) ($qbMidRoute->credentials ?? $decision->midCredentials),
+                midCredentials: $overrideCredentials,
                 ruleMatches:    $decision->ruleMatches,
             );
 
