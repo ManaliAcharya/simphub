@@ -251,9 +251,11 @@ class PaymentCheckoutService
         }
         if ($qbMidRoute) {
             // RoutingDecision is readonly — replace with new instance using overridden MID.
-            // Merge environment into credentials so adapters can derive the correct base URL.
+            // Base = original routing rule credentials (keeps namespace, wsdl, method names etc.)
+            // Override only the fields stored in the MID route (api_key, username/password etc.)
             $overrideCredentials = array_merge(
-                (array) ($qbMidRoute->credentials ?? $decision->midCredentials),
+                $decision->midCredentials,                       // base: routing rule defaults
+                array_filter((array) ($qbMidRoute->credentials ?? []), fn($v) => $v !== null && $v !== ''),
                 ['environment' => $qbMidRoute->environment ?? 'sandbox']
             );
             $decision = new \Modules\Routing\DTOs\RoutingDecision(
