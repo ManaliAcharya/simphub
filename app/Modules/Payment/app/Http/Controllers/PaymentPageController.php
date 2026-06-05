@@ -108,22 +108,25 @@ class PaymentPageController extends Controller
     {
         $payload = (array) ($invoice->raw_payload ?? []);
 
-        // Real QB invoices: raw_payload['invoice']['Invoice']['CustomField']
-        // Manually created test invoices: raw_payload['CustomField']
-        $fields = $payload['invoice']['Invoice']['CustomField']
-            ?? $payload['CustomField']
-            ?? $payload['custom_field']
-            ?? [];
+        // Check all possible locations — invoice-level first, then customer-level, then top-level (test)
+        $candidates = [
+            $payload['invoice']['Invoice']['CustomField'] ?? [],   // transaction-level field
+            $payload['customer']['Customer']['CustomField'] ?? [],  // customer-level field
+            $payload['CustomField'] ?? [],                          // manually created test invoices
+        ];
 
-        if (! is_array($fields)) {
-            return null;
-        }
-
-        foreach ($fields as $field) {
-            $name  = $field['Name'] ?? $field['name'] ?? '';
-            $value = $field['StringValue'] ?? $field['string_value'] ?? $field['value'] ?? null;
-            if (strcasecmp((string) $name, $fieldName) === 0 && $value !== null) {
-                return (string) $value;
+        foreach ($candidates as $fields) {
+            if (! is_array($fields) || empty($fields)) {
+                continue;
+            }
+            foreach ($fields as $field) {
+                $name  = $field['Name'] ?? $field['name'] ?? '';
+                $value = $field['StringValue'] ?? $field['string_value'] ?? $field['value'] ?? null;
+                if (strcasecmp((string) $name, $fieldName) === 0
+                    && $value !== null
+                    && trim((string) $value) !== '') {
+                    return trim((string) $value);
+                }
             }
         }
 
