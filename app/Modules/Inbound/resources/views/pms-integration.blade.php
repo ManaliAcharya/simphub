@@ -298,18 +298,17 @@
         </div>
         @endif
 
-        {{-- Share setup link --}}
-        @if ($shareUrl && ! $openedViaShareLink && (empty($organization_name) || empty($organization_id)) && ! ($provider === 'wave' && $connection))
-        <div class="cc-card">
-            <div class="cc-card-title">Share Setup Link</div>
-            <div class="cc-card-desc">Send this link to the client to complete the {{ $providerLabel }} connection on their end.</div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                <input id="setup-share-url" type="text" value="{{ $shareUrl }}" readonly
-                       style="flex:1;min-width:240px;padding:8px 12px;border:1px solid var(--cc-border);border-radius:var(--cc-r-sm);font:inherit;font-size:13px;background:#f9fafb;">
-                <button type="button" class="cc-copy-btn" onclick="const i=document.getElementById('setup-share-url');i.select();navigator.clipboard.writeText(i.value);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy link',1800);">Copy link</button>
-            </div>
-        </div>
-        @endif
+
+        {{-- Company Logo --}}
+        <x-inbound::client-settings-card
+            :client="$client"
+            :available-gateways="[]"
+            :show-left-col="false"
+            :show-gateways="false"
+            :show-fees="false"
+            :show-logo="true"
+            :compact="true"
+        />
 
     </div>{{-- end cc-panel-connection --}}
 
@@ -320,6 +319,7 @@
             :available-gateways="$availableGateways"
             :show-left-col="false"
             :show-fees="false"
+            :show-logo="false"
             :compact="true"
         />
     </div>
