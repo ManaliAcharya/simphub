@@ -30,6 +30,7 @@ class QuickBooksApiClient
     public function fetchInvoice(QuickBooksConnection $connection, string $invoiceId): array
     {
         return $this->request($connection)
+            ->withQueryParameters(['include' => 'enhancedAllCustomFields'])
             ->get("/invoice/{$invoiceId}", $this->minorVersion())
             ->throw()
             ->json();
