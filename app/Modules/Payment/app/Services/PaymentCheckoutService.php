@@ -247,16 +247,19 @@ class PaymentCheckoutService
             $qbMidRoute = $this->resolveQbMidRoute($invoice, $feeClient, $decision->gateway);
         }
         if ($qbMidRoute) {
-            // Override MID credentials with route-specific ones
-            $decision->mid            = $qbMidRoute->mid_identifier;
-            $decision->midCredentials = (array) ($qbMidRoute->credentials ?? $decision->midCredentials);
+            // RoutingDecision is readonly — replace with new instance using overridden MID
+            $decision = new \Modules\Routing\DTOs\RoutingDecision(
+                gateway:        $decision->gateway,
+                mid:            $qbMidRoute->mid_identifier,
+                routingRuleId:  $decision->routingRuleId,
+                midCredentials: (array) ($qbMidRoute->credentials ?? $decision->midCredentials),
+                ruleMatches:    $decision->ruleMatches,
+            );
 
             if ($qbMidRoute->route_type === 'fees_off') {
-                // Merchant absorbs fee — customer is charged flat invoice amount
                 $feeCents         = 0;
                 $totalAmountCents = (int) $invoice->amount_cents;
             } elseif ($qbMidRoute->rate_percent !== null) {
-                // fees_on: use route-specific rate for the gateway
                 $overridePercent  = (float) $qbMidRoute->rate_percent;
                 $feeCents         = (int) round($invoice->amount_cents * $overridePercent / 100);
                 $totalAmountCents = (int) $invoice->amount_cents + $feeCents;
