@@ -55,23 +55,21 @@ class PaymentPageController extends Controller
             $fieldValue = $this->extractQbField($invoice, $fieldName);
 
             if ($fieldValue === null) {
-                // Field not set — fall back to client-level default
-                $routeType = $feeEnabled ? 'fees_on' : 'fees_off';
+                // Field not set → use Processing fees (cc/ach), no MID route override
+                $routeType = null;
             } elseif (strtolower($fieldValue) === 'yes') {
                 $routeType = 'fees_on';
             } else {
                 $routeType = 'fees_off';
             }
+            // feeEnabled unchanged when null (stays at fee_surcharge_enabled)
 
-            // fees_off → flat amount, fees_on → show fee
-            $feeEnabled = ($routeType === 'fees_on');
         }
 
         // ── Load per-gateway rates from MID routes ────────────────────────────────
         if ($client->qb_multi_mid_enabled && (string) $invoice->pms_source === 'quickbooks'
             && $routeType !== null) {
 
-            // Load per-gateway rates for this route
             $midRoutes = ClientMidRoute::query()
                 ->where('client_id',  $client->id)
                 ->where('route_type', $routeType)
@@ -83,11 +81,10 @@ class PaymentPageController extends Controller
                 foreach ($midRoutes as $route) {
                     $gatewayRates[strtolower($route->gateway)] = (float) ($route->rate_percent ?? 0);
                 }
-            }
-
-            // fees_off → merchant absorbs: don't show fees to customer
-            if ($routeType === 'fees_off') {
-                $feeEnabled = false;
+                // feeEnabled = true if at least one gateway has a rate > 0
+                $feeEnabled = collect($gatewayRates)->contains(fn($r) => $r > 0);
+            } else {
+                $feeEnabled = false; // no routes configured → flat
             }
         }
         // ─────────────────────────────────────────────────────────────────────

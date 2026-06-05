@@ -113,17 +113,19 @@ class PaymentCheckoutService
 
         $applyFee = $feeClient && $feeClient->fee_surcharge_enabled;
 
-        // QB Multi-MID ON → Cash Discount field overrides fee_surcharge_enabled.
-        // QB Multi-MID OFF → fee_surcharge_enabled default applies, field is ignored.
+        // QB Multi-MID ON + field set → route rate overrides Processing fees.
+        // QB Multi-MID ON + field NOT set → use Processing fees (cc/ach rate).
+        // QB Multi-MID OFF → use Processing fees always.
         if ($feeClient && $feeClient->qb_multi_mid_enabled
             && (string) $invoice->pms_source === 'quickbooks') {
             $fieldName  = (string) ($feeClient->qb_fee_override_field ?? 'Cash Discount');
             $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
 
             if ($fieldValue !== null) {
-                $applyFee = strtolower($fieldValue) === 'yes';
+                // Field is explicitly set → route rate will override below, suppress cc/ach fee
+                $applyFee = false;
             }
-            // null = not set → keeps $applyFee from client default
+            // null (not set) → $applyFee stays at fee_surcharge_enabled → Processing fees apply
         }
 
         if ($applyFee) {
@@ -262,13 +264,15 @@ class PaymentCheckoutService
                 ruleMatches:    $decision->ruleMatches,
             );
 
-            if ($qbMidRoute->route_type === 'fees_off') {
-                $feeCents         = 0;
-                $totalAmountCents = (int) $invoice->amount_cents;
-            } elseif ($qbMidRoute->rate_percent !== null) {
+            // Apply route's rate_percent for BOTH routes.
+            // rate > 0 → customer pays fee. rate = 0 or null → flat amount.
+            if ($qbMidRoute->rate_percent !== null && (float) $qbMidRoute->rate_percent > 0) {
                 $overridePercent  = (float) $qbMidRoute->rate_percent;
                 $feeCents         = (int) round($invoice->amount_cents * $overridePercent / 100);
                 $totalAmountCents = (int) $invoice->amount_cents + $feeCents;
+            } else {
+                $feeCents         = 0;
+                $totalAmountCents = (int) $invoice->amount_cents;
             }
         }
         // ──────────────────────────────────────────────────────────────────
@@ -397,18 +401,16 @@ class PaymentCheckoutService
             return null;
         }
 
-        // Multi-MID is ON → always read Cash Discount field to determine route
+        // Multi-MID ON → read Cash Discount field.
+        // Field not set → return null (use Processing fees, no MID override).
         $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
         $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
 
         if ($fieldValue === null) {
-            // Field not set → fall back to client-level default
-            $routeType = $client->fee_surcharge_enabled ? 'fees_on' : 'fees_off';
-        } elseif (strtolower($fieldValue) === 'yes') {
-            $routeType = 'fees_on';
-        } else {
-            $routeType = 'fees_off';
+            return null; // no field → fall back to Processing fees default
         }
+
+        $routeType = strtolower($fieldValue) === 'yes' ? 'fees_on' : 'fees_off';
 
         return ClientMidRoute::query()
             ->where('client_id',  $client->id)
