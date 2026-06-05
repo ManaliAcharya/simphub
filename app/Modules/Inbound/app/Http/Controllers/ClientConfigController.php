@@ -305,7 +305,7 @@ class ClientConfigController extends Controller
             'qb_multi_mid_enabled' => (bool) $request->boolean('qb_multi_mid_enabled'),
         ]);
 
-        $validated = $request->validate([
+        $request->validate([
             'routes'                        => ['nullable', 'array'],
             'routes.*.route_type'           => ['nullable', 'string', Rule::in(['fees_on', 'fees_off'])],
             'routes.*.gateway'              => ['nullable', 'string', 'max:50'],
@@ -314,11 +314,21 @@ class ClientConfigController extends Controller
             'routes.*.rate_percent'         => ['nullable', 'numeric', 'min:0', 'max:99.99'],
             'routes.*.environment'          => ['nullable', 'string', Rule::in(['sandbox', 'production'])],
             'routes.*.credentials'          => ['nullable', 'array'],
+            'routes.*.credentials.*'        => ['nullable', 'string', 'max:1000'],
         ]);
 
-        foreach ($validated['routes'] ?? [] as $route) {
+        // Use $request->input() for routes to ensure nested credential keys are not stripped
+        $routes = $request->input('routes', []);
+
+        foreach ($routes as $route) {
             // Skip routes with no MID identifier filled in yet
             if (empty($route['mid_identifier'])) continue;
+
+            $credentials = array_filter(
+                (array) ($route['credentials'] ?? []),
+                fn($v) => $v !== null && trim((string) $v) !== ''
+            );
+
             ClientMidRoute::updateOrCreate(
                 [
                     'client_id'  => $client->id,
@@ -329,8 +339,8 @@ class ClientConfigController extends Controller
                     'mid_identifier' => $route['mid_identifier'],
                     'mid_label'      => $route['mid_label'] ?? null,
                     'rate_percent'   => $route['rate_percent'] ?? null,
-                    'environment'    => $route['environment'],
-                    'credentials'    => !empty($route['credentials']) ? $route['credentials'] : null,
+                    'environment'    => $route['environment'] ?? 'sandbox',
+                    'credentials'    => !empty($credentials) ? $credentials : null,
                     'is_active'      => true,
                 ]
             );
