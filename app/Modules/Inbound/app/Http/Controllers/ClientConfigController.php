@@ -178,21 +178,31 @@ class ClientConfigController extends Controller
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
 
         $request->validate([
-            'gateway_credentials'                          => ['nullable', 'array'],
-            'gateway_credentials.fluidpay.api_key'        => ['nullable', 'string', 'max:500'],
-            'gateway_credentials.fluidpay.public_key'     => ['nullable', 'string', 'max:500'],
-            'gateway_credentials.fluidpay.environment'    => ['nullable', 'string', 'in:sandbox,production'],
-            'gateway_credentials.paya.username'           => ['nullable', 'string', 'max:255'],
-            'gateway_credentials.paya.password'           => ['nullable', 'string', 'max:255'],
-            'gateway_credentials.paya.terminal_id'        => ['nullable', 'string', 'max:50'],
-            'gateway_credentials.nmi.security_key'        => ['nullable', 'string', 'max:500'],
-            'gateway_credentials.nmi.public_key'          => ['nullable', 'string', 'max:500'],
+            'gateway_credentials'                      => ['nullable', 'array'],
+            'gateway_credentials.environment'          => ['nullable', 'string', 'in:sandbox,production'],
+            'gateway_credentials.fluidpay.api_key'    => ['nullable', 'string', 'max:500'],
+            'gateway_credentials.fluidpay.public_key' => ['nullable', 'string', 'max:500'],
+            'gateway_credentials.paya.username'       => ['nullable', 'string', 'max:255'],
+            'gateway_credentials.paya.password'       => ['nullable', 'string', 'max:255'],
+            'gateway_credentials.paya.terminal_id'    => ['nullable', 'string', 'max:50'],
+            'gateway_credentials.nmi.security_key'    => ['nullable', 'string', 'max:500'],
+            'gateway_credentials.nmi.public_key'      => ['nullable', 'string', 'max:500'],
         ]);
 
-        // Only store non-empty credential values
         $incoming = (array) ($request->input('gateway_credentials') ?? []);
         $stored   = [];
+
+        // Save common environment at the top level
+        $env = trim((string) ($incoming['environment'] ?? ''));
+        if ($env !== '') {
+            $stored['environment'] = $env;
+        }
+
+        // Save per-gateway credentials (skip the 'environment' key)
         foreach ($incoming as $gateway => $fields) {
+            if ($gateway === 'environment' || ! is_array($fields)) {
+                continue;
+            }
             $clean = array_filter((array) $fields, fn($v) => $v !== null && trim((string) $v) !== '');
             if (! empty($clean)) {
                 $stored[$gateway] = $clean;

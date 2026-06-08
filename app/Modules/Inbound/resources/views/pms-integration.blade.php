@@ -543,7 +543,7 @@
                                     </div>
                                 </div>
                                 @php
-                                    $gwEnv      = $gwCredsAll[$gw]['environment'] ?? 'sandbox';
+                                    $gwEnv      = $gwCredsAll['environment'] ?? 'sandbox';
                                     $gwEnvLabel = $gwEnv === 'production' ? 'Production' : 'Sandbox';
                                 @endphp
                                 <input type="hidden" name="routes[{{ $idx }}][environment]" value="{{ $gwEnv }}">

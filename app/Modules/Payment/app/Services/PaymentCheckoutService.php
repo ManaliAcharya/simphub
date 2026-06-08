@@ -177,6 +177,11 @@ class PaymentCheckoutService
         if ($feeClient) {
             $clientCreds = (array) ($feeClient->gateway_credentials ?? []);
             $gwCreds     = $clientCreds[strtolower($decision->gateway)] ?? [];
+            // Inject the common environment into per-gateway credentials
+            $commonEnv = $clientCreds['environment'] ?? null;
+            if ($commonEnv) {
+                $gwCreds['environment'] = $commonEnv;
+            }
             if (! empty($gwCreds)) {
                 $decision = new \Modules\Routing\DTOs\RoutingDecision(
                     gateway:        $decision->gateway,

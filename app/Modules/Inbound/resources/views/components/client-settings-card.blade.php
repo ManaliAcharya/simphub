@@ -135,21 +135,20 @@
                 $activeGateways = array_map('strtolower', $client->allowed_payment_gateways ?? []);
                 $credDefs = [
                     'fluidpay' => [
-                        ['key' => 'api_key',     'label' => 'API Key',            'type' => 'password'],
-                        ['key' => 'public_key',  'label' => 'Public Key',          'type' => 'text'],
-                        ['key' => 'environment', 'label' => 'Environment',         'type' => 'select', 'options' => ['sandbox' => 'Sandbox', 'production' => 'Production']],
+                        ['key' => 'api_key',     'label' => 'API Key',       'type' => 'password'],
+                        ['key' => 'public_key',  'label' => 'Public Key',    'type' => 'text'],
                     ],
                     'paya' => [
-                        ['key' => 'username',    'label' => 'Vault Username',      'type' => 'text'],
-                        ['key' => 'password',    'label' => 'Vault Password',      'type' => 'password'],
-                        ['key' => 'terminal_id', 'label' => 'Terminal ID',          'type' => 'text'],
-                        ['key' => 'environment', 'label' => 'Environment',          'type' => 'select', 'options' => ['sandbox' => 'Sandbox', 'production' => 'Production']],
+                        ['key' => 'username',    'label' => 'Vault Username','type' => 'text'],
+                        ['key' => 'password',    'label' => 'Vault Password','type' => 'password'],
+                        ['key' => 'terminal_id', 'label' => 'Terminal ID',   'type' => 'text'],
                     ],
                     'nmi' => [
-                        ['key' => 'security_key','label' => 'Security Key',        'type' => 'password'],
-                        ['key' => 'public_key',  'label' => 'Public Key',          'type' => 'text'],
+                        ['key' => 'security_key','label' => 'Security Key',  'type' => 'password'],
+                        ['key' => 'public_key',  'label' => 'Public Key',    'type' => 'text'],
                     ],
                 ];
+                $commonEnv = $gwCreds['environment'] ?? '';
             @endphp
             @if(count($activeGateways))
             <div class="cc-card">
@@ -164,6 +163,17 @@
 
                 <form method="POST" action="{{ route('inbound.clients.update-gateway-credentials', $client->pms_client_id) }}">
                     @csrf
+
+                    {{-- Common environment — applies to all gateways --}}
+                    <div class="cc-field" style="margin-bottom:16px;">
+                        <label style="font-weight:600;">Environment</label>
+                        <select name="gateway_credentials[environment]"
+                                style="width:100%;padding:8px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
+                            <option value="sandbox"    @selected($commonEnv !== 'production')>Sandbox</option>
+                            <option value="production" @selected($commonEnv === 'production')>Production</option>
+                        </select>
+                    </div>
+
                     <div style="display:grid;gap:16px;">
                         @foreach($activeGateways as $gw)
                         @if(isset($credDefs[$gw]))
@@ -172,22 +182,12 @@
                             <div style="display:grid;gap:8px;">
                                 @foreach($credDefs[$gw] as $field)
                                 <div class="cc-field" style="margin:0;">
-                                    <label>{{ $field['label'] }} <span style="font-weight:400;color:var(--cc-text-3);"></span></label>
-                                    @if(($field['type'] ?? 'text') === 'select')
-                                        <select name="gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
-                                                style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
-                                            <option value="">— use default —</option>
-                                            @foreach($field['options'] as $val => $lbl)
-                                                <option value="{{ $val }}" @selected(($gwCreds[$gw][$field['key']] ?? '') === $val)>{{ $lbl }}</option>
-                                            @endforeach
-                                        </select>
-                                    @else
-                                        <input type="{{ $field['type'] }}"
-                                               name="gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
-                                               value="{{ old("gateway_credentials.$gw.{$field['key']}", $gwCreds[$gw][$field['key']] ?? '') }}"
-                                               placeholder="Leave blank to use default"
-                                               style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
-                                    @endif
+                                    <label>{{ $field['label'] }}</label>
+                                    <input type="{{ $field['type'] }}"
+                                           name="gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
+                                           value="{{ old("gateway_credentials.$gw.{$field['key']}", $gwCreds[$gw][$field['key']] ?? '') }}"
+                                           placeholder="Leave blank to use default"
+                                           style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
                                 </div>
                                 @endforeach
                             </div>
