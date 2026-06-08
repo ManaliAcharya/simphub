@@ -310,6 +310,31 @@
             :compact="true"
         />
 
+        {{-- Permanent setup link access for admins only --}}
+        @if($shareUrl && !$openedViaShareLink && empty($isClientSession))
+        <div class="cc-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+                <div>
+                    <div class="cc-card-title">Setup Link</div>
+                    <div class="cc-card-desc" style="margin:0;">Share with the client to complete the {{ $providerLabel }} connection.</div>
+                </div>
+                <button type="button"
+                        onclick="document.getElementById('setup-link-row').style.display = document.getElementById('setup-link-row').style.display === 'none' ? 'flex' : 'none';"
+                        class="button secondary" style="font-size:12px;padding:6px 14px;white-space:nowrap;">
+                    Show link
+                </button>
+            </div>
+            <div id="setup-link-row" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+                <input id="pms-setup-url" type="text" value="{{ $shareUrl }}" readonly
+                       style="flex:1;min-width:240px;padding:8px 12px;border:1px solid var(--cc-border);border-radius:var(--cc-r-sm);font:inherit;font-size:13px;background:#f9fafb;">
+                <button type="button" class="cc-copy-btn"
+                        onclick="const i=document.getElementById('pms-setup-url');i.select();navigator.clipboard.writeText(i.value);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy link',1800);">
+                    Copy link
+                </button>
+            </div>
+        </div>
+        @endif
+
         {{-- Setup link — shown only when admin just created this client --}}
         @if(!empty($showSetupLink) && $shareUrl)
         <div class="cc-card" style="border-color:#a5b4fc;background:#f5f3ff;">

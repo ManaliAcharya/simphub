@@ -49,6 +49,10 @@ class PmsIntegrationController extends Controller
 
         abort_unless(strtoupper($provider) === (string) $client->client_pms, 404);
 
+        // Mark this session as client-initiated so setup links stay hidden
+        // even after OAuth redirect brings them back to the admin-style URL.
+        session(['client_session_id' => $client->pms_client_id]);
+
         return $this->render(
             $provider,
             (string) $client->pms_client_id,
@@ -310,7 +314,12 @@ class PmsIntegrationController extends Controller
                 ? route('inbound.setup.share', ['provider' => $provider, 'token' => $client->setup_token])
                 : null,
             'openedViaShareLink' => $openedViaShareLink,
-            'showSetupLink'      => ! $openedViaShareLink && session('show_setup_link') === true,
+            // Show the one-time setup link only if: admin just created client AND this is not a client session
+            'showSetupLink'      => ! $openedViaShareLink
+                                    && session('show_setup_link') === true
+                                    && session('client_session_id') !== ($client?->pms_client_id ?? ''),
+            // Hide the permanent setup link card from clients who arrived via shortlink (persists through OAuth)
+            'isClientSession'    => session('client_session_id') === ($client?->pms_client_id ?? null),
             'callbackUrl' => route("inbound.{$provider}.callback"),
             ...$data,
         ]);
