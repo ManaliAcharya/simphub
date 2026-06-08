@@ -310,6 +310,7 @@ class PmsIntegrationController extends Controller
                 ? route('inbound.setup.share', ['provider' => $provider, 'token' => $client->setup_token])
                 : null,
             'openedViaShareLink' => $openedViaShareLink,
+            'showSetupLink'      => ! $openedViaShareLink && session('show_setup_link') === true,
             'callbackUrl' => route("inbound.{$provider}.callback"),
             ...$data,
         ]);

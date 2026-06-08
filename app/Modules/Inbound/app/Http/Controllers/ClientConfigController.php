@@ -132,20 +132,19 @@ class ClientConfigController extends Controller
         if ($client->client_pms === 'CUSTOM') {
             return redirect()->route('inbound.clients.api-docs', [
                 'pms_client_id' => $client->pms_client_id,
-            ]);
+            ])->with('show_setup_link', true);
         }
 
         $providerRoute = match ($client->client_pms) {
             'ZOHO'       => 'inbound.zoho.page',
             'QUICKBOOKS' => 'inbound.quickbooks.page',
-            'WAVE' => 'inbound.wave.page',
+            'WAVE'       => 'inbound.wave.page',
             default      => 'inbound.clio.page',
         };
 
         return redirect()->route($providerRoute, [
             'pms_client_id' => $client->pms_client_id,
-            'success' => 'Client created. Continue with PMS connection.',
-        ]);
+        ])->with('show_setup_link', true);
     }
 
     public function updateWebhookUrl(Request $request, string $pmsClientId): RedirectResponse

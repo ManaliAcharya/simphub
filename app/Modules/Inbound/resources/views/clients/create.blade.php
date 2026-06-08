@@ -127,7 +127,7 @@
                                {{ old('integration_type', 'pms') === 'pms' ? 'checked' : '' }}
                                onchange="setIntegrationType('pms')">
                         <div>
-                            <div class="card-title">Use a PMS</div>
+                            <div class="card-title">Platform</div>
                             <div class="card-sub">Clio, Zoho, Lawcus, QuickBooks</div>
                         </div>
                     </label>

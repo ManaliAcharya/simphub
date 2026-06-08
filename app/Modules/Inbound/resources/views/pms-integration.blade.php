@@ -310,6 +310,27 @@
             :compact="true"
         />
 
+        {{-- Setup link — shown only when admin just created this client --}}
+        @if(!empty($showSetupLink) && $shareUrl)
+        <div class="cc-card" style="border-color:#a5b4fc;background:#f5f3ff;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+                <span style="font-size:18px;">&#128279;</span>
+                <div>
+                    <div class="cc-card-title" style="color:#4f46e5;">Client Setup Link</div>
+                    <div class="cc-card-desc" style="margin:0;color:#6d28d9;">Share this link with the client to complete the {{ $providerLabel }} connection. This link is shown only once after client creation.</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <input id="admin-setup-url" type="text" value="{{ $shareUrl }}" readonly
+                       style="flex:1;min-width:240px;padding:8px 12px;border:1px solid #c4b5fd;border-radius:var(--cc-r-sm);font:inherit;font-size:13px;background:#ede9fe;">
+                <button type="button" class="cc-copy-btn" style="background:#4f46e5;"
+                        onclick="const i=document.getElementById('admin-setup-url');i.select();navigator.clipboard.writeText(i.value);this.textContent='Copied!';setTimeout(()=>this.textContent='Copy link',1800);">
+                    Copy link
+                </button>
+            </div>
+        </div>
+        @endif
+
     </div>{{-- end cc-panel-connection --}}
 
     {{-- ── Gateways tab ── --}}
