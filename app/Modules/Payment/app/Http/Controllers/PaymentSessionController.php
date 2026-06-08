@@ -49,9 +49,16 @@ class PaymentSessionController extends Controller
             return response()->json(['message' => 'No active Paya routing rule found.'], 422);
         }
 
-        $midCredentials = is_string($rule->mid_credentials)
-            ? json_decode(decrypt($rule->mid_credentials), true) ?? []
-            : (array) ($rule->mid_credentials ?? []);
+        // mid_credentials may be: encrypted string, encrypted+serialized array, or plain array
+        $raw = $rule->mid_credentials;
+        if (is_string($raw)) {
+            $decrypted = decrypt($raw);
+            $midCredentials = is_array($decrypted)
+                ? $decrypted
+                : (json_decode($decrypted, true) ?? []);
+        } else {
+            $midCredentials = (array) ($raw ?? []);
+        }
 
         // Optional invoice metadata for the form title
         $invoice = $paymentSession->invoice;

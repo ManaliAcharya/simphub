@@ -142,7 +142,7 @@ $apiDocsTabs = [
     :tabs="$apiDocsTabs">
 
     {{-- ── Credentials tab ── --}}
-    <div id="cc-panel-credentials" class="cc-tab-panel active">
+    <div id="cc-panel-credentials" class="cc-tab-panel">
 
         @if(session('success'))
         <div style="padding:12px 16px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:10px;font-size:13px;color:#065f46;margin-bottom:14px;">

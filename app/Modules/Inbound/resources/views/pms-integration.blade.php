@@ -16,7 +16,7 @@
     :tabs="$pmsTabs">
 
     {{-- ── Connection tab ── --}}
-    <div id="cc-panel-connection" class="cc-tab-panel active">
+    <div id="cc-panel-connection" class="cc-tab-panel">
 
         {{-- Connected Services --}}
         <div class="cc-card">

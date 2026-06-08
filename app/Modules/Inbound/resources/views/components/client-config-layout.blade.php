@@ -182,7 +182,7 @@
         {{-- ── Tab bar ── --}}
         <div class="cc-tabs" role="tablist">
             @foreach($tabs as $tab)
-                <button class="cc-tab {{ $loop->first ? 'active' : '' }}"
+                <button class="cc-tab"
                         role="tab"
                         data-tab="{{ $tab['id'] }}"
                         onclick="ccSwitchTab('{{ $tab['id'] }}', this)">
@@ -199,20 +199,28 @@
 
 <script>
 function ccSwitchTab(tabId, btn) {
-    // Update tab buttons
     document.querySelectorAll('.cc-tab').forEach(function(t) { t.classList.remove('active'); });
     btn.classList.add('active');
-    // Update panels
     document.querySelectorAll('.cc-tab-panel').forEach(function(p) { p.classList.remove('active'); });
     var panel = document.getElementById('cc-panel-' + tabId);
     if (panel) panel.classList.add('active');
+    // Keep the active tab in the URL so form POST redirects come back here
+    var url = new URL(window.location.href);
+    url.searchParams.set('tab', tabId);
+    history.replaceState(null, '', url.toString());
 }
 
-// Activate the first tab on load
 document.addEventListener('DOMContentLoaded', function() {
-    var firstBtn = document.querySelector('.cc-tab');
-    var firstPanel = document.querySelector('.cc-tab-panel');
-    if (firstBtn) firstBtn.classList.add('active');
-    if (firstPanel) firstPanel.classList.add('active');
+    var tabId = new URLSearchParams(window.location.search).get('tab');
+    var targetBtn = tabId
+        ? document.querySelector('.cc-tab[data-tab="' + tabId + '"]')
+        : document.querySelector('.cc-tab');
+    if (!targetBtn) targetBtn = document.querySelector('.cc-tab');
+    if (targetBtn) {
+        var id = targetBtn.getAttribute('data-tab');
+        targetBtn.classList.add('active');
+        var panel = document.getElementById('cc-panel-' + id);
+        if (panel) panel.classList.add('active');
+    }
 });
 </script>

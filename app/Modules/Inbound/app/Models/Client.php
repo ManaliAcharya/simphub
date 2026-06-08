@@ -19,6 +19,7 @@ class Client extends Model
             'client_calls_our_api'     => 'boolean',
             'allowed_payment_gateways' => 'array',
             'paused_payment_gateways'  => 'array',
+            'gateway_credentials'      => 'encrypted:array',
             'allowed_terminals'        => 'array',
             'fee_surcharge_enabled'       => 'boolean',
             'cash_discount_details'       => 'array',

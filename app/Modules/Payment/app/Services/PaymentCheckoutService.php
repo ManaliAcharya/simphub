@@ -171,6 +171,24 @@ class PaymentCheckoutService
         $routingContext = $this->makeRoutingContext($session, $paymentMethod);
         $decision = $this->routing->findCandidate($routingContext, $routingRuleId);
 
+        // ── Client-specific gateway credentials override ───────────────────────
+        // If the client has their own credentials for this gateway, merge them
+        // on top of the routing rule defaults (only non-empty values are stored).
+        if ($feeClient) {
+            $clientCreds = (array) ($feeClient->gateway_credentials ?? []);
+            $gwCreds     = $clientCreds[strtolower($decision->gateway)] ?? [];
+            if (! empty($gwCreds)) {
+                $decision = new \Modules\Routing\DTOs\RoutingDecision(
+                    gateway:        $decision->gateway,
+                    mid:            $decision->mid,
+                    routingRuleId:  $decision->routingRuleId,
+                    midCredentials: array_merge($decision->midCredentials, $gwCreds),
+                    ruleMatches:    $decision->ruleMatches,
+                );
+            }
+        }
+        // ──────────────────────────────────────────────────────────────────────
+
         AuditLogger::log('ROUTING_DECISION_MADE', 'payment_session', $session->id, [
             'gateway' => $decision->gateway,
             'mid' => $decision->mid,

@@ -67,8 +67,28 @@
                 </div>
 
                 <div id="paya-ach-panel" class="hidden">
-                    <p class="muted" style="margin-bottom:12px;">Enter your bank account details securely via Paya's hosted form.</p>
-                    <div id="paya-iframe-wrap" style="border:1px solid rgba(16,33,58,.1);border-radius:14px;overflow:hidden;min-height:320px;background:#f8f9fb;display:flex;align-items:center;justify-content:center;">
+                    {{-- Custom bank entry form (default — shown when no Paya developer ID) --}}
+                    <div id="paya-custom-form">
+                        <p class="muted" style="margin-bottom:16px;">Enter your bank account details to complete payment.</p>
+                        <div class="field">
+                            <label>Routing Number</label>
+                            <input id="paya-routing" type="text" inputmode="numeric" maxlength="9" placeholder="9-digit routing number" />
+                        </div>
+                        <div class="field">
+                            <label>Account Number</label>
+                            <input id="paya-account" type="text" inputmode="numeric" placeholder="Account number" />
+                        </div>
+                        <div class="field">
+                            <label>Account Type</label>
+                            <select id="paya-account-type" style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid rgba(16,33,58,.12);font:inherit;background:#fff;">
+                                <option value="checking">Checking</option>
+                                <option value="savings">Savings</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    {{-- Paya-hosted AccountForm iframe (shown when PAYA_DEVELOPER_ID is configured) --}}
+                    <div id="paya-iframe-wrap" style="display:none;border:1px solid rgba(16,33,58,.1);border-radius:14px;overflow:hidden;min-height:320px;background:#f8f9fb;align-items:center;justify-content:center;">
                         <p class="muted" id="paya-iframe-loading">Loading secure bank entry form…</p>
                         <iframe id="paya-accountform-iframe"
                                 style="display:none;width:100%;border:none;min-height:320px;"
@@ -211,8 +231,13 @@
             fluidpayForm: document.getElementById('fluidpay-payment-form'),
             mockTokenPanel: document.getElementById('mock-token-panel'),
             payaAchPanel: document.getElementById('paya-ach-panel'),
+            payaCustomForm: document.getElementById('paya-custom-form'),
+            payaIframeWrap: document.getElementById('paya-iframe-wrap'),
             payaIframe: document.getElementById('paya-accountform-iframe'),
             payaIframeLoading: document.getElementById('paya-iframe-loading'),
+            payaRouting: document.getElementById('paya-routing'),
+            payaAccount: document.getElementById('paya-account'),
+            payaAccountType: document.getElementById('paya-account-type'),
             tokenInput: document.getElementById('token-input'),
             submitButton: document.getElementById('submit-button'),
             submitStatus: document.getElementById('submit-status'),
@@ -220,19 +245,30 @@
         };
 
         async function loadPayaAccountForm() {
-            if (!els.payaIframe) return;
+            // Default: show the custom bank entry form and enable the submit button
+            if (els.payaCustomForm) els.payaCustomForm.style.display = 'block';
+            if (els.payaIframeWrap) els.payaIframeWrap.style.display = 'none';
+            els.submitButton.disabled = false;
+            els.submitStatus.textContent = 'Enter your bank details and click Submit payment.';
+
+            // Try to load Paya-hosted AccountForm — only available when PAYA_DEVELOPER_ID is set
             try {
                 const res = await fetch(`/api/v1/payment/sessions/${sessionToken}/paya-form-url`);
                 const data = await res.json();
-                if (!res.ok) {
-                    if (els.payaIframeLoading) els.payaIframeLoading.textContent = data.message || 'Unable to load Paya form.';
+                if (!res.ok || !data.url) {
+                    // Developer ID not configured — custom form already shown, button enabled
                     return;
                 }
+                // Developer ID configured — switch to hosted iframe, disable button until token received
+                if (els.payaCustomForm) els.payaCustomForm.style.display = 'none';
+                if (els.payaIframeWrap) els.payaIframeWrap.style.display = 'flex';
+                els.submitButton.disabled = true;
+                els.submitStatus.textContent = 'Complete the bank details form above to continue.';
                 els.payaIframe.src = data.url;
                 els.payaIframe.style.display = 'block';
                 if (els.payaIframeLoading) els.payaIframeLoading.style.display = 'none';
             } catch (e) {
-                if (els.payaIframeLoading) els.payaIframeLoading.textContent = 'Network error loading Paya form.';
+                // Network error — custom form shown, button already enabled
             }
         }
 
@@ -910,13 +946,54 @@
 
             const mode = state.selectedOption.hosted_fields.metadata.mode;
 
-            // Paya ACH: token already received via postMessage from iframe
+            // Paya ACH: token from iframe postMessage OR tokenise custom form inputs
             if (mode === 'paya_ach') {
-                if (!state.payaBankToken) {
-                    els.submitStatus.textContent = 'Please complete the bank details in the form above.';
+                if (state.payaBankToken) {
+                    // Token already received from Paya AccountForm iframe
+                    state.token = '__paya_ach__';
+                    await submitPayment();
                     return;
                 }
-                await submitPayment();
+
+                // Custom form — read inputs and tokenise via our endpoint
+                const routing = els.payaRouting ? els.payaRouting.value.trim() : '';
+                const account = els.payaAccount ? els.payaAccount.value.trim() : '';
+                if (!routing || routing.length !== 9) {
+                    els.submitStatus.textContent = 'Please enter a valid 9-digit routing number.';
+                    return;
+                }
+                if (!account || account.length < 4) {
+                    els.submitStatus.textContent = 'Please enter a valid account number.';
+                    return;
+                }
+                els.submitButton.disabled = true;
+                els.submitStatus.textContent = 'Securing bank details…';
+                try {
+                    const tokenRes = await fetch(`/api/v1/payment/sessions/${sessionToken}/tokenize`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        },
+                        body: JSON.stringify({
+                            routing_number: routing,
+                            account_number: account,
+                            account_type: els.payaAccountType ? els.payaAccountType.value : 'checking',
+                        }),
+                    });
+                    const tokenData = await tokenRes.json();
+                    if (!tokenRes.ok) {
+                        els.submitStatus.textContent = tokenData.message || 'Could not secure bank details. Please check your routing and account numbers.';
+                        els.submitButton.disabled = false;
+                        return;
+                    }
+                    state.payaBankToken = tokenData.token;
+                    state.token = '__paya_ach__';
+                    await submitPayment();
+                } catch (e) {
+                    els.submitStatus.textContent = 'Network error. Please try again.';
+                    els.submitButton.disabled = false;
+                }
                 return;
             }
 

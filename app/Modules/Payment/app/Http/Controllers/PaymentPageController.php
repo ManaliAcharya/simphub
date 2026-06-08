@@ -30,6 +30,9 @@ class PaymentPageController extends Controller
                 if ($client) {
                     $logoUrl   = $client->logo_path ? '/storage/' . $client->logo_path : null;
                     $feeConfig = $this->buildFeeConfig($client, $invoice);
+
+                    // Pass client gateway credentials so adapters can use them for tokenizer config
+                    $feeConfig['gateway_credentials'] = (array) ($client->gateway_credentials ?? []);
                 }
             }
         }

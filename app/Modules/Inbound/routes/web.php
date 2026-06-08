@@ -19,6 +19,7 @@ Route::middleware('web')->group(function (): void {
         Route::get('/create', [ClientConfigController::class, 'create'])->name('create');
         Route::post('/', [ClientConfigController::class, 'store'])->name('store');
         Route::post('/{pms_client_id}/gateways', [ClientConfigController::class, 'updateGateways'])->name('update-gateways');
+        Route::post('/{pms_client_id}/gateway-credentials', [ClientConfigController::class, 'updateGatewayCredentials'])->name('update-gateway-credentials');
         Route::post('/{pms_client_id}/gateways/pause', [ClientConfigController::class, 'toggleGatewayPause'])->name('toggle-gateway-pause');
         Route::post('/{pms_client_id}/webhook-url', [ClientConfigController::class, 'updateWebhookUrl'])->name('update-webhook-url');
         Route::post('/{pms_client_id}/fees', [ClientConfigController::class, 'updateFees'])->name('update-fees');

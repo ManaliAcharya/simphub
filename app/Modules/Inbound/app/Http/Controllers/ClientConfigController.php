@@ -162,6 +162,39 @@ class ClientConfigController extends Controller
         ])->with('success', 'Webhook URL updated.');
     }
 
+    public function updateGatewayCredentials(Request $request, string $pmsClientId): RedirectResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        $request->validate([
+            'gateway_credentials'                          => ['nullable', 'array'],
+            'gateway_credentials.fluidpay.api_key'        => ['nullable', 'string', 'max:500'],
+            'gateway_credentials.fluidpay.public_key'     => ['nullable', 'string', 'max:500'],
+            'gateway_credentials.fluidpay.environment'    => ['nullable', 'string', 'in:sandbox,production'],
+            'gateway_credentials.paya.username'           => ['nullable', 'string', 'max:255'],
+            'gateway_credentials.paya.password'           => ['nullable', 'string', 'max:255'],
+            'gateway_credentials.paya.terminal_id'        => ['nullable', 'string', 'max:50'],
+            'gateway_credentials.nmi.security_key'        => ['nullable', 'string', 'max:500'],
+            'gateway_credentials.nmi.public_key'          => ['nullable', 'string', 'max:500'],
+        ]);
+
+        // Only store non-empty credential values
+        $incoming = (array) ($request->input('gateway_credentials') ?? []);
+        $stored   = [];
+        foreach ($incoming as $gateway => $fields) {
+            $clean = array_filter((array) $fields, fn($v) => $v !== null && trim((string) $v) !== '');
+            if (! empty($clean)) {
+                $stored[$gateway] = $clean;
+            }
+        }
+
+        $client->update([
+            'gateway_credentials' => ! empty($stored) ? $stored : null,
+        ]);
+
+        return redirect()->back()->with('success', 'Gateway credentials saved.');
+    }
+
     public function updateGateways(Request $request, string $pmsClientId): RedirectResponse
     {
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();

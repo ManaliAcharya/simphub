@@ -128,6 +128,78 @@
 
             @endif {{-- showGateways --}}
 
+            {{-- Gateway Credentials (compact mode only — shown in Gateways tab) --}}
+            @if($compact && $showGateways)
+            @php
+                $gwCreds = (array) ($client->gateway_credentials ?? []);
+                $activeGateways = array_map('strtolower', $client->allowed_payment_gateways ?? []);
+                $credDefs = [
+                    'fluidpay' => [
+                        ['key' => 'api_key',     'label' => 'API Key',            'type' => 'password'],
+                        ['key' => 'public_key',  'label' => 'Public Key',          'type' => 'text'],
+                        ['key' => 'environment', 'label' => 'Environment',         'type' => 'select', 'options' => ['sandbox' => 'Sandbox', 'production' => 'Production']],
+                    ],
+                    'paya' => [
+                        ['key' => 'username',    'label' => 'Vault Username',      'type' => 'text'],
+                        ['key' => 'password',    'label' => 'Vault Password',      'type' => 'password'],
+                        ['key' => 'terminal_id', 'label' => 'Terminal ID',          'type' => 'text'],
+                    ],
+                    'nmi' => [
+                        ['key' => 'security_key','label' => 'Security Key',        'type' => 'password'],
+                        ['key' => 'public_key',  'label' => 'Public Key',          'type' => 'text'],
+                    ],
+                ];
+            @endphp
+            @if(count($activeGateways))
+            <div class="cc-card">
+                <div style="display:flex;align-items:center;margin-bottom:6px;">
+                    <div class="cc-card-title">Gateway Credentials</div>
+                    <span class="csc-tip-wrap" style="margin-left:6px;">
+                        <span class="csc-tip-icon">i</span>
+                        <span class="csc-tip-box">Enter merchant-specific credentials. If left blank, the system uses the shared default credentials. Only non-empty fields are saved.</span>
+                    </span>
+                </div>
+                <div class="cc-card-desc">Leave blank to use shared defaults. Enter merchant credentials to process through their own account.</div>
+
+                <form method="POST" action="{{ route('inbound.clients.update-gateway-credentials', $client->pms_client_id) }}">
+                    @csrf
+                    <div style="display:grid;gap:16px;">
+                        @foreach($activeGateways as $gw)
+                        @if(isset($credDefs[$gw]))
+                        <div style="background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;padding:14px;">
+                            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7c93;margin-bottom:10px;">{{ strtoupper($gw) }}</div>
+                            <div style="display:grid;gap:8px;">
+                                @foreach($credDefs[$gw] as $field)
+                                <div class="cc-field" style="margin:0;">
+                                    <label>{{ $field['label'] }} <span style="font-weight:400;color:var(--cc-text-3);"></span></label>
+                                    @if(($field['type'] ?? 'text') === 'select')
+                                        <select name="gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
+                                                style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
+                                            <option value="">— use default —</option>
+                                            @foreach($field['options'] as $val => $lbl)
+                                                <option value="{{ $val }}" @selected(($gwCreds[$gw][$field['key']] ?? '') === $val)>{{ $lbl }}</option>
+                                            @endforeach
+                                        </select>
+                                    @else
+                                        <input type="{{ $field['type'] }}"
+                                               name="gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
+                                               value="{{ old("gateway_credentials.$gw.{$field['key']}", $gwCreds[$gw][$field['key']] ?? '') }}"
+                                               placeholder="Leave blank to use default"
+                                               style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
+                                    @endif
+                                </div>
+                                @endforeach
+                            </div>
+                        </div>
+                        @endif
+                        @endforeach
+                    </div>
+                    <button type="submit" class="button primary" style="font-size:12px;padding:7px 16px;margin-top:14px;">Save credentials</button>
+                </form>
+            </div>
+            @endif
+            @endif {{-- showGateways + compact --}}
+
             {{-- Company Logo --}}
             @if($showLogo)
             @if($compact)<div class="cc-card">@else<div>@endif
