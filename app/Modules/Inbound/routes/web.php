@@ -18,6 +18,7 @@ Route::middleware('web')->group(function (): void {
     Route::prefix('inbound/clients')->name('inbound.clients.')->group(function (): void {
         Route::get('/create', [ClientConfigController::class, 'create'])->name('create');
         Route::post('/', [ClientConfigController::class, 'store'])->name('store');
+        Route::get('/created', [ClientConfigController::class, 'created'])->name('created');
         Route::post('/{pms_client_id}/gateways', [ClientConfigController::class, 'updateGateways'])->name('update-gateways');
         Route::post('/{pms_client_id}/gateway-credentials', [ClientConfigController::class, 'updateGatewayCredentials'])->name('update-gateway-credentials');
         Route::post('/{pms_client_id}/gateways/pause', [ClientConfigController::class, 'toggleGatewayPause'])->name('toggle-gateway-pause');
