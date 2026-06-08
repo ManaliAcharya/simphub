@@ -129,22 +129,33 @@ class ClientConfigController extends Controller
             ]);
         }
 
-        if ($client->client_pms === 'CUSTOM') {
-            return redirect()->route('inbound.clients.api-docs', [
-                'pms_client_id' => $client->pms_client_id,
-            ])->with('show_setup_link', true);
-        }
-
-        $providerRoute = match ($client->client_pms) {
-            'ZOHO'       => 'inbound.zoho.page',
-            'QUICKBOOKS' => 'inbound.quickbooks.page',
-            'WAVE'       => 'inbound.wave.page',
-            default      => 'inbound.clio.page',
+        $provider = match ($client->client_pms) {
+            'ZOHO'       => 'zoho',
+            'QUICKBOOKS' => 'quickbooks',
+            'WAVE'       => 'wave',
+            'CUSTOM'     => 'custom',
+            default      => 'clio',
         };
 
-        return redirect()->route($providerRoute, [
+        return redirect()->route('inbound.clients.created', [
             'pms_client_id' => $client->pms_client_id,
-        ])->with('show_setup_link', true);
+            'provider'      => $provider,
+        ]);
+    }
+
+    public function created(Request $request): View
+    {
+        $client = Client::query()
+            ->where('pms_client_id', $request->query('pms_client_id'))
+            ->firstOrFail();
+
+        $provider = (string) $request->query('provider', 'clio');
+
+        $shareUrl = $client->setup_token
+            ? route('inbound.setup.share', ['provider' => $provider, 'token' => $client->setup_token])
+            : null;
+
+        return view('inbound::clients.created', compact('client', 'shareUrl', 'provider'));
     }
 
     public function updateWebhookUrl(Request $request, string $pmsClientId): RedirectResponse
