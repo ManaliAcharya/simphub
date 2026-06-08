@@ -25,7 +25,9 @@ class FluidPayAdapter implements GatewayAdapterInterface
         $midCredentials = $request->midCredentials;
 
         $apiKey  = (string) (($midCredentials['api_key']  ?? null) ?: config('services.fluidpay.api_key', ''));
-        $baseUrl = rtrim((string) (($midCredentials['base_url'] ?? null) ?: config('services.fluidpay.base_url', 'https://sandbox.fluidpay.com')), '/');
+        $baseUrl = ($midCredentials['environment'] ?? 'sandbox') === 'production'
+            ? 'https://app.fluidpay.com'
+            : rtrim((string) config('services.fluidpay.base_url', 'https://sandbox.fluidpay.com'), '/');
 
         if ($apiKey === '') {
             return GatewayResponse::declined('FluidPay API key is not configured.');
@@ -70,7 +72,9 @@ class FluidPayAdapter implements GatewayAdapterInterface
 
         $midCredentials = $request->midCredentials;
         $apiKey  = (string) (($midCredentials['api_key']  ?? null) ?: config('services.fluidpay.api_key', ''));
-        $baseUrl = rtrim((string) (($midCredentials['base_url'] ?? null) ?: config('services.fluidpay.base_url', 'https://sandbox.fluidpay.com')), '/');
+        $baseUrl = ($midCredentials['environment'] ?? 'sandbox') === 'production'
+            ? 'https://app.fluidpay.com'
+            : rtrim((string) config('services.fluidpay.base_url', 'https://sandbox.fluidpay.com'), '/');
 
         if ($apiKey === '') {
             return GatewayResponse::declined('FluidPay API key is not configured.');
@@ -107,7 +111,9 @@ class FluidPayAdapter implements GatewayAdapterInterface
         }
 
         $apiKey  = (string) (($midCredentials['api_key']  ?? null) ?: config('services.fluidpay.api_key', ''));
-        $baseUrl = rtrim((string) (($midCredentials['base_url'] ?? null) ?: config('services.fluidpay.base_url', 'https://sandbox.fluidpay.com')), '/');
+        $baseUrl = ($midCredentials['environment'] ?? 'sandbox') === 'production'
+            ? 'https://app.fluidpay.com'
+            : rtrim((string) config('services.fluidpay.base_url', 'https://sandbox.fluidpay.com'), '/');
 
         if ($apiKey === '') {
             return GatewayResponse::declined('FluidPay API key is not configured.');
@@ -138,7 +144,9 @@ class FluidPayAdapter implements GatewayAdapterInterface
     public function listTransactions(array $filters, array $midCredentials = []): array
     {
         $apiKey  = (string) (($midCredentials['api_key']  ?? null) ?: config('services.fluidpay.api_key', ''));
-        $baseUrl = rtrim((string) (($midCredentials['base_url'] ?? null) ?: config('services.fluidpay.base_url', 'https://sandbox.fluidpay.com')), '/');
+        $baseUrl = ($midCredentials['environment'] ?? 'sandbox') === 'production'
+            ? 'https://app.fluidpay.com'
+            : rtrim((string) config('services.fluidpay.base_url', 'https://sandbox.fluidpay.com'), '/');
 
         if ($apiKey === '') {
             return ['data' => [], 'total_count' => 0];
@@ -178,9 +186,11 @@ class FluidPayAdapter implements GatewayAdapterInterface
 
     public function hostedFieldsConfig(string $mid, array $midCredentials = []): HostedFieldsConfig
     {
-        $publicKey    = (string) (($midCredentials['public_key']   ?? null) ?: config('services.fluidpay.public_key',   ''));
-        $baseUrl      = (string) (($midCredentials['base_url']      ?? null) ?: config('services.fluidpay.base_url',      'https://sandbox.fluidpay.com'));
-        $tokenizerUrl = (string) (($midCredentials['tokenizer_url'] ?? null) ?: config('services.fluidpay.tokenizer_url', rtrim($baseUrl, '/').'/tokenizer/tokenizer.js'));
+        $publicKey    = (string) (($midCredentials['public_key'] ?? null) ?: config('services.fluidpay.public_key', ''));
+        $baseUrl      = ($midCredentials['environment'] ?? 'sandbox') === 'production'
+            ? 'https://app.fluidpay.com'
+            : rtrim((string) config('services.fluidpay.base_url', 'https://sandbox.fluidpay.com'), '/');
+        $tokenizerUrl = (string) (($midCredentials['tokenizer_url'] ?? null) ?: config('services.fluidpay.tokenizer_url', $baseUrl.'/tokenizer/tokenizer.js'));
 
         return new HostedFieldsConfig(
             gateway: 'fluidpay',

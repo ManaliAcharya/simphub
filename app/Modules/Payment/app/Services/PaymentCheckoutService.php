@@ -198,8 +198,19 @@ class PaymentCheckoutService
         $billing = [];
         if (strtolower((string) $decision->gateway) === 'paya') {
             if (! empty($extraBilling) && isset($extraBilling['paya_bank_token'])) {
-                // AccountForm vault token received directly from Paya's hosted iframe.
-                $billing = ['paya_token' => $extraBilling['paya_bank_token']];
+                $payaBankToken = (string) $extraBilling['paya_bank_token'];
+                // Custom bank-entry form: token is Laravel-encrypted JSON with routing/account.
+                // Paya iframe AccountForm: token is an actual Paya vault ID (cannot decrypt).
+                // Try to decrypt — if it succeeds, use direct ACH; otherwise treat as vault token.
+                try {
+                    $bankDetails = $this->payaTokenizer->detokenize($payaBankToken);
+                    $billing = [
+                        'routing_number' => (string) ($bankDetails['routing_number'] ?? ''),
+                        'account_number' => (string) ($bankDetails['account_number'] ?? ''),
+                    ];
+                } catch (\Throwable) {
+                    $billing = ['paya_token' => $payaBankToken];
+                }
             } elseif (! empty($extraBilling)) {
                 // Caller already resolved billing (e.g. a Paya vault token from tokenizeViaPaya()).
                 $billing = $extraBilling;
