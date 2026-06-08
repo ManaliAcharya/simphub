@@ -143,6 +143,7 @@
                         ['key' => 'username',    'label' => 'Vault Username',      'type' => 'text'],
                         ['key' => 'password',    'label' => 'Vault Password',      'type' => 'password'],
                         ['key' => 'terminal_id', 'label' => 'Terminal ID',          'type' => 'text'],
+                        ['key' => 'environment', 'label' => 'Environment',          'type' => 'select', 'options' => ['sandbox' => 'Sandbox', 'production' => 'Production']],
                     ],
                     'nmi' => [
                         ['key' => 'security_key','label' => 'Security Key',        'type' => 'password'],

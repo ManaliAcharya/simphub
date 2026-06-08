@@ -391,6 +391,7 @@
                 array_map('strtolower', $client->allowed_payment_gateways ?? []),
                 $pausedGateways
             ));
+            $gwCredsAll = (array) ($client->gateway_credentials ?? []);
         @endphp
 
         {{-- Per-Invoice Fee Override --}}
@@ -541,7 +542,12 @@
                                                placeholder="e.g. FluidPay Cash Discount">
                                     </div>
                                 </div>
-                                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
+                                @php
+                                    $gwEnv      = $gwCredsAll[$gw]['environment'] ?? 'sandbox';
+                                    $gwEnvLabel = $gwEnv === 'production' ? 'Production' : 'Sandbox';
+                                @endphp
+                                <input type="hidden" name="routes[{{ $idx }}][environment]" value="{{ $gwEnv }}">
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
                                     <div class="cc-field" style="margin:0;">
                                         <label>Rate (%)</label>
                                         <input type="number" name="routes[{{ $idx }}][rate_percent]" step="0.01" min="0" max="99.99" placeholder="0.00"
@@ -549,10 +555,11 @@
                                     </div>
                                     <div class="cc-field" style="margin:0;">
                                         <label>Environment</label>
-                                        <select name="routes[{{ $idx }}][environment]">
-                                            <option value="sandbox" @selected(old("routes.$idx.environment", $existing?->environment ?? 'sandbox') === 'sandbox')>Sandbox</option>
-                                            <option value="production" @selected(old("routes.$idx.environment", $existing?->environment) === 'production')>Production</option>
-                                        </select>
+                                        <div style="padding:8px 12px;border:1px solid rgba(19,34,56,.1);border-radius:8px;font-size:13px;background:#f3f4f6;color:#374151;display:flex;align-items:center;gap:6px;">
+                                            <span style="width:8px;height:8px;border-radius:50%;background:{{ $gwEnv === 'production' ? '#16a34a' : '#f59e0b' }};flex-shrink:0;"></span>
+                                            {{ $gwEnvLabel }}
+                                            <span style="font-size:11px;color:#9ca3af;margin-left:4px;">(from Gateway Credentials)</span>
+                                        </div>
                                     </div>
                                 </div>
                                 @php
