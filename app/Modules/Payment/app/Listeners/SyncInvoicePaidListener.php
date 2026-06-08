@@ -216,15 +216,22 @@ class SyncInvoicePaidListener
 
             $connection = $this->qbOAuth->ensureValidAccessToken($connection);
 
-            $amount = round(((int) $transaction->amount_cents) / 100, 2);
+            // TotalAmt = full amount charged to the customer (invoice + any fee surcharge).
+            // Line[0].Amount = amount applied to the QB invoice (original invoice amount only).
+            // If a fee was charged, the difference stays as an unapplied credit on the customer account.
+            // Sending Line[0].Amount > invoice balance causes QB to silently cap it at the invoice
+            // balance and reduce TotalAmt to match — which is why the customer account showed $15 not $15.60.
+            $totalAmt   = round(((int) $transaction->amount_cents) / 100, 2);
+            $invoiceAmt = round(((int) $invoice->amount_cents) / 100, 2);
+            $lineAmt    = min($totalAmt, $invoiceAmt);
 
             $payload = [
-                'TotalAmt'      => $amount,
+                'TotalAmt'      => $totalAmt,
                 'CustomerRef'   => ['value' => (string) $invoice->external_client_id],
                 'TxnDate'       => now()->toDateString(),
                 'PaymentRefNum' => (string) $transaction->gateway_txn_id,
                 'Line'          => [[
-                    'Amount'    => $amount,
+                    'Amount'    => $lineAmt,
                     'LinkedTxn' => [[
                         'TxnId'   => (string) $invoice->external_invoice_id,
                         'TxnType' => 'Invoice',
