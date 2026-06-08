@@ -539,7 +539,7 @@
                                         <label>MID Label <span style="font-weight:400;color:var(--cc-text-3);">(optional)</span></label>
                                         <input type="text" name="routes[{{ $idx }}][mid_label]"
                                                value="{{ old("routes.$idx.mid_label", $existing?->mid_label) }}"
-                                               placeholder="e.g. FluidPay Cash Discount">
+                                               placeholder="e.g. {{ $gwUp }} Cash Discount">
                                     </div>
                                 </div>
                                 @php
