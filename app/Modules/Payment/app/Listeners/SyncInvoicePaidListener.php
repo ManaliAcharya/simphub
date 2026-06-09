@@ -227,24 +227,28 @@ class SyncInvoicePaidListener
 
             // ── Split mode: surcharge account configured + fee was charged ─────
             // Flow:
-            //   1. QB Payment for full amount ($5.51) → invoice closed, $0.11 unapplied credit
-            //   2. QB Journal Entry:
-            //        Debit  AR (CustomerRef)     $0.11  → removes the unapplied credit
-            //        Credit Surcharge Income     $0.11  → records surcharge revenue
+            //   1. QB Payment for invoice amount only ($5.40) → closes invoice via LinkedTxn
+            //   2. QB Journal Entry: Debit bank $0.11 / Credit Surcharge Income $0.11
+            //      (no AR/customer involvement — keeps customer balance at $0.00)
             //   Result: invoice PAID, customer balance $0, bank +$5.51, surcharge income +$0.11
+            //
+            // IMPORTANT: LinkedTxn only closes a FRESH (unpaid) invoice. If the invoice was
+            // already paid in QB by a previous sync the payment will sit unapplied. Always
+            // test with a new invoice that has not been previously synced.
             if ($feeCents > 0 && $hasSurchargeAccount) {
-                $totalAmount = round($totalCents / 100, 2);
-                $feeAmount   = round($feeCents / 100, 2);
-                $desc        = "Surcharge for invoice #{$invoice->external_invoice_id}";
+                // Use invoice's own amount_cents — the authoritative face value in QB
+                $invoiceAmount = round((int) $invoice->amount_cents / 100, 2);
+                $feeAmount     = round($feeCents / 100, 2);
+                $desc          = "Surcharge for invoice #{$invoice->external_invoice_id}";
 
-                // 1. Payment for full charged amount — reliably closes the invoice via LinkedTxn
+                // 1. Pay exactly the invoice face value → closes invoice, zero customer balance
                 $paymentPayload = [
-                    'TotalAmt'      => $totalAmount,
+                    'TotalAmt'      => $invoiceAmount,
                     'CustomerRef'   => ['value' => (string) $invoice->external_client_id],
                     'TxnDate'       => now()->toDateString(),
                     'PaymentRefNum' => (string) $transaction->gateway_txn_id,
                     'Line'          => [[
-                        'Amount'    => $totalAmount,
+                        'Amount'    => $invoiceAmount,
                         'LinkedTxn' => [[
                             'TxnId'   => (string) $invoice->external_invoice_id,
                             'TxnType' => 'Invoice',
@@ -258,39 +262,35 @@ class SyncInvoicePaidListener
 
                 $this->qbApi->recordPayment($connection, $paymentPayload);
 
-                // 2. Journal Entry: Debit AR (clears the $0.11 unapplied credit on the customer),
-                //    Credit Surcharge Income (records the surcharge revenue)
-                $arAccountId = $this->qbApi->fetchArAccountId($connection);
-
-                $this->qbApi->recordJournalEntry($connection, [
-                    'TxnDate'     => now()->toDateString(),
-                    'DocNumber'   => 'SRCHG-'.(string) $transaction->gateway_txn_id,
-                    'PrivateNote' => $desc,
-                    'Line'        => [
-                        [
-                            'DetailType'            => 'JournalEntryLineDetail',
-                            'Amount'                => $feeAmount,
-                            'Description'           => $desc,
-                            'JournalEntryLineDetail' => [
-                                'PostingType' => 'Debit',
-                                'AccountRef'  => ['value' => $arAccountId],
-                                'Entity'      => [
-                                    'Type'      => 'Customer',
-                                    'EntityRef' => ['value' => (string) $invoice->external_client_id],
+                // 2. Journal Entry for the surcharge: Debit bank (money received), Credit surcharge income
+                //    No customer/AR lines — customer balance stays at $0
+                if ($hasDepositAccount) {
+                    $this->qbApi->recordJournalEntry($connection, [
+                        'TxnDate'     => now()->toDateString(),
+                        'DocNumber'   => 'SRCHG-'.(string) $transaction->gateway_txn_id,
+                        'PrivateNote' => $desc,
+                        'Line'        => [
+                            [
+                                'DetailType'            => 'JournalEntryLineDetail',
+                                'Amount'                => $feeAmount,
+                                'Description'           => $desc,
+                                'JournalEntryLineDetail' => [
+                                    'PostingType' => 'Debit',
+                                    'AccountRef'  => ['value' => (string) $client->qb_default_account_id],
+                                ],
+                            ],
+                            [
+                                'DetailType'            => 'JournalEntryLineDetail',
+                                'Amount'                => $feeAmount,
+                                'Description'           => $desc,
+                                'JournalEntryLineDetail' => [
+                                    'PostingType' => 'Credit',
+                                    'AccountRef'  => ['value' => (string) $client->qb_surcharge_account_id],
                                 ],
                             ],
                         ],
-                        [
-                            'DetailType'            => 'JournalEntryLineDetail',
-                            'Amount'                => $feeAmount,
-                            'Description'           => $desc,
-                            'JournalEntryLineDetail' => [
-                                'PostingType' => 'Credit',
-                                'AccountRef'  => ['value' => (string) $client->qb_surcharge_account_id],
-                            ],
-                        ],
-                    ],
-                ]);
+                    ]);
+                }
 
                 $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
 
@@ -300,11 +300,10 @@ class SyncInvoicePaidListener
                     'gateway'              => $transaction->gateway,
                     'gateway_txn_id'       => $transaction->gateway_txn_id,
                     'external_invoice_id'  => $invoice->external_invoice_id,
-                    'total_amount'         => $totalAmount,
+                    'invoice_amount'       => $invoiceAmount,
                     'surcharge_amount'     => $feeAmount,
                     'deposit_account_id'   => $client->qb_default_account_id ?? null,
                     'surcharge_account_id' => $client->qb_surcharge_account_id,
-                    'ar_account_id'        => $arAccountId,
                 ]);
 
                 return;
