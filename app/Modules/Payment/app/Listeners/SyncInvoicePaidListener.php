@@ -208,22 +208,61 @@ class SyncInvoicePaidListener
 
     private function syncToQuickBooks(Transaction $transaction, mixed $invoice, mixed $client): void
     {
+        \Log::debug('[QB-SYNC] syncToQuickBooks started', [
+            'transaction_id'       => $transaction->id,
+            'invoice_id'           => $invoice->id,
+            'external_invoice_id'  => $invoice->external_invoice_id,
+            'pms_client_id'        => $invoice->pms_client_id,
+            'client_name'          => $client->client_name,
+            'client_id'            => $client->id,
+        ]);
+
         try {
             $connection = QuickBooksConnection::query()
                 ->where('provider', 'quickbooks')
                 ->where('pms_client_id', $invoice->pms_client_id)
                 ->first();
 
+            \Log::debug('[QB-SYNC] connection lookup', [
+                'connection_found' => $connection !== null,
+                'realm_id'         => $connection?->realmId(),
+            ]);
+
             $connection = $this->qbOAuth->ensureValidAccessToken($connection);
 
-            $feeCents      = (int) ($transaction->fee_cents ?? 0);
-            $totalCents    = (int) $transaction->amount_cents;
-            $invoiceCents  = $totalCents - $feeCents;
+            $feeCents   = (int) ($transaction->fee_cents ?? 0);
+            $totalCents = (int) $transaction->amount_cents;
+
+            \Log::debug('[QB-SYNC] fee calculation — step 1 (from transaction)', [
+                'transaction_amount_cents' => $totalCents,
+                'invoice_amount_cents'     => (int) $invoice->amount_cents,
+                'fee_cents_stored'         => $feeCents,
+            ]);
+
+            // If fee_cents wasn't stored correctly, derive it from the difference
+            // between what was actually charged and the invoice face value.
+            if ($feeCents === 0 && $totalCents > (int) $invoice->amount_cents) {
+                $feeCents = $totalCents - (int) $invoice->amount_cents;
+                \Log::debug('[QB-SYNC] fee_cents was 0 — derived from difference', [
+                    'derived_fee_cents' => $feeCents,
+                ]);
+            }
 
             $hasSurchargeAccount = is_string($client->qb_surcharge_account_id ?? null)
                 && trim((string) $client->qb_surcharge_account_id) !== '';
             $hasDepositAccount   = is_string($client->qb_default_account_id ?? null)
                 && trim((string) $client->qb_default_account_id) !== '';
+
+            \Log::debug('[QB-SYNC] client account config', [
+                'qb_surcharge_account_id'   => $client->qb_surcharge_account_id,
+                'qb_surcharge_account_name' => $client->qb_surcharge_account_name,
+                'qb_default_account_id'     => $client->qb_default_account_id,
+                'qb_default_account_name'   => $client->qb_default_account_name,
+                'has_surcharge_account'     => $hasSurchargeAccount,
+                'has_deposit_account'       => $hasDepositAccount,
+                'fee_cents_final'           => $feeCents,
+                'SPLIT_MODE'                => $feeCents > 0 && $hasSurchargeAccount ? 'YES' : 'NO',
+            ]);
 
             // ── Split mode: surcharge account configured + fee was charged ─────
             // Flow:
@@ -236,12 +275,17 @@ class SyncInvoicePaidListener
             // already paid in QB by a previous sync the payment will sit unapplied. Always
             // test with a new invoice that has not been previously synced.
             if ($feeCents > 0 && $hasSurchargeAccount) {
-                // Use invoice's own amount_cents — the authoritative face value in QB
                 $invoiceAmount = round((int) $invoice->amount_cents / 100, 2);
                 $feeAmount     = round($feeCents / 100, 2);
                 $desc          = "Surcharge for invoice #{$invoice->external_invoice_id}";
 
-                // 1. Pay exactly the invoice face value → closes invoice, zero customer balance
+                \Log::debug('[QB-SYNC] SPLIT MODE — recording split payment', [
+                    'invoice_amount' => $invoiceAmount,
+                    'fee_amount'     => $feeAmount,
+                    'deposit_to'     => $hasDepositAccount ? $client->qb_default_account_id : 'undeposited_funds',
+                    'surcharge_to'   => $client->qb_surcharge_account_id,
+                ]);
+
                 $paymentPayload = [
                     'TotalAmt'      => $invoiceAmount,
                     'CustomerRef'   => ['value' => (string) $invoice->external_client_id],
@@ -260,11 +304,12 @@ class SyncInvoicePaidListener
                     $paymentPayload['DepositToAccountRef'] = ['value' => $client->qb_default_account_id];
                 }
 
+                \Log::debug('[QB-SYNC] SPLIT MODE — sending QB payment', ['payload' => $paymentPayload]);
                 $this->qbApi->recordPayment($connection, $paymentPayload);
+                \Log::debug('[QB-SYNC] SPLIT MODE — QB payment recorded successfully');
 
-                // 2. Journal Entry for the surcharge: Debit bank (money received), Credit surcharge income
-                //    No customer/AR lines — customer balance stays at $0
                 if ($hasDepositAccount) {
+                    \Log::debug('[QB-SYNC] SPLIT MODE — sending journal entry for surcharge');
                     $this->qbApi->recordJournalEntry($connection, [
                         'TxnDate'     => now()->toDateString(),
                         'DocNumber'   => 'SRCHG-'.(string) $transaction->gateway_txn_id,
@@ -290,6 +335,9 @@ class SyncInvoicePaidListener
                             ],
                         ],
                     ]);
+                    \Log::debug('[QB-SYNC] SPLIT MODE — journal entry recorded successfully');
+                } else {
+                    \Log::debug('[QB-SYNC] SPLIT MODE — skipping journal entry (no deposit account configured)');
                 }
 
                 $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
@@ -309,7 +357,12 @@ class SyncInvoicePaidListener
                 return;
             }
 
-            // ── Standard mode: no surcharge split ──────────────────────────────
+            // ── Standard mode ──────────────────────────────────────────────────
+            \Log::debug('[QB-SYNC] STANDARD MODE — no surcharge split', [
+                'reason_fee_cents_zero'           => $feeCents === 0,
+                'reason_no_surcharge_account'     => ! $hasSurchargeAccount,
+            ]);
+
             $amount = round($totalCents / 100, 2);
 
             $payload = [
@@ -330,7 +383,9 @@ class SyncInvoicePaidListener
                 $payload['DepositToAccountRef'] = ['value' => $client->qb_default_account_id];
             }
 
+            \Log::debug('[QB-SYNC] STANDARD MODE — sending QB payment', ['amount' => $amount, 'payload' => $payload]);
             $this->qbApi->recordPayment($connection, $payload);
+            \Log::debug('[QB-SYNC] STANDARD MODE — QB payment recorded successfully');
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
 
@@ -343,6 +398,14 @@ class SyncInvoicePaidListener
                 'deposit_account_id'  => $client->qb_default_account_id ?? null,
             ]);
         } catch (\Throwable $exception) {
+            \Log::error('[QB-SYNC] FAILED', [
+                'transaction_id'      => $transaction->id,
+                'invoice_id'          => $invoice->id,
+                'external_invoice_id' => $invoice->external_invoice_id,
+                'error'               => $exception->getMessage(),
+                'trace'               => $exception->getTraceAsString(),
+            ]);
+
             $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
 
             AuditLogger::log('PMS_PAYMENT_RECORD_FAILED', 'invoice', $invoice->id, [
