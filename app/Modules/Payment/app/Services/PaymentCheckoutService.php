@@ -192,6 +192,11 @@ class PaymentCheckoutService
                 );
             }
         }
+        // ── Credential validation ──────────────────────────────────────────────
+        // Verify that the resolved credentials (client-specific OR static defaults)
+        // are sufficient for the selected gateway. Fails early with a clear message
+        // rather than a cryptic gateway API error.
+        $this->validateGatewayCredentials($decision->gateway, $decision->midCredentials);
         // ──────────────────────────────────────────────────────────────────────
 
         AuditLogger::log('ROUTING_DECISION_MADE', 'payment_session', $session->id, [
@@ -755,5 +760,45 @@ class PaymentCheckoutService
         }
 
         return null;
+    }
+
+    /**
+     * Verify that effective credentials (client-specific OR static defaults) are
+     * sufficient for the gateway before attempting the charge.
+     *
+     * Priority: client gateway_credentials → routing rule mid_credentials → static env/config
+     * The adapters apply the same fallback chain, so this mirrors their logic.
+     */
+    private function validateGatewayCredentials(string $gateway, array $midCredentials): void
+    {
+        $gateway = strtolower($gateway);
+
+        if ($gateway === 'fluidpay') {
+            $apiKey = (string) (($midCredentials['api_key'] ?? null) ?: config('services.fluidpay.api_key', ''));
+            if ($apiKey === '') {
+                throw new RuntimeException(
+                    'FluidPay is not configured for this client. Please set up gateway credentials or contact support.'
+                );
+            }
+        }
+
+        if ($gateway === 'paya') {
+            $username   = (string) (($midCredentials['username']    ?? null) ?: env('PAYA_USERNAME', ''));
+            $terminalId = (string) (($midCredentials['terminal_id'] ?? null) ?: env('PAYA_TERMINAL_ID', ''));
+            if ($username === '' || $terminalId === '') {
+                throw new RuntimeException(
+                    'Paya is not configured for this client. Please set up gateway credentials or contact support.'
+                );
+            }
+        }
+
+        if ($gateway === 'nmi') {
+            $securityKey = (string) (($midCredentials['security_key'] ?? null) ?: config('services.nmi.security_key', ''));
+            if ($securityKey === '') {
+                throw new RuntimeException(
+                    'NMI is not configured for this client. Please set up gateway credentials or contact support.'
+                );
+            }
+        }
     }
 }

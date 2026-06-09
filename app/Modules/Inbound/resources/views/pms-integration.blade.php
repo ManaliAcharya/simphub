@@ -126,47 +126,64 @@
         </div>
         @endif
 
-        {{-- Surcharge Account (QuickBooks only — shown when surcharge is enabled) --}}
-        @if ($provider === 'quickbooks' && $connection && $client && $client->fee_surcharge_enabled)
+        {{-- QB Surcharge Split (toggle + account selector) --}}
+        @if ($provider === 'quickbooks' && $connection && $client)
         <div class="cc-card">
-            <div class="cc-card-title">Surcharge Income Account</div>
-            <div class="cc-card-desc">
-                QuickBooks account where the surcharge amount is credited. When a customer pays a surcharge,
-                the invoice is settled for the original amount and the surcharge goes to this account.
-            </div>
-            @if($client->qb_surcharge_account_name)
-                <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">
-                    Currently: {{ $client->qb_surcharge_account_name }}
+            {{-- Toggle row --}}
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <div>
+                    <div class="cc-card-title" style="margin-bottom:2px;">Surcharge Income Account</div>
+                    <div class="cc-card-desc" style="margin:0;">
+                        When enabled, surcharge is split in QuickBooks: invoice settled at face value, surcharge posted to a separate income account.
+                    </div>
                 </div>
-            @endif
-            @error('qb_surcharge_account_id')<p style="font-size:12px;color:#dc2626;margin-bottom:8px;">{{ $message }}</p>@enderror
-            @if(!empty($qb_account_load_error))
-                <div class="cc-notice error">{{ $qb_account_load_error }}</div>
-            @elseif(!empty($qb_income_accounts))
-                <form method="POST" action="{{ route('inbound.quickbooks.surcharge-account') }}">
+                <form method="POST" action="{{ route('inbound.quickbooks.surcharge-toggle') }}" id="qb-surcharge-toggle-form">
                     @csrf
                     <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
-                    <div class="cc-field">
-                        <label>Select income account</label>
-                        <select name="qb_surcharge_account_id" required>
-                            <option value="">Choose from income accounts…</option>
-                            @foreach ($qb_income_accounts as $account)
-                                <option value="{{ $account['account_id'] }}" @selected((string) $client->qb_surcharge_account_id === (string) $account['account_id'])>
-                                    {{ $account['account_name'] }}{{ $account['account_type'] ? ' ('.$account['account_type'].')' : '' }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
-                    <button type="submit" class="button primary" style="font-size:13px;">Save account</button>
+                    <input type="hidden" name="qb_surcharge_enabled" id="qb-surcharge-enabled-val" value="{{ $client->qb_surcharge_enabled ? '1' : '0' }}">
+                    <button type="button"
+                            onclick="qbSurchargeToggle()"
+                            id="qb-surcharge-btn"
+                            class="button {{ $client->qb_surcharge_enabled ? 'primary' : 'secondary' }}"
+                            style="white-space:nowrap;font-size:13px;min-width:72px;">
+                        {{ $client->qb_surcharge_enabled ? 'ON' : 'OFF' }}
+                    </button>
                 </form>
-            @else
-                <div class="cc-notice error">No income accounts returned from QuickBooks. Reconnect or verify the connected user has access.</div>
+            </div>
+
+            {{-- Account selector — only when toggle is ON --}}
+            @if($client->qb_surcharge_enabled)
+            <div style="margin-top:16px;border-top:1px solid var(--cc-border);padding-top:16px;">
+                @if($client->qb_surcharge_account_name)
+                    <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">
+                        Currently: {{ $client->qb_surcharge_account_name }}
+                    </div>
+                @endif
+                @error('qb_surcharge_account_id')<p style="font-size:12px;color:#dc2626;margin-bottom:8px;">{{ $message }}</p>@enderror
+                @if(!empty($qb_account_load_error))
+                    <div class="cc-notice error">{{ $qb_account_load_error }}</div>
+                @elseif(!empty($qb_income_accounts))
+                    <form method="POST" action="{{ route('inbound.quickbooks.surcharge-account') }}">
+                        @csrf
+                        <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                        <div class="cc-field">
+                            <label>Select income account</label>
+                            <select name="qb_surcharge_account_id" required>
+                                <option value="">Choose from income accounts…</option>
+                                @foreach ($qb_income_accounts as $account)
+                                    <option value="{{ $account['account_id'] }}" @selected((string) $client->qb_surcharge_account_id === (string) $account['account_id'])>
+                                        {{ $account['account_name'] }}{{ $account['account_type'] ? ' ('.$account['account_type'].')' : '' }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <button type="submit" class="button primary" style="font-size:13px;">Save account</button>
+                    </form>
+                @else
+                    <div class="cc-notice error">No income accounts returned from QuickBooks. Reconnect or verify the connected user has access.</div>
+                @endif
+            </div>
             @endif
-        </div>
-        @elseif ($provider === 'quickbooks' && $connection && $client && !$client->fee_surcharge_enabled)
-        <div class="cc-card" style="border-color:#e5e7eb;opacity:.7;">
-            <div class="cc-card-title">Surcharge Income Account</div>
-            <div class="cc-card-desc">Enable surcharge in the <strong>Fee Configuration</strong> tab to configure a surcharge income account for QuickBooks.</div>
         </div>
         @endif
 
@@ -622,6 +639,17 @@
             document.getElementById(offId).style.background = on ? '#fff'    : '#f1f5f9';
             document.getElementById(offId).style.color      = on ? '#9ca3af' : '#374151';
             if (sectionId) document.getElementById(sectionId).style.display = on ? '' : 'none';
+        }
+
+        function qbSurchargeToggle() {
+            var inp = document.getElementById('qb-surcharge-enabled-val');
+            var btn = document.getElementById('qb-surcharge-btn');
+            var current = inp.value === '1';
+            var next = !current;
+            inp.value = next ? '1' : '0';
+            btn.textContent = next ? 'ON' : 'OFF';
+            btn.className = next ? 'button primary' : 'button secondary';
+            document.getElementById('qb-surcharge-toggle-form').submit();
         }
         </script>
         @endif

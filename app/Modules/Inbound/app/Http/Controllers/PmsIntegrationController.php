@@ -265,6 +265,24 @@ class PmsIntegrationController extends Controller
         ]);
     }
 
+    public function saveQbSurchargeToggle(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'pms_client_id'      => ['required', 'string'],
+            'qb_surcharge_enabled' => ['required', 'boolean'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'QUICKBOOKS', 422, 'Surcharge toggle is only for QuickBooks clients.');
+
+        $client->forceFill(['qb_surcharge_enabled' => (bool) $validated['qb_surcharge_enabled']])->save();
+
+        return redirect()->back()->with('success', 'Surcharge split ' . ($validated['qb_surcharge_enabled'] ? 'enabled' : 'disabled') . '.');
+    }
+
     public function saveQbSurchargeAccount(
         Request $request,
         QuickBooksOAuthService $qbOAuth,

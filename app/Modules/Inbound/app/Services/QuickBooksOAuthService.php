@@ -90,6 +90,21 @@ class QuickBooksOAuthService
             throw new RuntimeException('QuickBooks realmId is required to save a connection.');
         }
 
+        // Check if this QB company is already connected to a DIFFERENT client.
+        // Reconnecting the same company to the same client is always allowed.
+        $existing = QuickBooksConnection::query()
+            ->where('provider', 'quickbooks')
+            ->get()
+            ->first(fn (QuickBooksConnection $c) => $c->realmId() === $realmId);
+
+        if ($existing && (string) $existing->pms_client_id !== (string) $pmsClientId) {
+            throw new RuntimeException(
+                'This QuickBooks company is already connected to another client. '
+                . 'Each QuickBooks company can only be linked to one client. '
+                . 'Please disconnect it from the other client first, or select a different QuickBooks company.'
+            );
+        }
+
         return $this->persistTokens($tokenData, realmId: $realmId, pmsClientId: $pmsClientId);
     }
 

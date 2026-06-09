@@ -25,6 +25,7 @@ class Client extends Model
             'cash_discount_details'       => 'array',
             'qb_fee_override_enabled'     => 'boolean',
             'qb_multi_mid_enabled'        => 'boolean',
+            'qb_surcharge_enabled'        => 'boolean',
         ];
     }
 
