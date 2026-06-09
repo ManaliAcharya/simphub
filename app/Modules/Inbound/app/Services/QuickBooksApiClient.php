@@ -54,6 +54,44 @@ class QuickBooksApiClient
             ->json();
     }
 
+    public function recordJournalEntry(QuickBooksConnection $connection, array $payload): array
+    {
+        return $this->request($connection)
+            ->withQueryParameters($this->minorVersion())
+            ->post('/journalentry', $payload)
+            ->throw()
+            ->json();
+    }
+
+    public function fetchIncomeAccounts(QuickBooksConnection $connection): array
+    {
+        $sql = "SELECT Id, Name, AccountType, AccountSubType FROM Account "
+             . "WHERE AccountType IN ('Income', 'Other Income') AND Active = true "
+             . "ORDERBY Name";
+
+        $response = $this->request($connection)
+            ->get('/query', array_merge(['query' => $sql], $this->minorVersion()))
+            ->throw()
+            ->json();
+
+        $rows = $response['QueryResponse']['Account'] ?? [];
+
+        if (! is_array($rows)) {
+            return [];
+        }
+
+        return collect($rows)
+            ->map(fn (array $account) => [
+                'account_id'   => (string) ($account['Id']          ?? ''),
+                'account_name' => (string) ($account['Name']        ?? 'Unknown'),
+                'account_type' => (string) ($account['AccountType'] ?? ''),
+                'account_sub'  => (string) ($account['AccountSubType'] ?? ''),
+            ])
+            ->filter(fn (array $a) => $a['account_id'] !== '')
+            ->values()
+            ->all();
+    }
+
     public function fetchChartOfAccounts(QuickBooksConnection $connection): array
     {
         $sql = "SELECT Id, Name, AccountType, AccountSubType FROM Account "

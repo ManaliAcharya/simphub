@@ -216,22 +216,103 @@ class SyncInvoicePaidListener
 
             $connection = $this->qbOAuth->ensureValidAccessToken($connection);
 
-            // TotalAmt = full amount charged to the customer (invoice + any fee surcharge).
-            // Line[0].Amount = amount applied to the QB invoice (original invoice amount only).
-            // If a fee was charged, the difference stays as an unapplied credit on the customer account.
-            // Sending Line[0].Amount > invoice balance causes QB to silently cap it at the invoice
-            // balance and reduce TotalAmt to match — which is why the customer account showed $15 not $15.60.
-            $totalAmt   = round(((int) $transaction->amount_cents) / 100, 2);
-            $invoiceAmt = round(((int) $invoice->amount_cents) / 100, 2);
-            $lineAmt    = min($totalAmt, $invoiceAmt);
+            $feeCents      = (int) ($transaction->fee_cents ?? 0);
+            $totalCents    = (int) $transaction->amount_cents;
+            $invoiceCents  = $totalCents - $feeCents;
+
+            $hasSurchargeAccount = is_string($client->qb_surcharge_account_id ?? null)
+                && trim((string) $client->qb_surcharge_account_id) !== '';
+            $hasDepositAccount   = is_string($client->qb_default_account_id ?? null)
+                && trim((string) $client->qb_default_account_id) !== '';
+
+            // ── Split mode: surcharge account configured + fee was charged ─────
+            if ($feeCents > 0 && $hasSurchargeAccount) {
+                $invoiceAmount = round($invoiceCents / 100, 2);
+                $feeAmount     = round($feeCents / 100, 2);
+
+                // 1. Record payment for the invoice amount only → closes the invoice
+                $paymentPayload = [
+                    'TotalAmt'      => $invoiceAmount,
+                    'CustomerRef'   => ['value' => (string) $invoice->external_client_id],
+                    'TxnDate'       => now()->toDateString(),
+                    'PaymentRefNum' => (string) $transaction->gateway_txn_id,
+                    'Line'          => [[
+                        'Amount'    => $invoiceAmount,
+                        'LinkedTxn' => [[
+                            'TxnId'   => (string) $invoice->external_invoice_id,
+                            'TxnType' => 'Invoice',
+                        ]],
+                    ]],
+                ];
+
+                if ($hasDepositAccount) {
+                    $paymentPayload['DepositToAccountRef'] = ['value' => $client->qb_default_account_id];
+                }
+
+                $this->qbApi->recordPayment($connection, $paymentPayload);
+
+                // 2. Journal entry: debit bank account, credit surcharge income account
+                //    Bank +$fee (money received), Surcharge Income +$fee (income earned)
+                $desc = "Surcharge for invoice #{$invoice->external_invoice_id}";
+
+                $jeLines = [
+                    [
+                        'DetailType'            => 'JournalEntryLineDetail',
+                        'Amount'                => $feeAmount,
+                        'Description'           => $desc,
+                        'JournalEntryLineDetail' => [
+                            'PostingType' => 'Credit',
+                            'AccountRef'  => ['value' => (string) $client->qb_surcharge_account_id],
+                        ],
+                    ],
+                ];
+
+                if ($hasDepositAccount) {
+                    $jeLines[] = [
+                        'DetailType'            => 'JournalEntryLineDetail',
+                        'Amount'                => $feeAmount,
+                        'Description'           => $desc,
+                        'JournalEntryLineDetail' => [
+                            'PostingType' => 'Debit',
+                            'AccountRef'  => ['value' => (string) $client->qb_default_account_id],
+                        ],
+                    ];
+                }
+
+                $this->qbApi->recordJournalEntry($connection, [
+                    'TxnDate'     => now()->toDateString(),
+                    'DocNumber'   => 'SRCHG-'.(string) $transaction->gateway_txn_id,
+                    'PrivateNote' => $desc,
+                    'Line'        => $jeLines,
+                ]);
+
+                $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
+
+                AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
+                    'pms_source'           => 'quickbooks',
+                    'transaction_id'       => $transaction->id,
+                    'gateway'              => $transaction->gateway,
+                    'gateway_txn_id'       => $transaction->gateway_txn_id,
+                    'external_invoice_id'  => $invoice->external_invoice_id,
+                    'invoice_amount'       => $invoiceAmount,
+                    'surcharge_amount'     => $feeAmount,
+                    'deposit_account_id'   => $client->qb_default_account_id ?? null,
+                    'surcharge_account_id' => $client->qb_surcharge_account_id,
+                ]);
+
+                return;
+            }
+
+            // ── Standard mode: no surcharge split ──────────────────────────────
+            $amount = round($totalCents / 100, 2);
 
             $payload = [
-                'TotalAmt'      => $totalAmt,
+                'TotalAmt'      => $amount,
                 'CustomerRef'   => ['value' => (string) $invoice->external_client_id],
                 'TxnDate'       => now()->toDateString(),
                 'PaymentRefNum' => (string) $transaction->gateway_txn_id,
                 'Line'          => [[
-                    'Amount'    => $lineAmt,
+                    'Amount'    => $amount,
                     'LinkedTxn' => [[
                         'TxnId'   => (string) $invoice->external_invoice_id,
                         'TxnType' => 'Invoice',
@@ -239,7 +320,7 @@ class SyncInvoicePaidListener
                 ]],
             ];
 
-            if (is_string($client->qb_default_account_id) && trim($client->qb_default_account_id) !== '') {
+            if ($hasDepositAccount) {
                 $payload['DepositToAccountRef'] = ['value' => $client->qb_default_account_id];
             }
 

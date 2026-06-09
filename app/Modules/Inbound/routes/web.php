@@ -42,6 +42,9 @@ Route::middleware('web')->group(function (): void {
     Route::post('/inbound/quickbooks/default-account', [PmsIntegrationController::class, 'saveQbDefaultAccount'])
       ->name('inbound.quickbooks.default-account');
 
+    Route::post('/inbound/quickbooks/surcharge-account', [PmsIntegrationController::class, 'saveQbSurchargeAccount'])
+      ->name('inbound.quickbooks.surcharge-account');
+
     Route::post('/inbound/lawcus/default-bank-account', [PmsIntegrationController::class, 'saveLawcusDefaultBankAccount'])
        ->name('inbound.lawcus.default-bank-account');
 

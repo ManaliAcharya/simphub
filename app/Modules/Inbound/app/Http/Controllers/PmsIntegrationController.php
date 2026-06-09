@@ -265,6 +265,46 @@ class PmsIntegrationController extends Controller
         ]);
     }
 
+    public function saveQbSurchargeAccount(
+        Request $request,
+        QuickBooksOAuthService $qbOAuth,
+        QuickBooksApiClient $qbApi,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'pms_client_id'          => ['required', 'string'],
+            'qb_surcharge_account_id' => ['required', 'string', 'max:100'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'QUICKBOOKS', 422, 'Surcharge account is only supported for QuickBooks clients.');
+
+        $connection = QuickBooksConnection::query()
+            ->where('provider', 'quickbooks')
+            ->where('pms_client_id', $client->pms_client_id)
+            ->firstOrFail();
+
+        $connection = $qbOAuth->ensureValidAccessToken($connection);
+        $accounts   = $qbApi->fetchIncomeAccounts($connection);
+
+        $selected = collect($accounts)
+            ->first(fn (array $a): bool => (string) ($a['account_id'] ?? '') === (string) $validated['qb_surcharge_account_id']);
+
+        abort_unless(is_array($selected), 422, 'Selected account is invalid. Please choose from the dropdown.');
+
+        $client->forceFill([
+            'qb_surcharge_account_id'   => (string) $selected['account_id'],
+            'qb_surcharge_account_name' => (string) ($selected['account_name'] ?? ''),
+        ])->save();
+
+        return redirect()->route('inbound.quickbooks.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => 'Surcharge income account saved.',
+        ]);
+    }
+
     private function render(
         string $provider,
         string $pmsClientId,

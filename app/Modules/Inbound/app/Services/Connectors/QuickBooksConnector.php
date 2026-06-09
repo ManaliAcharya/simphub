@@ -70,6 +70,7 @@ class QuickBooksConnector implements PmsConnectorInterface
         $realmId    = $connection ? (string) data_get($connection->meta, 'realm_id', '') : '';
 
         $qbAccounts          = [];
+        $qbIncomeAccounts    = [];
         $qbAccountLoadError  = null;
 
         if ($connection instanceof QuickBooksConnection && $client) {
@@ -77,8 +78,9 @@ class QuickBooksConnector implements PmsConnectorInterface
                 $qbAccountLoadError = 'QuickBooks company (Realm ID) is missing on this connection. Please reconnect QuickBooks to fix this.';
             } else {
                 try {
-                    $freshConnection = $this->oauth->ensureValidAccessToken($connection);
-                    $qbAccounts      = $this->api->fetchChartOfAccounts($freshConnection);
+                    $freshConnection  = $this->oauth->ensureValidAccessToken($connection);
+                    $qbAccounts       = $this->api->fetchChartOfAccounts($freshConnection);
+                    $qbIncomeAccounts = $this->api->fetchIncomeAccounts($freshConnection);
                 } catch (\Throwable $e) {
                     $qbAccountLoadError = 'Could not load QuickBooks chart of accounts: '.$e->getMessage();
                 }
@@ -86,13 +88,14 @@ class QuickBooksConnector implements PmsConnectorInterface
         }
 
         return [
-            'heading'              => 'Connect QuickBooks for a configured client',
-            'copy'                 => 'Authenticate with QuickBooks Online to enable invoice webhooks and payment sync.',
-            'webhook_url'          => $webhookUrl,
-            'realm_id'             => $realmId,
-            'qb_accounts'          => $qbAccounts,
+            'heading'               => 'Connect QuickBooks for a configured client',
+            'copy'                  => 'Authenticate with QuickBooks Online to enable invoice webhooks and payment sync.',
+            'webhook_url'           => $webhookUrl,
+            'realm_id'              => $realmId,
+            'qb_accounts'           => $qbAccounts,
+            'qb_income_accounts'    => $qbIncomeAccounts,
             'qb_account_load_error' => $qbAccountLoadError,
-            'webhook_instructions' => [],
+            'webhook_instructions'  => [],
         ];
     }
 }

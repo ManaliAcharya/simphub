@@ -126,6 +126,50 @@
         </div>
         @endif
 
+        {{-- Surcharge Account (QuickBooks only — shown when surcharge is enabled) --}}
+        @if ($provider === 'quickbooks' && $connection && $client && $client->fee_surcharge_enabled)
+        <div class="cc-card">
+            <div class="cc-card-title">Surcharge Income Account</div>
+            <div class="cc-card-desc">
+                QuickBooks account where the surcharge amount is credited. When a customer pays a surcharge,
+                the invoice is settled for the original amount and the surcharge goes to this account.
+            </div>
+            @if($client->qb_surcharge_account_name)
+                <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">
+                    Currently: {{ $client->qb_surcharge_account_name }}
+                </div>
+            @endif
+            @error('qb_surcharge_account_id')<p style="font-size:12px;color:#dc2626;margin-bottom:8px;">{{ $message }}</p>@enderror
+            @if(!empty($qb_account_load_error))
+                <div class="cc-notice error">{{ $qb_account_load_error }}</div>
+            @elseif(!empty($qb_income_accounts))
+                <form method="POST" action="{{ route('inbound.quickbooks.surcharge-account') }}">
+                    @csrf
+                    <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                    <div class="cc-field">
+                        <label>Select income account</label>
+                        <select name="qb_surcharge_account_id" required>
+                            <option value="">Choose from income accounts…</option>
+                            @foreach ($qb_income_accounts as $account)
+                                <option value="{{ $account['account_id'] }}" @selected((string) $client->qb_surcharge_account_id === (string) $account['account_id'])>
+                                    {{ $account['account_name'] }}{{ $account['account_type'] ? ' ('.$account['account_type'].')' : '' }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <button type="submit" class="button primary" style="font-size:13px;">Save account</button>
+                </form>
+            @else
+                <div class="cc-notice error">No income accounts returned from QuickBooks. Reconnect or verify the connected user has access.</div>
+            @endif
+        </div>
+        @elseif ($provider === 'quickbooks' && $connection && $client && !$client->fee_surcharge_enabled)
+        <div class="cc-card" style="border-color:#e5e7eb;opacity:.7;">
+            <div class="cc-card-title">Surcharge Income Account</div>
+            <div class="cc-card-desc">Enable surcharge in the <strong>Fee Configuration</strong> tab to configure a surcharge income account for QuickBooks.</div>
+        </div>
+        @endif
+
         {{-- Default Account (Clio) --}}
         @if ($provider === 'clio' && $client && $connection)
         <div class="cc-card">
