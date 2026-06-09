@@ -312,7 +312,7 @@ class SyncInvoicePaidListener
                     \Log::debug('[QB-SYNC] SPLIT MODE — sending journal entry for surcharge');
                     $this->qbApi->recordJournalEntry($connection, [
                         'TxnDate'     => now()->toDateString(),
-                        'DocNumber'   => 'SRCHG-'.(string) $transaction->gateway_txn_id,
+                        'DocNumber'   => substr('SRCHG-'.(string) $transaction->gateway_txn_id, 0, 21),
                         'PrivateNote' => $desc,
                         'Line'        => [
                             [
