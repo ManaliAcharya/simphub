@@ -226,18 +226,25 @@ class SyncInvoicePaidListener
                 && trim((string) $client->qb_default_account_id) !== '';
 
             // ── Split mode: surcharge account configured + fee was charged ─────
+            // Flow:
+            //   1. QB Payment for full amount ($5.51) → invoice closed, $0.11 unapplied credit
+            //   2. QB Journal Entry:
+            //        Debit  AR (CustomerRef)     $0.11  → removes the unapplied credit
+            //        Credit Surcharge Income     $0.11  → records surcharge revenue
+            //   Result: invoice PAID, customer balance $0, bank +$5.51, surcharge income +$0.11
             if ($feeCents > 0 && $hasSurchargeAccount) {
-                $invoiceAmount = round($invoiceCents / 100, 2);
-                $feeAmount     = round($feeCents / 100, 2);
+                $totalAmount = round($totalCents / 100, 2);
+                $feeAmount   = round($feeCents / 100, 2);
+                $desc        = "Surcharge for invoice #{$invoice->external_invoice_id}";
 
-                // 1. Record payment for the invoice amount only → closes the invoice
+                // 1. Payment for full charged amount — reliably closes the invoice via LinkedTxn
                 $paymentPayload = [
-                    'TotalAmt'      => $invoiceAmount,
+                    'TotalAmt'      => $totalAmount,
                     'CustomerRef'   => ['value' => (string) $invoice->external_client_id],
                     'TxnDate'       => now()->toDateString(),
                     'PaymentRefNum' => (string) $transaction->gateway_txn_id,
                     'Line'          => [[
-                        'Amount'    => $invoiceAmount,
+                        'Amount'    => $totalAmount,
                         'LinkedTxn' => [[
                             'TxnId'   => (string) $invoice->external_invoice_id,
                             'TxnType' => 'Invoice',
@@ -251,39 +258,38 @@ class SyncInvoicePaidListener
 
                 $this->qbApi->recordPayment($connection, $paymentPayload);
 
-                // 2. Journal entry: debit bank account, credit surcharge income account
-                //    Bank +$fee (money received), Surcharge Income +$fee (income earned)
-                $desc = "Surcharge for invoice #{$invoice->external_invoice_id}";
-
-                $jeLines = [
-                    [
-                        'DetailType'            => 'JournalEntryLineDetail',
-                        'Amount'                => $feeAmount,
-                        'Description'           => $desc,
-                        'JournalEntryLineDetail' => [
-                            'PostingType' => 'Credit',
-                            'AccountRef'  => ['value' => (string) $client->qb_surcharge_account_id],
-                        ],
-                    ],
-                ];
-
-                if ($hasDepositAccount) {
-                    $jeLines[] = [
-                        'DetailType'            => 'JournalEntryLineDetail',
-                        'Amount'                => $feeAmount,
-                        'Description'           => $desc,
-                        'JournalEntryLineDetail' => [
-                            'PostingType' => 'Debit',
-                            'AccountRef'  => ['value' => (string) $client->qb_default_account_id],
-                        ],
-                    ];
-                }
+                // 2. Journal Entry: Debit AR (clears the $0.11 unapplied credit on the customer),
+                //    Credit Surcharge Income (records the surcharge revenue)
+                $arAccountId = $this->qbApi->fetchArAccountId($connection);
 
                 $this->qbApi->recordJournalEntry($connection, [
                     'TxnDate'     => now()->toDateString(),
                     'DocNumber'   => 'SRCHG-'.(string) $transaction->gateway_txn_id,
                     'PrivateNote' => $desc,
-                    'Line'        => $jeLines,
+                    'Line'        => [
+                        [
+                            'DetailType'            => 'JournalEntryLineDetail',
+                            'Amount'                => $feeAmount,
+                            'Description'           => $desc,
+                            'JournalEntryLineDetail' => [
+                                'PostingType' => 'Debit',
+                                'AccountRef'  => ['value' => $arAccountId],
+                                'Entity'      => [
+                                    'Type'      => 'Customer',
+                                    'EntityRef' => ['value' => (string) $invoice->external_client_id],
+                                ],
+                            ],
+                        ],
+                        [
+                            'DetailType'            => 'JournalEntryLineDetail',
+                            'Amount'                => $feeAmount,
+                            'Description'           => $desc,
+                            'JournalEntryLineDetail' => [
+                                'PostingType' => 'Credit',
+                                'AccountRef'  => ['value' => (string) $client->qb_surcharge_account_id],
+                            ],
+                        ],
+                    ],
                 ]);
 
                 $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
@@ -294,10 +300,11 @@ class SyncInvoicePaidListener
                     'gateway'              => $transaction->gateway,
                     'gateway_txn_id'       => $transaction->gateway_txn_id,
                     'external_invoice_id'  => $invoice->external_invoice_id,
-                    'invoice_amount'       => $invoiceAmount,
+                    'total_amount'         => $totalAmount,
                     'surcharge_amount'     => $feeAmount,
                     'deposit_account_id'   => $client->qb_default_account_id ?? null,
                     'surcharge_account_id' => $client->qb_surcharge_account_id,
+                    'ar_account_id'        => $arAccountId,
                 ]);
 
                 return;

@@ -63,6 +63,24 @@ class QuickBooksApiClient
             ->json();
     }
 
+    public function fetchArAccountId(QuickBooksConnection $connection): string
+    {
+        $sql = "SELECT Id FROM Account WHERE AccountType = 'Accounts Receivable' AND Active = true ORDERBY Id LIMIT 1";
+
+        $response = $this->request($connection)
+            ->get('/query', array_merge(['query' => $sql], $this->minorVersion()))
+            ->throw()
+            ->json();
+
+        $rows = $response['QueryResponse']['Account'] ?? [];
+
+        if (empty($rows)) {
+            throw new \RuntimeException('No Accounts Receivable account found in QuickBooks.');
+        }
+
+        return (string) ($rows[0]['Id'] ?? '');
+    }
+
     public function fetchIncomeAccounts(QuickBooksConnection $connection): array
     {
         $sql = "SELECT Id, Name, AccountType, AccountSubType FROM Account "
