@@ -12,6 +12,7 @@ class ClientMidRoute extends Model
 
     protected $table = 'client_mid_routes';
     protected $guarded = [];
+    protected $hidden  = ['credentials'];
 
     protected function casts(): array
     {

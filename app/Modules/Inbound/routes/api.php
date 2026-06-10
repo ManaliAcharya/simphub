@@ -5,11 +5,13 @@ use Modules\Inbound\Http\Controllers\CrmInvoiceController;
 use Modules\Inbound\Http\Controllers\CrmRefundController;
 use Modules\Inbound\Http\Controllers\CrmTransactionController;
 use Modules\Inbound\Http\Controllers\InvoiceIngestionController;
+use Modules\Inbound\Http\Controllers\MindbodyWebhookController;
 use Modules\Inbound\Http\Controllers\WebhookController;
 use Modules\Inbound\Http\Middleware\CrmApiAuth;
 
 Route::prefix('v1/inbound')->name('inbound.')->group(function () {
     Route::post('/webhooks/{source}', WebhookController::class)->name('webhooks.receive');
+    Route::post('/webhooks/mindbody/{siteId}', MindbodyWebhookController::class)->name('webhooks.mindbody');
     Route::post('/invoices/{source}', [InvoiceIngestionController::class, 'store'])->name('invoices.store');
 });
 

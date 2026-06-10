@@ -175,7 +175,15 @@ class PaymentCheckoutService
         // If the client has their own credentials for this gateway, merge them
         // on top of the routing rule defaults (only non-empty values are stored).
         if ($feeClient) {
-            $clientCreds = (array) ($feeClient->gateway_credentials ?? []);
+            try {
+                $clientCreds = (array) ($feeClient->gateway_credentials ?? []);
+            } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
+                \Log::error('Gateway credentials decryption failed', [
+                    'pms_client_id' => $feeClient->pms_client_id,
+                    'gateway'       => $decision->gateway,
+                ]);
+                throw new RuntimeException('Gateway credentials are corrupted. Please re-enter them in the client config.');
+            }
             $gwCreds     = $clientCreds[strtolower($decision->gateway)] ?? [];
             // Inject the common environment into per-gateway credentials
             $commonEnv = $clientCreds['environment'] ?? null;
@@ -774,29 +782,26 @@ class PaymentCheckoutService
         $gateway = strtolower($gateway);
 
         if ($gateway === 'fluidpay') {
-            $apiKey = (string) (($midCredentials['api_key'] ?? null) ?: config('services.fluidpay.api_key', ''));
-            if ($apiKey === '') {
+            if (trim((string) ($midCredentials['api_key'] ?? '')) === '') {
                 throw new RuntimeException(
-                    'FluidPay is not configured for this client. Please set up gateway credentials or contact support.'
+                    'FluidPay API key is not configured. Please set it in the Gateway Credentials or the routing rule.'
                 );
             }
         }
 
         if ($gateway === 'paya') {
-            $username   = (string) (($midCredentials['username']    ?? null) ?: env('PAYA_USERNAME', ''));
-            $terminalId = (string) (($midCredentials['terminal_id'] ?? null) ?: env('PAYA_TERMINAL_ID', ''));
-            if ($username === '' || $terminalId === '') {
+            if (trim((string) ($midCredentials['username']    ?? '')) === '' ||
+                trim((string) ($midCredentials['terminal_id'] ?? '')) === '') {
                 throw new RuntimeException(
-                    'Paya is not configured for this client. Please set up gateway credentials or contact support.'
+                    'Paya credentials are not configured. Please set them in the Gateway Credentials or the routing rule.'
                 );
             }
         }
 
         if ($gateway === 'nmi') {
-            $securityKey = (string) (($midCredentials['security_key'] ?? null) ?: config('services.nmi.security_key', ''));
-            if ($securityKey === '') {
+            if (trim((string) ($midCredentials['security_key'] ?? '')) === '') {
                 throw new RuntimeException(
-                    'NMI is not configured for this client. Please set up gateway credentials or contact support.'
+                    'NMI security key is not configured. Please set it in the Gateway Credentials or the routing rule.'
                 );
             }
         }

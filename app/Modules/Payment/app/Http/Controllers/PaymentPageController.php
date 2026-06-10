@@ -31,8 +31,11 @@ class PaymentPageController extends Controller
                     $logoUrl   = $client->logo_path ? '/storage/' . $client->logo_path : null;
                     $feeConfig = $this->buildFeeConfig($client, $invoice);
 
-                    // Pass client gateway credentials so adapters can use them for tokenizer config
-                    $feeConfig['gateway_credentials'] = (array) ($client->gateway_credentials ?? []);
+                    // Pass only public/non-sensitive credential fields to the frontend tokenizer.
+                    // Private keys (api_key, password, security_key) must NEVER reach the browser.
+                    $feeConfig['gateway_credentials'] = $this->publicCredentialsOnly(
+                        (array) ($client->gateway_credentials ?? [])
+                    );
                 }
             }
         }
@@ -103,6 +106,33 @@ class PaymentPageController extends Controller
             'cash_discount_details'  => (array) ($client->cash_discount_details ?? []),
             'qb_route_type'          => $routeType,         // 'fees_on' | 'fees_off' | null
         ];
+    }
+
+    /**
+     * Strip private/secret credential fields before sending to the browser.
+     * Only public keys and environment settings are safe for client-side use.
+     */
+    private function publicCredentialsOnly(array $gwCreds): array
+    {
+        // Top-level safe keys (not per-gateway secrets)
+        $safe = [];
+        if (isset($gwCreds['environment'])) {
+            $safe['environment'] = $gwCreds['environment'];
+        }
+
+        // Per-gateway: only expose public_key and environment; never api_key / password / security_key
+        $allowedPerGateway = ['public_key', 'environment', 'tokenizer_url'];
+
+        foreach (['fluidpay', 'paya', 'nmi'] as $gw) {
+            if (isset($gwCreds[$gw]) && is_array($gwCreds[$gw])) {
+                $filtered = array_intersect_key($gwCreds[$gw], array_flip($allowedPerGateway));
+                if (! empty($filtered)) {
+                    $safe[$gw] = $filtered;
+                }
+            }
+        }
+
+        return $safe;
     }
 
     /**

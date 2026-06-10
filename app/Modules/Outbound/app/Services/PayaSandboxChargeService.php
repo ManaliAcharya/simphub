@@ -175,7 +175,11 @@ class PayaSandboxChargeService
 
     private function makeSoapClient(array $config): SoapClient
     {
-        $client = new SoapClient(base_path('paya_payment/AuthGatewayWSDL-Demo.eftchecks.com.xml'), [
+        $wsdl = $config['environment'] === 'production'
+            ? base_path('paya_payment/AuthGatewayWSDL-GetiGateway.eftchecks.com.xml')
+            : base_path('paya_payment/AuthGatewayWSDL-Demo.eftchecks.com.xml');
+
+        $client = new SoapClient($wsdl, [
             'trace' => true,
             'exceptions' => true,
             'cache_wsdl' => WSDL_CACHE_NONE,
@@ -259,15 +263,18 @@ class PayaSandboxChargeService
 
     private function resolveConfig(array $credentials): array
     {
+        $isProduction = ($credentials['environment'] ?? 'sandbox') === 'production';
+
         return [
-            'username' => $this->credentialValue($credentials, 'username', 'PAYA_USERNAME', 'ImpactPaysCert'),
-            'password' => '4AA3ZNSk#gpFbe9Z',
-            'terminal_id' => $this->credentialValue($credentials, 'terminal_id', 'PAYA_TERMINAL_ID', '1814'),
-            'namespace' => $this->normalizeNamespace(
-                $this->credentialValue($credentials, 'namespace', 'PAYA_NAMESPACE', 'http://tempuri.org/GETI.eMagnus.WebServices/AuthGateway')
+            'environment'              => $isProduction ? 'production' : 'sandbox',
+            'username'                 => (string) ($credentials['username']    ?? ''),
+            'password'                 => (string) ($credentials['password']    ?? ''),
+            'terminal_id'              => (string) ($credentials['terminal_id'] ?? ''),
+            'namespace'                => $this->normalizeNamespace(
+                (string) ($credentials['namespace'] ?? 'http://tempuri.org/GETI.eMagnus.WebServices/AuthGateway')
             ),
-            'terminal_settings_method' => $this->credentialValue($credentials, 'terminal_settings_method', 'PAYA_TERMINAL_SETTINGS_METHOD', 'GetCertificationTerminalSettings'),
-            'process_method' => $this->credentialValue($credentials, 'process_method', 'PAYA_PROCESS_METHOD', 'ProcessSingleCertificationCheck'),
+            'terminal_settings_method' => $isProduction ? 'GetTerminalSettings'   : 'GetCertificationTerminalSettings',
+            'process_method'           => $isProduction ? 'ProcessSingleCheck'     : 'ProcessSingleCertificationCheck',
         ];
     }
 

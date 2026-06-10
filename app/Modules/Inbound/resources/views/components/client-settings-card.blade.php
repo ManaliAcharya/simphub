@@ -135,7 +135,7 @@
                 $activeGateways = array_map('strtolower', $client->allowed_payment_gateways ?? []);
                 $credDefs = [
                     'fluidpay' => [
-                        ['key' => 'api_key',     'label' => 'API Key',       'type' => 'password'],
+                        ['key' => 'api_key',     'label' => 'Private Key',   'type' => 'password'],
                         ['key' => 'public_key',  'label' => 'Public Key',    'type' => 'text'],
                     ],
                     'paya' => [
@@ -181,12 +181,25 @@
                             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7c93;margin-bottom:10px;">{{ strtoupper($gw) }}</div>
                             <div style="display:grid;gap:8px;">
                                 @foreach($credDefs[$gw] as $field)
+                                @php
+                                    $isPrivate   = $field['type'] === 'password';
+                                    $isConfigured = !empty($gwCreds[$gw][$field['key']] ?? null);
+                                    // Never pre-fill private/secret fields — show configured state only.
+                                    // Public fields (public_key, tokenizer_url) may be pre-filled.
+                                    $prefillValue = $isPrivate ? '' : old("gateway_credentials.$gw.{$field['key']}", $gwCreds[$gw][$field['key']] ?? '');
+                                    $placeholder  = $isPrivate && $isConfigured ? '••••••••  (configured — leave blank to keep)' : 'Leave blank to use default';
+                                @endphp
                                 <div class="cc-field" style="margin:0;">
-                                    <label>{{ $field['label'] }}</label>
+                                    <label>
+                                        {{ $field['label'] }}
+                                        @if($isPrivate && $isConfigured)
+                                            <span style="font-size:11px;font-weight:600;color:#16a34a;margin-left:6px;">✓ Configured</span>
+                                        @endif
+                                    </label>
                                     <input type="{{ $field['type'] }}"
                                            name="gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
-                                           value="{{ old("gateway_credentials.$gw.{$field['key']}", $gwCreds[$gw][$field['key']] ?? '') }}"
-                                           placeholder="Leave blank to use default"
+                                           value="{{ $prefillValue }}"
+                                           placeholder="{{ $placeholder }}"
                                            style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
                                 </div>
                                 @endforeach

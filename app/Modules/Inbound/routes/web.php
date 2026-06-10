@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Inbound\Http\Controllers\ClientConfigController;
+use Modules\Inbound\Http\Controllers\MindbodyController;
 use Modules\Inbound\Http\Controllers\PmsAuthController;
 use Modules\Inbound\Http\Controllers\PmsIntegrationController;
 use Modules\Inbound\Http\Controllers\QuickBooksAuthController;
@@ -12,10 +13,11 @@ Route::middleware('web')->group(function (): void {
 
     // ── Public / admin routes (no merchant login required) ────────────────
     Route::get('/setup/{provider}/{token}', [PmsIntegrationController::class, 'showByToken'])
-        ->whereIn('provider', ['clio', 'zoho', 'lawcus', 'wave', 'quickbooks'])
+        ->whereIn('provider', ['clio', 'zoho', 'lawcus', 'wave', 'quickbooks', 'mindbody'])
         ->name('inbound.setup.share');
 
     Route::prefix('inbound/clients')->name('inbound.clients.')->group(function (): void {
+        Route::get('/', [ClientConfigController::class, 'index'])->name('index');
         Route::get('/create', [ClientConfigController::class, 'create'])->name('create');
         Route::post('/', [ClientConfigController::class, 'store'])->name('store');
         Route::get('/created', [ClientConfigController::class, 'created'])->name('created');
@@ -63,6 +65,13 @@ Route::middleware('web')->group(function (): void {
             Route::get('/callback', [PmsAuthController::class, 'callback'])->defaults('provider', $provider)->name('callback');
         });
     }
+
+    Route::prefix('inbound/mindbody')->name('inbound.mindbody.')->group(function (): void {
+        Route::get('/', [MindbodyController::class, 'show'])->name('page');
+        Route::post('/connect', [MindbodyController::class, 'connect'])->name('connect');
+        Route::post('/disconnect', [MindbodyController::class, 'disconnect'])->name('disconnect');
+        Route::post('/settings', [MindbodyController::class, 'saveSettings'])->name('settings');
+    });
 
     Route::prefix('inbound/quickbooks')->name('inbound.quickbooks.')->group(function (): void {
         Route::get('/', [PmsIntegrationController::class, 'show'])->defaults('provider', 'quickbooks')->name('page');

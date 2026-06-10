@@ -171,6 +171,12 @@
                             </div>
                             <div class="tile-name">Wave</div>
                         </div>
+                        <div class="tile pms {{ old('client_pms') === 'MINDBODY' ? 'selected' : '' }}" data-value="MINDBODY" onclick="selectPMS(this)">
+                            <div class="logo-box">
+                                <div style="width:40px;height:40px;border-radius:8px;background:#ecfdf5;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#065f46;letter-spacing:-.5px;">MB</div>
+                            </div>
+                            <div class="tile-name">Mindbody</div>
+                        </div>
                     </div>
                 </div>
 

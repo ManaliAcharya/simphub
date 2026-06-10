@@ -38,7 +38,7 @@ class PmsIntegrationController extends Controller
         );
     }
 
-    public function showByToken(string $provider, string $token, PmsConnectorRegistry $registry): View
+    public function showByToken(string $provider, string $token, PmsConnectorRegistry $registry): View|\Illuminate\Http\RedirectResponse
     {
         $client = Client::query()
             ->where(function ($query) use ($token): void {
@@ -52,6 +52,13 @@ class PmsIntegrationController extends Controller
         // Mark this session as client-initiated so setup links stay hidden
         // even after OAuth redirect brings them back to the admin-style URL.
         session(['client_session_id' => $client->pms_client_id]);
+
+        // Mindbody has its own dedicated controller/view
+        if ($provider === 'mindbody') {
+            return redirect()->route('inbound.mindbody.page', [
+                'pms_client_id' => $client->pms_client_id,
+            ]);
+        }
 
         return $this->render(
             $provider,

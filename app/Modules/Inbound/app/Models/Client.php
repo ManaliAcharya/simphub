@@ -11,6 +11,8 @@ class Client extends Model
 
     protected $guarded = [];
 
+    protected $hidden = ['gateway_credentials'];
+
     protected function casts(): array
     {
         return [

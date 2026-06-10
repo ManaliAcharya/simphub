@@ -580,7 +580,7 @@
                                 @php
                                     $creds = $existing?->credentials ?? [];
                                     $credFields = match($gw) {
-                                        'fluidpay' => [['key' => 'api_key', 'label' => 'API Key', 'type' => 'password'], ['key' => 'public_key', 'label' => 'Public Key (tokenizer)', 'type' => 'text']],
+                                        'fluidpay' => [['key' => 'api_key', 'label' => 'Private Key', 'type' => 'password'], ['key' => 'public_key', 'label' => 'Public Key (tokenizer)', 'type' => 'text']],
                                         'paya'     => [['key' => 'username', 'label' => 'Vault Username', 'type' => 'text'], ['key' => 'password', 'label' => 'Vault Password', 'type' => 'password'], ['key' => 'terminal_id', 'label' => 'Terminal ID', 'type' => 'text']],
                                         'nmi'      => [['key' => 'security_key', 'label' => 'Security Key', 'type' => 'password'], ['key' => 'public_key', 'label' => 'Public Key', 'type' => 'text']],
                                         default    => [['key' => 'api_key', 'label' => 'API Key', 'type' => 'password']],

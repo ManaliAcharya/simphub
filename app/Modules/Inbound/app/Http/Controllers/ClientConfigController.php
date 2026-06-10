@@ -18,7 +18,15 @@ use Modules\Routing\Models\TerminalConfiguration;
 
 class ClientConfigController extends Controller
 {
-    
+    public function index(): View
+    {
+        $clients = Client::query()
+            ->orderBy('client_name')
+            ->get();
+
+        return view('inbound::clients.index', compact('clients'));
+    }
+
     public function create(ZohoRegionResolver $zohoRegions): View
     {
         $availableGateways = RoutingRule::query()
@@ -133,6 +141,7 @@ class ClientConfigController extends Controller
             'ZOHO'       => 'zoho',
             'QUICKBOOKS' => 'quickbooks',
             'WAVE'       => 'wave',
+            'MINDBODY'   => 'mindbody',
             'CUSTOM'     => 'custom',
             default      => 'clio',
         };
@@ -190,22 +199,31 @@ class ClientConfigController extends Controller
         ]);
 
         $incoming = (array) ($request->input('gateway_credentials') ?? []);
-        $stored   = [];
 
-        // Save common environment at the top level
+        // Start from existing stored credentials so blank password fields (left intentionally
+        // empty to keep the current value) do not overwrite saved private keys.
+        try {
+            $stored = (array) ($client->gateway_credentials ?? []);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            $stored = [];
+        }
+
+        // Update common environment at the top level
         $env = trim((string) ($incoming['environment'] ?? ''));
         if ($env !== '') {
             $stored['environment'] = $env;
         }
 
-        // Save per-gateway credentials (skip the 'environment' key)
+        // Merge per-gateway credentials — only overwrite fields that are non-empty in the request
         foreach ($incoming as $gateway => $fields) {
             if ($gateway === 'environment' || ! is_array($fields)) {
                 continue;
             }
-            $clean = array_filter((array) $fields, fn($v) => $v !== null && trim((string) $v) !== '');
-            if (! empty($clean)) {
-                $stored[$gateway] = $clean;
+            foreach ($fields as $key => $value) {
+                if ($value !== null && trim((string) $value) !== '') {
+                    $stored[$gateway][$key] = trim((string) $value);
+                }
+                // Empty value = keep existing (do not overwrite)
             }
         }
 

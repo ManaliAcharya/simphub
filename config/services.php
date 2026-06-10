@@ -89,6 +89,10 @@ return [
         'webhook_events'       => array_values(array_filter(array_map('trim', explode(',', env('LAWCUS_WEBHOOK_EVENTS', 'invoice.created'))))),
     ],
 
+    'mindbody' => [
+        'api_key' => env('MINDBODY_API_KEY'),
+    ],
+
     'nmi' => [
         'collectjs_url'        => env('NMI_COLLECTJS_URL', 'https://secure.networkmerchants.com/token/Collect.js'),
         'collectjs_public_key' => env('NMI_COLLECTJS_PUBLIC_KEY'),

@@ -10,6 +10,8 @@ class PmsConnection extends Model
 
     protected $guarded = [];
 
+    protected $hidden = ['access_token', 'refresh_token', 'webhook_secret'];
+
     protected function casts(): array
     {
         return [

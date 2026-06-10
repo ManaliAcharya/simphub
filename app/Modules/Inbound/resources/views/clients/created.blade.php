@@ -81,10 +81,18 @@
         @endif
 
         <div class="actions">
-            <a href="{{ $provider === 'custom'
-                ? route('inbound.clients.api-docs', ['pms_client_id' => $client->pms_client_id])
-                : route('inbound.' . ($provider === 'quickbooks' ? 'quickbooks' : ($provider === 'wave' ? 'wave' : ($provider === 'zoho' ? 'zoho' : 'clio'))) . '.page', ['pms_client_id' => $client->pms_client_id]) }}"
-               class="btn-primary">Go to client config</a>
+            @php
+                $configUrl = match($provider) {
+                    'custom'      => route('inbound.clients.api-docs',  ['pms_client_id' => $client->pms_client_id]),
+                    'quickbooks'  => route('inbound.quickbooks.page',   ['pms_client_id' => $client->pms_client_id]),
+                    'zoho'        => route('inbound.zoho.page',         ['pms_client_id' => $client->pms_client_id]),
+                    'wave'        => route('inbound.wave.page',         ['pms_client_id' => $client->pms_client_id]),
+                    'lawcus'      => route('inbound.lawcus.page',       ['pms_client_id' => $client->pms_client_id]),
+                    'mindbody'    => route('inbound.mindbody.page',     ['pms_client_id' => $client->pms_client_id]),
+                    default       => route('inbound.clio.page',         ['pms_client_id' => $client->pms_client_id]),
+                };
+            @endphp
+            <a href="{{ $configUrl }}" class="btn-primary">Go to client config</a>
             <a href="{{ route('inbound.clients.create') }}" class="btn-secondary">Create another client</a>
         </div>
     </div>
