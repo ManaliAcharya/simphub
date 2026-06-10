@@ -49,6 +49,20 @@ class PaymentCheckoutService
             throw new RuntimeException('No routing rule available for this payment session.');
         }
 
+        // Load client credentials once — needed to enrich hostedFieldsConfig
+        // (e.g. FluidPay public_key for tokenizer iframe)
+        $feeClient = $invoice->pms_client_id
+            ? Client::query()->where('pms_client_id', $invoice->pms_client_id)->first()
+            : null;
+
+        try {
+            $clientGwCreds = (array) ($feeClient?->gateway_credentials ?? []);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            $clientGwCreds = [];
+        }
+
+        $commonEnv = $clientGwCreds['environment'] ?? null;
+
         return [
             'session' => [
                 'id' => $session->id,
@@ -68,13 +82,24 @@ class PaymentCheckoutService
                 'success_redirect_url' => $invoice->success_redirect_url ?: null,
                 'cancel_redirect_url'  => $invoice->cancel_redirect_url ?: null,
             ],
-            'payment_options' => $options->map(function ($decision) use ($invoice) {
+            'payment_options' => $options->map(function ($decision) use ($invoice, $clientGwCreds, $commonEnv) {
                 $availability = strtolower((string) $decision->gateway) === 'paya'
                     ? $this->payaAvailability($invoice)
                     : ['available' => true, 'reason' => null];
+
+                // Merge client-specific credentials so hostedFieldsConfig gets
+                // the correct public_key / environment for the tokenizer
+                $gwCreds = $clientGwCreds[strtolower($decision->gateway)] ?? [];
+                if ($commonEnv) {
+                    $gwCreds['environment'] = $commonEnv;
+                }
+                $resolvedCreds = ! empty($gwCreds)
+                    ? array_merge($decision->midCredentials, $gwCreds)
+                    : $decision->midCredentials;
+
                 $hostedFields = $this->gateways->make($decision->gateway)->hostedFieldsConfig(
                     $decision->mid,
-                    $decision->midCredentials,
+                    $resolvedCreds,
                 );
 
                 return [

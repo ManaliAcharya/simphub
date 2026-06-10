@@ -590,11 +590,22 @@
                                     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--cc-text-2);margin-bottom:8px;">API Credentials</div>
                                     <div style="display:grid;grid-template-columns:repeat({{ min(count($credFields), 2) }},1fr);gap:10px;">
                                         @foreach($credFields as $cf)
+                                        @php
+                                            $isPrivate    = $cf['type'] === 'password';
+                                            $isConfigured = !empty($creds[$cf['key']] ?? null);
+                                            $prefill      = $isPrivate ? '' : old("routes.$idx.credentials.{$cf['key']}", $creds[$cf['key']] ?? '');
+                                            $placeholder  = $isPrivate && $isConfigured ? '••••••••  (configured — leave blank to keep)' : ($isPrivate ? '••••••••' : '');
+                                        @endphp
                                         <div class="cc-field" style="margin:0;">
-                                            <label>{{ $cf['label'] }}</label>
+                                            <label>
+                                                {{ $cf['label'] }}
+                                                @if($isPrivate && $isConfigured)
+                                                    <span style="font-size:11px;font-weight:600;color:#16a34a;margin-left:6px;">✓ Configured</span>
+                                                @endif
+                                            </label>
                                             <input type="{{ $cf['type'] }}" name="routes[{{ $idx }}][credentials][{{ $cf['key'] }}]"
-                                                   value="{{ old("routes.$idx.credentials.{$cf['key']}", $creds[$cf['key']] ?? '') }}"
-                                                   placeholder="{{ $cf['type'] === 'password' ? '••••••••' : '' }}">
+                                                   value="{{ $prefill }}"
+                                                   placeholder="{{ $placeholder }}">
                                         </div>
                                         @endforeach
                                     </div>

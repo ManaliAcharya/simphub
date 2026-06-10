@@ -395,23 +395,41 @@ class ClientConfigController extends Controller
             // Skip routes with no MID identifier filled in yet
             if (empty($route['mid_identifier'])) continue;
 
-            $credentials = array_filter(
-                (array) ($route['credentials'] ?? []),
-                fn($v) => $v !== null && trim((string) $v) !== ''
-            );
+            $gateway   = strtolower($route['gateway']);
+            $routeType = $route['route_type'];
+
+            // Load existing route to merge credentials (preserve fields not re-entered)
+            $existingRoute = ClientMidRoute::query()
+                ->where('client_id',  $client->id)
+                ->where('route_type', $routeType)
+                ->where('gateway',    $gateway)
+                ->first();
+
+            try {
+                $mergedCredentials = (array) ($existingRoute?->credentials ?? []);
+            } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+                $mergedCredentials = [];
+            }
+
+            // Merge: only non-empty submitted values override existing
+            foreach ((array) ($route['credentials'] ?? []) as $k => $v) {
+                if ($v !== null && trim((string) $v) !== '') {
+                    $mergedCredentials[$k] = trim((string) $v);
+                }
+            }
 
             ClientMidRoute::updateOrCreate(
                 [
                     'client_id'  => $client->id,
-                    'route_type' => $route['route_type'],
-                    'gateway'    => strtolower($route['gateway']),
+                    'route_type' => $routeType,
+                    'gateway'    => $gateway,
                 ],
                 [
                     'mid_identifier' => $route['mid_identifier'],
                     'mid_label'      => $route['mid_label'] ?? null,
                     'rate_percent'   => $route['rate_percent'] ?? null,
                     'environment'    => $route['environment'] ?? 'sandbox',
-                    'credentials'    => !empty($credentials) ? $credentials : null,
+                    'credentials'    => !empty($mergedCredentials) ? $mergedCredentials : null,
                     'is_active'      => true,
                 ]
             );
