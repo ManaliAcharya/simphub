@@ -591,20 +591,18 @@
                                     <div style="display:grid;grid-template-columns:repeat({{ min(count($credFields), 2) }},1fr);gap:10px;">
                                         @foreach($credFields as $cf)
                                         @php
-                                            $isPrivate    = $cf['type'] === 'password';
                                             $isConfigured = !empty($creds[$cf['key']] ?? null);
-                                            $prefill      = $isPrivate ? '' : old("routes.$idx.credentials.{$cf['key']}", $creds[$cf['key']] ?? '');
-                                            $placeholder  = $isPrivate && $isConfigured ? '••••••••  (configured — leave blank to keep)' : ($isPrivate ? '••••••••' : '');
+                                            $placeholder  = $isConfigured ? 'Configured — leave blank to keep' : '';
                                         @endphp
                                         <div class="cc-field" style="margin:0;">
                                             <label>
                                                 {{ $cf['label'] }}
-                                                @if($isPrivate && $isConfigured)
+                                                @if($isConfigured)
                                                     <span style="font-size:11px;font-weight:600;color:#16a34a;margin-left:6px;">✓ Configured</span>
                                                 @endif
                                             </label>
                                             <input type="{{ $cf['type'] }}" name="routes[{{ $idx }}][credentials][{{ $cf['key'] }}]"
-                                                   value="{{ $prefill }}"
+                                                   value=""
                                                    placeholder="{{ $placeholder }}">
                                         </div>
                                         @endforeach

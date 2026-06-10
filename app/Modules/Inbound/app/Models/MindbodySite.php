@@ -22,13 +22,14 @@ class MindbodySite extends Model
     protected function casts(): array
     {
         return [
-            'staff_username_encrypted'      => 'encrypted',
-            'staff_password_encrypted'      => 'encrypted',
+            'staff_username_encrypted'        => 'encrypted',
+            'staff_password_encrypted'        => 'encrypted',
             'webhook_signature_key_encrypted' => 'encrypted',
-            'webhook_active'                => 'boolean',
-            'is_active'                     => 'boolean',
-            'mb_payment_posted'             => 'boolean',
-            'staff_token_expires_at'        => 'datetime',
+            'staff_token'                     => 'encrypted',
+            'webhook_active'                  => 'boolean',
+            'is_active'                       => 'boolean',
+            'mb_payment_posted'               => 'boolean',
+            'staff_token_expires_at'          => 'datetime',
         ];
     }
 
@@ -54,7 +55,14 @@ class MindbodySite extends Model
 
     public function isTokenExpired(): bool
     {
-        if (! $this->staff_token || ! $this->staff_token_expires_at) {
+        try {
+            $token = $this->staff_token;
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            // Plaintext token from before encryption was added — treat as expired
+            return true;
+        }
+
+        if (! $token || ! $this->staff_token_expires_at) {
             return true;
         }
 

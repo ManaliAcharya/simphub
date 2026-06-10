@@ -11,21 +11,20 @@ class TerminalConfiguration extends Model
 
     protected $guarded = [];
 
+    protected $hidden = ['terminal_credentials'];
+
     protected function casts(): array
     {
         return [
-            'is_active' => 'boolean',
+            'is_active'            => 'boolean',
+            'terminal_credentials' => 'encrypted:array',
         ];
     }
 
     public function getCredentials(): array
     {
-        if (empty($this->terminal_credentials)) {
-            return [];
-        }
-
         try {
-            return (array) json_decode(decrypt($this->terminal_credentials), true);
+            return (array) ($this->terminal_credentials ?? []);
         } catch (\Throwable) {
             return [];
         }

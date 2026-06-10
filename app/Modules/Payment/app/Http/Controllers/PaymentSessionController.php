@@ -49,15 +49,10 @@ class PaymentSessionController extends Controller
             return response()->json(['message' => 'No active Paya routing rule found.'], 422);
         }
 
-        // mid_credentials may be: encrypted string, encrypted+serialized array, or plain array
-        $raw = $rule->mid_credentials;
-        if (is_string($raw)) {
-            $decrypted = decrypt($raw);
-            $midCredentials = is_array($decrypted)
-                ? $decrypted
-                : (json_decode($decrypted, true) ?? []);
-        } else {
-            $midCredentials = (array) ($raw ?? []);
+        try {
+            $midCredentials = (array) ($rule->mid_credentials ?? []);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            return response()->json(['message' => 'Routing rule credentials are corrupted. Please re-save the routing rule.'], 422);
         }
 
         // Optional invoice metadata for the form title
