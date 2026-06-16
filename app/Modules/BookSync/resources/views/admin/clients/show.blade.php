@@ -6,13 +6,6 @@
     <span>{{ $client->name }}</span>
 </div>
 
-@if(session('api_key_plaintext'))
-<div class="alert alert-warning" style="font-size:.92rem;">
-    <strong>Save this API key now — it will not be shown again.</strong><br>
-    <code style="background:rgba(0,0,0,.08);padding:4px 8px;border-radius:8px;display:inline-block;margin-top:6px;word-break:break-all;">{{ session('api_key_plaintext') }}</code>
-</div>
-@endif
-
 @if(session('success'))
     <div class="alert alert-success">{{ session('success') }}</div>
 @endif
@@ -36,10 +29,46 @@
     </div>
     @endif
     <div class="field">
+        <span>Accounting System</span>
+        <strong>{{ $connector->label() }}</strong>
+    </div>
+    <div class="field">
         <span>Created</span>
         <strong>{{ $client->created_at->format('M d, Y') }}</strong>
     </div>
+    <div class="field" style="grid-column:1/-1;">
+        <span>API Key</span>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+            <code id="api-key-display" style="flex:1;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;padding:7px 12px;font-size:.85rem;word-break:break-all;letter-spacing:.05em;">{{ str_repeat('•', 52) }}</code>
+            <button type="button" onclick="toggleApiKey()" title="Show / hide"
+                style="flex-shrink:0;padding:6px 10px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;line-height:1;">
+                <svg id="eye-show" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg id="eye-hide" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+            </button>
+            <button type="button" onclick="copyApiKey(this)"
+                style="flex-shrink:0;padding:6px 14px;background:#2563eb;color:#fff;border:none;border-radius:8px;font-size:.82rem;font-weight:600;cursor:pointer;font-family:inherit;">
+                Copy
+            </button>
+        </div>
+    </div>
 </div>
+<script>
+    const RAW_KEY = @json($apiKey);
+    let visible = false;
+    function toggleApiKey() {
+        visible = !visible;
+        document.getElementById('api-key-display').textContent = visible ? RAW_KEY : '•'.repeat(52);
+        document.getElementById('eye-show').style.display = visible ? 'none' : '';
+        document.getElementById('eye-hide').style.display = visible ? '' : 'none';
+    }
+    function copyApiKey(btn) {
+        navigator.clipboard.writeText(RAW_KEY).then(() => {
+            btn.textContent = 'Copied!';
+            btn.style.background = '#10b981';
+            setTimeout(() => { btn.textContent = 'Copy'; btn.style.background = '#2563eb'; }, 2000);
+        });
+    }
+</script>
 
 <div class="panel">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">

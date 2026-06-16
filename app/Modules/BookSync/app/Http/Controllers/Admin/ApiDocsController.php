@@ -13,6 +13,7 @@ class ApiDocsController extends Controller
 
         return view('booksync::admin.api-docs', [
             'client'  => $client,
+            'apiKey'  => $client->client_api_key,
             'baseUrl' => rtrim(config('app.url'), '/'),
         ]);
     }

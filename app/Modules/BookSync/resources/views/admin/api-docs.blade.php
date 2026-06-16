@@ -138,13 +138,32 @@
         <div class="cred-card">
             <div class="cred-label">Client API Key <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#b0b8c4;">— Bearer token</span></div>
             <div class="cred-row">
-                <code id="api-key-val">{{ session('api_key_plaintext') ?? '•••••••••••••••••••••••••••••••• (not shown after creation)' }}</code>
-                @if(session('api_key_plaintext'))
-                <button class="copy-btn" onclick="copyVal('api-key-val', this)">Copy</button>
-                @endif
+                <code id="api-key-val" style="letter-spacing:.04em;">{{ str_repeat('•', 52) }}</code>
+                <button class="copy-btn" style="background:#f3f4f6;color:#374151;border:1px solid #e5e7eb;padding:5px 8px;" onclick="toggleDocKey(this)" title="Show / hide">
+                    <svg id="doc-eye-show" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="display:block;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg id="doc-eye-hide" xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="display:none;"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                </button>
+                <button class="copy-btn" onclick="copyDocKey(this)">Copy</button>
             </div>
             <div class="cred-hint">Send as <code style="font-family:ui-monospace,monospace;font-size:11px;background:#f3f4f6;padding:1px 5px;border-radius:4px;">Authorization: Bearer &lt;key&gt;</code> on every request.</div>
         </div>
+        <script>
+            const DOC_API_KEY = @json($apiKey);
+            let docKeyVisible = false;
+            function toggleDocKey(btn) {
+                docKeyVisible = !docKeyVisible;
+                document.getElementById('api-key-val').textContent = docKeyVisible ? DOC_API_KEY : '•'.repeat(52);
+                document.getElementById('doc-eye-show').style.display = docKeyVisible ? 'none' : 'block';
+                document.getElementById('doc-eye-hide').style.display = docKeyVisible ? 'block' : 'none';
+            }
+            function copyDocKey(btn) {
+                navigator.clipboard.writeText(DOC_API_KEY).then(() => {
+                    btn.textContent = 'Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+                });
+            }
+        </script>
         <div class="cred-card">
             <div class="cred-label">Client ID</div>
             <div class="cred-row">

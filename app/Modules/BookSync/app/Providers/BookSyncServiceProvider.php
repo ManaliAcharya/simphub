@@ -2,6 +2,9 @@
 
 namespace Modules\BookSync\Providers;
 
+use Modules\BookSync\Services\AccountingConnectorRegistry;
+use Modules\BookSync\Services\Connectors\QuickBooksAccountingConnector;
+use Modules\BookSync\Services\Connectors\ZohoBooksAccountingConnector;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class BookSyncServiceProvider extends ModuleServiceProvider
@@ -18,5 +21,12 @@ class BookSyncServiceProvider extends ModuleServiceProvider
     public function register(): void
     {
         parent::register();
+
+        $this->app->singleton(AccountingConnectorRegistry::class, function () {
+            return new AccountingConnectorRegistry([
+                new QuickBooksAccountingConnector(),
+                new ZohoBooksAccountingConnector(),
+            ]);
+        });
     }
 }
