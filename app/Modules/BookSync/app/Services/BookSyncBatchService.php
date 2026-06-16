@@ -32,24 +32,25 @@ class BookSyncBatchService
 
             $existing = BookSyncTransaction::where('merchant_id', $merchant->id)
                 ->where('reference', $reference)
-                ->where('status', 'posted')
                 ->first();
 
             if ($existing) {
+                // Already posted → surface as already_posted in this batch's results
+                // Still queued/retrying/permanently_failed → do not re-queue; reference the original
                 BookSyncTransaction::create([
-                    'batch_id'        => $batch->id,
-                    'merchant_id'     => $merchant->id,
-                    'reference'       => $reference,
-                    'customer_name'   => $txnData['customer_name'],
-                    'customer_email'  => $txnData['customer_email'] ?? null,
-                    'amount'          => $txnData['amount'],
-                    'payment_method'  => $txnData['payment_method'] ?? 'Other',
-                    'transaction_date' => $txnDate,
-                    'memo'            => $txnData['memo'] ?? null,
-                    'status'          => 'already_posted',
+                    'batch_id'           => $batch->id,
+                    'merchant_id'        => $merchant->id,
+                    'reference'          => $reference . '_dup_' . $batch->batch_id,
+                    'customer_name'      => $txnData['customer_name'],
+                    'customer_email'     => $txnData['customer_email'] ?? null,
+                    'amount'             => $txnData['amount'],
+                    'payment_method'     => $txnData['payment_method'] ?? 'Other',
+                    'transaction_date'   => $txnDate,
+                    'memo'               => $txnData['memo'] ?? null,
+                    'status'             => 'already_posted',
                     'qb_salesreceipt_id' => $existing->qb_salesreceipt_id,
-                    'qb_customer_id'  => $existing->qb_customer_id,
-                    'posted_at'       => $existing->posted_at,
+                    'qb_customer_id'     => $existing->qb_customer_id,
+                    'posted_at'          => $existing->posted_at,
                 ]);
                 continue;
             }
