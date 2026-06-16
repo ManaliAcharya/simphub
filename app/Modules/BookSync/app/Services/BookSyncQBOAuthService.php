@@ -131,30 +131,20 @@ class BookSyncQBOAuthService
 
     private function fetchCompanyName(string $accessToken, string $realmId): string
     {
+        $baseUrl = rtrim(config('services.quickbooks.base_url', 'https://quickbooks.api.intuit.com'), '/');
+        $minorVersion = config('services.quickbooks.minor_version', '65');
+
         $response = Http::acceptJson()
             ->withToken($accessToken)
-            ->get($this->oauthBaseUrl() . '/api/v1/OpenID/GetCompanies');
+            ->get("{$baseUrl}/v3/company/{$realmId}/companyinfo/{$realmId}", [
+                'minorversion' => $minorVersion,
+            ]);
 
         if ($response->failed()) {
             return '';
         }
 
-        $list = data_get($response->json(), 'CompanyList.Company', []);
-        if (isset($list['CompanyName'])) {
-            $list = [$list];
-        }
-
-        foreach ($list as $company) {
-            $id = $company['RealmID'] ?? $company['CompanyID'] ?? '';
-            if (is_array($id)) {
-                $id = $id['$'] ?? '';
-            }
-            if ((string) $id === $realmId) {
-                return (string) ($company['CompanyName'] ?? '');
-            }
-        }
-
-        return '';
+        return (string) data_get($response->json(), 'CompanyInfo.CompanyName', '');
     }
 
     private function oauthBaseUrl(): string

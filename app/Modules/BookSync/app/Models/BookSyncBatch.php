@@ -45,9 +45,8 @@ class BookSyncBatch extends Model
         $failed  = (int) ($counts['failed'] ?? 0);
         $queued  = (int) ($counts['queued'] ?? 0);
 
-        $total   = $posted + $skipped + $failed + $queued;
-        $status  = $queued > 0 ? 'processing' : ($failed > 0 ? 'partial' : 'completed');
+        $status = $queued > 0 ? 'processing' : ($failed > 0 ? 'partial' : 'completed');
 
-        $this->update(compact('posted', 'skipped', 'failed', 'queued', 'total', 'status'));
+        $this->update(compact('posted', 'skipped', 'failed', 'queued', 'status'));
     }
 }
