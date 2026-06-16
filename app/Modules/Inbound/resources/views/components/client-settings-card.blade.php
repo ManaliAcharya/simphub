@@ -184,7 +184,7 @@
                                 @php
                                     $isConfigured = !empty($gwCreds[$gw][$field['key']] ?? null);
                                     // Never pre-fill any credential field — show configured state only.
-                                    $placeholder  = $isConfigured ? 'Configured — leave blank to keep' : 'Leave blank to use default';
+                                    $placeholder  = $isConfigured ? 'Configured — leave blank to keep' : '';
                                 @endphp
                                 <div class="cc-field" style="margin:0;">
                                     <label>

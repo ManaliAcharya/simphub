@@ -121,4 +121,10 @@ return [
         'host_url' => rtrim(env('PAYMENT_HOST_URL', env('APP_URL', 'http://localhost')), '/'),
     ],
 
+    'booksync' => [
+        'qb_client_id'     => env('BOOKSYNC_QB_CLIENT_ID'),
+        'qb_client_secret' => env('BOOKSYNC_QB_CLIENT_SECRET'),
+        'qb_redirect_uri'  => env('BOOKSYNC_QB_REDIRECT_URI', rtrim(env('APP_URL', 'http://localhost'), '/').'/booksync/setup/qb/callback'),
+    ],
+
 ];

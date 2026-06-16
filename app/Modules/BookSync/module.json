@@ -1,0 +1,11 @@
+{
+    "name": "BookSync",
+    "alias": "booksync",
+    "description": "QuickBooks posting service for POS systems",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\BookSync\\Providers\\BookSyncServiceProvider"
+    ],
+    "files": []
+}
