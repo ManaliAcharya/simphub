@@ -30,6 +30,7 @@
             "Modules\\TrustAccounting\\": "app/Modules/TrustAccounting/app/",
             "Modules\\Reconciliation\\": "app/Modules/Reconciliation/app/",
             "Modules\\Audit\\": "app/Modules/Audit/app/",
+            "Modules\\BookSync\\": "app/Modules/BookSync/app/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         }
