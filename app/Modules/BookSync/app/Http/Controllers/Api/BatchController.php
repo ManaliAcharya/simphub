@@ -44,12 +44,12 @@ class BatchController extends Controller
             ], 403);
         }
 
-        $batch = $this->batches->process($merchant, $request->validated());
+        ['batch' => $batch, 'duplicates' => $duplicates] = $this->batches->process($merchant, $request->validated());
 
         // 409 when every transaction in the batch was already posted
         $statusCode = ($batch->skipped === $batch->total_transactions) ? 409 : 200;
 
-        return response()->json($this->batches->formatResponse($batch), $statusCode);
+        return response()->json($this->batches->formatResponse($batch, $duplicates), $statusCode);
     }
 
     /** GET /booksync/api/v1/batches/{batch_id} */

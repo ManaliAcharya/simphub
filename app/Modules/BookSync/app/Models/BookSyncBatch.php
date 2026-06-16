@@ -32,7 +32,7 @@ class BookSyncBatch extends Model
         return $this->hasMany(BookSyncTransaction::class, 'batch_id');
     }
 
-    public function recalculateCounts(): void
+    public function recalculateCounts(array $inMemoryDuplicates = []): void
     {
         $counts = $this->transactions()
             ->selectRaw('status, COUNT(*) as cnt')
@@ -41,7 +41,7 @@ class BookSyncBatch extends Model
             ->toArray();
 
         $posted  = (int) ($counts['posted'] ?? 0);
-        $skipped = (int) ($counts['already_posted'] ?? 0);
+        $skipped = (int) ($counts['already_posted'] ?? 0) + count($inMemoryDuplicates);
         $failed  = (int) ($counts['failed'] ?? 0);
         $queued  = (int) ($counts['queued'] ?? 0);
 

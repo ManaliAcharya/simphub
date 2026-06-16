@@ -14,7 +14,8 @@ class BookSyncBatchService
     /**
      * Accept a validated batch payload, deduplicate, queue new transactions, return batch result.
      */
-    public function process(BookSyncMerchant $merchant, array $payload): BookSyncBatch
+    /** @return array{batch: BookSyncBatch, duplicates: array} */
+    public function process(BookSyncMerchant $merchant, array $payload): array
     {
         $batchDate = $payload['batch_date'] ?? CarbonImmutable::today()->toDateString();
 
@@ -26,6 +27,10 @@ class BookSyncBatchService
             'status'             => 'processing',
         ]);
 
+        // Duplicates are tracked in-memory — not inserted into DB — to avoid
+        // violating the unique(merchant_id, reference) constraint.
+        $duplicates = [];
+
         foreach ($payload['transactions'] as $txnData) {
             $reference = $txnData['reference'];
             $txnDate   = $txnData['date'] ?? $batchDate;
@@ -35,23 +40,13 @@ class BookSyncBatchService
                 ->first();
 
             if ($existing) {
-                // Already posted → surface as already_posted in this batch's results
-                // Still queued/retrying/permanently_failed → do not re-queue; reference the original
-                BookSyncTransaction::create([
-                    'batch_id'           => $batch->id,
-                    'merchant_id'        => $merchant->id,
-                    'reference'          => $reference . '_dup_' . $batch->batch_id,
-                    'customer_name'      => $txnData['customer_name'],
-                    'customer_email'     => $txnData['customer_email'] ?? null,
+                $duplicates[] = [
+                    'reference'          => $reference,
                     'amount'             => $txnData['amount'],
-                    'payment_method'     => $txnData['payment_method'] ?? 'Other',
-                    'transaction_date'   => $txnDate,
-                    'memo'               => $txnData['memo'] ?? null,
-                    'status'             => 'already_posted',
                     'qb_salesreceipt_id' => $existing->qb_salesreceipt_id,
                     'qb_customer_id'     => $existing->qb_customer_id,
                     'posted_at'          => $existing->posted_at,
-                ]);
+                ];
                 continue;
             }
 
@@ -71,13 +66,26 @@ class BookSyncBatchService
             PostTransactionJob::dispatch($transaction);
         }
 
-        $batch->recalculateCounts();
+        $batch->recalculateCounts($duplicates);
 
-        return $batch->fresh(['transactions']);
+        return ['batch' => $batch->fresh(['transactions']), 'duplicates' => $duplicates];
     }
 
-    public function formatResponse(BookSyncBatch $batch): array
+    public function formatResponse(BookSyncBatch $batch, array $inMemoryDuplicates = []): array
     {
+        $dbResults = $batch->transactions->map(fn (BookSyncTransaction $t) => $this->formatTransaction($t))->values()->all();
+
+        $dupResults = array_map(fn (array $d) => array_filter([
+            'reference'          => $d['reference'],
+            'status'             => 'already_posted',
+            'amount'             => (float) $d['amount'],
+            'qb_salesreceipt_id' => $d['qb_salesreceipt_id'] ?? null,
+            'qb_customer_id'     => $d['qb_customer_id'] ?? null,
+            'message'            => $d['posted_at']
+                ? 'Transaction with this reference was posted on ' . \Carbon\Carbon::parse($d['posted_at'])->toIso8601String()
+                : 'Transaction with this reference already exists.',
+        ], fn ($v) => $v !== null), $inMemoryDuplicates);
+
         return [
             'batch_id'           => $batch->batch_id,
             'batch_date'         => $batch->batch_date->toDateString(),
@@ -87,7 +95,7 @@ class BookSyncBatchService
             'skipped'            => $batch->skipped,
             'failed'             => $batch->failed,
             'queued'             => $batch->queued,
-            'results'            => $batch->transactions->map(fn (BookSyncTransaction $t) => $this->formatTransaction($t))->values()->all(),
+            'results'            => array_merge($dbResults, array_values($dupResults)),
         ];
     }
 
