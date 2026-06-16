@@ -37,6 +37,7 @@ Route::middleware('web')->group(function (): void {
         Route::get('/qb/callback', [MerchantSetupController::class, 'callback'])->name('callback');
         Route::post('/{setupToken}/account', [MerchantSetupController::class, 'saveAccount'])->name('save-account');
         Route::get('/{setupToken}/complete', [MerchantSetupController::class, 'complete'])->name('complete');
+        Route::get('/{setupToken}/edit', [MerchantSetupController::class, 'edit'])->name('edit');
     });
 
 });

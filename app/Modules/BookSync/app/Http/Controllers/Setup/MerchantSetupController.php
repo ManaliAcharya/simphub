@@ -104,4 +104,21 @@ class MerchantSetupController extends Controller
 
         return view('booksync::setup.complete', compact('merchant'));
     }
+
+    /** Edit: Re-show account selector pre-filled with current values. */
+    public function edit(string $setupToken)
+    {
+        $merchant = BookSyncMerchant::where('setup_token', $setupToken)
+            ->where('status', 'active')
+            ->firstOrFail();
+
+        $accounts       = $this->qb->fetchDepositAccounts($merchant);
+        $incomeAccounts = $this->qb->fetchIncomeAccounts($merchant);
+        $items          = $this->qb->fetchItems($merchant);
+        $customers      = $this->qb->fetchCustomers($merchant);
+
+        return view('booksync::setup.select-account', compact(
+            'merchant', 'accounts', 'incomeAccounts', 'items', 'customers', 'setupToken'
+        ) + ['editing' => true]);
+    }
 }
