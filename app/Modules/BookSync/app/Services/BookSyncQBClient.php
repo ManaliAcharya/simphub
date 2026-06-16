@@ -109,6 +109,60 @@ class BookSyncQBClient
         return $id;
     }
 
+    // ── Items (income / service) ──────────────────────────────────────────────
+
+    public function fetchItems(BookSyncMerchant $merchant): array
+    {
+        $merchant = $this->oauth->ensureValidToken($merchant);
+
+        $sql = "SELECT Id, Name, Type FROM Item "
+             . "WHERE Type IN ('Service', 'NonInventory') AND Active = true "
+             . "ORDER BY Name MAXRESULTS 100";
+
+        $response = $this->request($merchant)
+            ->get('/query', ['query' => $sql, ...$this->mv()])
+            ->throw()
+            ->json();
+
+        $rows = $response['QueryResponse']['Item'] ?? [];
+
+        return collect(is_array($rows) ? $rows : [])
+            ->map(fn (array $i) => [
+                'id'   => (string) ($i['Id'] ?? ''),
+                'name' => (string) ($i['Name'] ?? ''),
+                'type' => (string) ($i['Type'] ?? ''),
+            ])
+            ->filter(fn (array $i) => $i['id'] !== '')
+            ->values()
+            ->all();
+    }
+
+    // ── Customers ─────────────────────────────────────────────────────────────
+
+    public function fetchCustomers(BookSyncMerchant $merchant): array
+    {
+        $merchant = $this->oauth->ensureValidToken($merchant);
+
+        $sql = "SELECT Id, DisplayName FROM Customer "
+             . "WHERE Active = true ORDER BY DisplayName MAXRESULTS 200";
+
+        $response = $this->request($merchant)
+            ->get('/query', ['query' => $sql, ...$this->mv()])
+            ->throw()
+            ->json();
+
+        $rows = $response['QueryResponse']['Customer'] ?? [];
+
+        return collect(is_array($rows) ? $rows : [])
+            ->map(fn (array $c) => [
+                'id'   => (string) ($c['Id'] ?? ''),
+                'name' => (string) ($c['DisplayName'] ?? ''),
+            ])
+            ->filter(fn (array $c) => $c['id'] !== '')
+            ->values()
+            ->all();
+    }
+
     // ── Payment method ────────────────────────────────────────────────────────
 
     public function findOrCreatePaymentMethod(BookSyncMerchant $merchant, string $name): string
@@ -215,9 +269,14 @@ class BookSyncQBClient
         float $amount,
         string $txnDate,
         string $docNumber,
+        ?string $customerName = null,
         ?string $privateNote = null,
     ): array {
         $merchant = $this->oauth->ensureValidToken($merchant);
+
+        $description = $customerName
+            ? "{$customerName} — {$docNumber}"
+            : "POS Sale — {$docNumber}";
 
         $payload = [
             'CustomerRef'         => ['value' => $customerId],
@@ -229,7 +288,7 @@ class BookSyncQBClient
                 [
                     'Amount'              => $amount,
                     'DetailType'          => 'SalesItemLineDetail',
-                    'Description'         => 'POS Sale - ' . $docNumber,
+                    'Description'         => $description,
                     'SalesItemLineDetail' => [
                         'ItemRef'   => ['value' => $serviceItem['id'], 'name' => $serviceItem['name']],
                         'Qty'       => 1,

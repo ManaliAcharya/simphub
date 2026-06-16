@@ -42,6 +42,18 @@
         <strong>{{ $merchant->deposit_account_name }}</strong>
     </div>
     @endif
+    @if($merchant->default_item_name)
+    <div class="field">
+        <span>Default Income Item</span>
+        <strong>{{ $merchant->default_item_name }}</strong>
+    </div>
+    @endif
+    @if($merchant->default_customer_name)
+    <div class="field">
+        <span>Default Customer</span>
+        <strong>{{ $merchant->default_customer_name }}</strong>
+    </div>
+    @endif
     @if($merchant->qb_connected_at)
     <div class="field">
         <span>QB Connected</span>

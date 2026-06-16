@@ -21,26 +21,25 @@ class BookSyncPostingService
         $merchant = $transaction->merchant;
 
         try {
-            $customerId = $this->qb->findOrCreateCustomer(
-                $merchant,
-                $transaction->customer_name,
-                $transaction->customer_email,
-            );
+            if (! $merchant->default_customer_id || ! $merchant->default_item_id) {
+                throw new \RuntimeException('Merchant is missing default customer or item. Re-run QB setup.');
+            }
 
-            $method      = BookSyncQBClient::normalizePaymentMethod($transaction->payment_method);
+            $method          = BookSyncQBClient::normalizePaymentMethod($transaction->payment_method);
             $paymentMethodId = $this->qb->findOrCreatePaymentMethod($merchant, $method);
-            $serviceItem = $this->qb->findOrCreateServiceItem($merchant);
 
-            $note = $this->buildPrivateNote($transaction);
+            $serviceItem = ['id' => $merchant->default_item_id, 'name' => $merchant->default_item_name];
+            $note        = $this->buildPrivateNote($transaction);
 
             $result = $this->qb->createSalesReceipt(
                 merchant:        $merchant,
-                customerId:      $customerId,
+                customerId:      $merchant->default_customer_id,
                 paymentMethodId: $paymentMethodId,
                 serviceItem:     $serviceItem,
                 amount:          (float) $transaction->amount,
                 txnDate:         $transaction->transaction_date->toDateString(),
                 docNumber:       $transaction->reference,
+                customerName:    $transaction->customer_name,
                 privateNote:     $note,
             );
 
