@@ -24,7 +24,7 @@ class BookSyncQBClient
 
         $sql = "SELECT Id, Name, AccountType, AccountSubType FROM Account "
              . "WHERE AccountType IN ('Bank', 'Other Current Asset') AND Active = true "
-             . "ORDERBY Name";
+             . "ORDER BY Name";
 
         $response = $this->request($merchant)
             ->get('/query', ['query' => $sql, ...$this->mv()])
@@ -116,7 +116,7 @@ class BookSyncQBClient
         $merchant = $this->oauth->ensureValidToken($merchant);
 
         $safe = str_replace("'", "\\'", $name);
-        $sql  = "SELECT Id FROM PaymentMethod WHERE Name = '{$safe}' AND Active = true LIMIT 1";
+        $sql  = "SELECT Id FROM PaymentMethod WHERE Name = '{$safe}' AND Active = true MAXRESULTS 1";
 
         $response = $this->request($merchant)
             ->get('/query', ['query' => $sql, ...$this->mv()])
@@ -149,7 +149,7 @@ class BookSyncQBClient
     {
         $merchant = $this->oauth->ensureValidToken($merchant);
 
-        $sql = "SELECT Id, Name FROM Item WHERE Name IN ('Services', 'Sales') AND Active = true LIMIT 2";
+        $sql = "SELECT Id, Name FROM Item WHERE Name IN ('Services', 'Sales') AND Active = true MAXRESULTS 2";
 
         $response = $this->request($merchant)
             ->get('/query', ['query' => $sql, ...$this->mv()])
@@ -189,7 +189,7 @@ class BookSyncQBClient
 
     private function findIncomeAccountId(BookSyncMerchant $merchant): string
     {
-        $sql = "SELECT Id FROM Account WHERE AccountType = 'Income' AND Active = true ORDERBY Id LIMIT 1";
+        $sql = "SELECT Id FROM Account WHERE AccountType = 'Income' AND Active = true ORDER BY Id MAXRESULTS 1";
 
         $response = $this->request($merchant)
             ->get('/query', ['query' => $sql, ...$this->mv()])

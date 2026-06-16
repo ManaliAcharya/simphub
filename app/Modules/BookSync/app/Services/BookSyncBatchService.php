@@ -40,13 +40,44 @@ class BookSyncBatchService
                 ->first();
 
             if ($existing) {
-                $duplicates[] = [
-                    'reference'          => $reference,
-                    'amount'             => $txnData['amount'],
-                    'qb_salesreceipt_id' => $existing->qb_salesreceipt_id,
-                    'qb_customer_id'     => $existing->qb_customer_id,
-                    'posted_at'          => $existing->posted_at,
-                ];
+                // Successfully posted — report as already_posted, do not re-queue
+                if (in_array($existing->status, ['posted', 'already_posted'], true)) {
+                    $duplicates[] = [
+                        'reference'          => $reference,
+                        'amount'             => $txnData['amount'],
+                        'qb_salesreceipt_id' => $existing->qb_salesreceipt_id,
+                        'qb_customer_id'     => $existing->qb_customer_id,
+                        'posted_at'          => $existing->posted_at,
+                    ];
+                    continue;
+                }
+
+                // Still in queue — do not double-dispatch
+                if ($existing->status === 'queued') {
+                    $duplicates[] = [
+                        'reference' => $reference,
+                        'amount'    => $txnData['amount'],
+                        'status'    => 'queued',
+                    ];
+                    continue;
+                }
+
+                // Failed or permanently_failed — reset and re-queue
+                $existing->forceFill([
+                    'batch_id'         => $batch->id,
+                    'customer_name'    => $txnData['customer_name'],
+                    'customer_email'   => $txnData['customer_email'] ?? null,
+                    'amount'           => $txnData['amount'],
+                    'payment_method'   => $txnData['payment_method'] ?? 'Other',
+                    'transaction_date' => $txnDate,
+                    'memo'             => $txnData['memo'] ?? null,
+                    'status'           => 'queued',
+                    'retry_count'      => 0,
+                    'next_retry_at'    => null,
+                    'error_message'    => null,
+                ])->save();
+
+                PostTransactionJob::dispatch($existing);
                 continue;
             }
 
