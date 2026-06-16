@@ -109,6 +109,34 @@ class BookSyncQBClient
         return $id;
     }
 
+    // ── Income accounts ───────────────────────────────────────────────────────
+
+    public function fetchIncomeAccounts(BookSyncMerchant $merchant): array
+    {
+        $merchant = $this->oauth->ensureValidToken($merchant);
+
+        $sql = "SELECT Id, Name, AccountSubType FROM Account "
+             . "WHERE AccountType = 'Income' AND Active = true "
+             . "ORDER BY Name MAXRESULTS 100";
+
+        $response = $this->request($merchant)
+            ->get('/query', ['query' => $sql, ...$this->mv()])
+            ->throw()
+            ->json();
+
+        $rows = $response['QueryResponse']['Account'] ?? [];
+
+        return collect(is_array($rows) ? $rows : [])
+            ->map(fn (array $a) => [
+                'id'      => (string) ($a['Id'] ?? ''),
+                'name'    => (string) ($a['Name'] ?? ''),
+                'subtype' => (string) ($a['AccountSubType'] ?? ''),
+            ])
+            ->filter(fn (array $a) => $a['id'] !== '')
+            ->values()
+            ->all();
+    }
+
     // ── Items (income / service) ──────────────────────────────────────────────
 
     public function fetchItems(BookSyncMerchant $merchant): array

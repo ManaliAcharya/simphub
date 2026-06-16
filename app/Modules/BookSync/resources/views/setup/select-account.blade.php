@@ -31,6 +31,28 @@
             @endif
         </div>
 
+        {{-- ── Income Account ──────────────────────────────────────── --}}
+        <div class="form-group">
+            <label for="default_income_account_id">
+                Income Account <span style="color:#c0392b;">*</span>
+                <span style="font-weight:400;color:#6b7280;font-size:.82rem;margin-left:4px;">— credit side (income)</span>
+            </label>
+            <p style="font-size:.82rem;color:#9ca3af;margin:2px 0 8px;">The income account that gets credited on every sale (e.g. "Sales Income", "Service Revenue").</p>
+            @if(count($incomeAccounts) > 0)
+                <select id="default_income_account_id" name="default_income_account_id" required onchange="syncHidden('default_income_account_id','default_income_account_name',this)">
+                    <option value="">— Select an income account —</option>
+                    @foreach($incomeAccounts as $account)
+                        <option value="{{ $account['id'] }}" data-name="{{ $account['name'] }}">
+                            {{ $account['name'] }}@if($account['subtype']) &nbsp;<span style="color:#9ca3af;">({{ $account['subtype'] }})</span>@endif
+                        </option>
+                    @endforeach
+                </select>
+                <input type="hidden" id="default_income_account_name" name="default_income_account_name" value="">
+            @else
+                <div class="alert alert-warning" style="margin-top:8px;">No income accounts found in QuickBooks. Add one first, then return to this link.</div>
+            @endif
+        </div>
+
         {{-- ── Default Item ─────────────────────────────────────────── --}}
         <div class="form-group">
             <label for="default_item_id">
@@ -73,7 +95,7 @@
             @endif
         </div>
 
-        @if(count($accounts) > 0 && count($items) > 0 && count($customers) > 0)
+        @if(count($accounts) > 0 && count($incomeAccounts) > 0 && count($items) > 0 && count($customers) > 0)
         <div class="actions" style="margin-top:20px;">
             <button type="submit" class="button btn-primary">Save &amp; Finish Setup</button>
         </div>

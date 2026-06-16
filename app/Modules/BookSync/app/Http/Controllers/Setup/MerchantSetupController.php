@@ -55,11 +55,12 @@ class MerchantSetupController extends Controller
             setupToken: $setupToken,
         );
 
-        $accounts  = $this->qb->fetchDepositAccounts($merchant);
-        $items     = $this->qb->fetchItems($merchant);
-        $customers = $this->qb->fetchCustomers($merchant);
+        $accounts        = $this->qb->fetchDepositAccounts($merchant);
+        $incomeAccounts  = $this->qb->fetchIncomeAccounts($merchant);
+        $items           = $this->qb->fetchItems($merchant);
+        $customers       = $this->qb->fetchCustomers($merchant);
 
-        return view('booksync::setup.select-account', compact('merchant', 'accounts', 'items', 'customers', 'setupToken'));
+        return view('booksync::setup.select-account', compact('merchant', 'accounts', 'incomeAccounts', 'items', 'customers', 'setupToken'));
     }
 
     /** Step 4: Save deposit account selection, reveal posting URL. */
@@ -68,25 +69,29 @@ class MerchantSetupController extends Controller
         $merchant = BookSyncMerchant::where('setup_token', $setupToken)->firstOrFail();
 
         $data = $request->validate([
-            'deposit_account_id'   => ['required', 'string'],
-            'deposit_account_name' => ['required', 'string'],
-            'default_item_id'      => ['required', 'string'],
-            'default_item_name'    => ['required', 'string'],
-            'default_customer_id'  => ['required', 'string'],
-            'default_customer_name' => ['required', 'string'],
+            'deposit_account_id'          => ['required', 'string'],
+            'deposit_account_name'        => ['required', 'string'],
+            'default_income_account_id'   => ['required', 'string'],
+            'default_income_account_name' => ['required', 'string'],
+            'default_item_id'             => ['required', 'string'],
+            'default_item_name'           => ['required', 'string'],
+            'default_customer_id'         => ['required', 'string'],
+            'default_customer_name'       => ['required', 'string'],
         ]);
 
         $postingToken = $merchant->posting_token ?? 'tok_' . Str::random(32);
 
         $merchant->forceFill([
-            'deposit_account_id'    => $data['deposit_account_id'],
-            'deposit_account_name'  => $data['deposit_account_name'],
-            'default_item_id'       => $data['default_item_id'],
-            'default_item_name'     => $data['default_item_name'],
-            'default_customer_id'   => $data['default_customer_id'],
-            'default_customer_name' => $data['default_customer_name'],
-            'posting_token'         => $postingToken,
-            'status'                => 'active',
+            'deposit_account_id'          => $data['deposit_account_id'],
+            'deposit_account_name'        => $data['deposit_account_name'],
+            'default_income_account_id'   => $data['default_income_account_id'],
+            'default_income_account_name' => $data['default_income_account_name'],
+            'default_item_id'             => $data['default_item_id'],
+            'default_item_name'           => $data['default_item_name'],
+            'default_customer_id'         => $data['default_customer_id'],
+            'default_customer_name'       => $data['default_customer_name'],
+            'posting_token'               => $postingToken,
+            'status'                      => 'active',
         ])->save();
 
         return redirect()->route('booksync.setup.complete', ['setupToken' => $setupToken]);
