@@ -6,5 +6,6 @@
     "Outbound": true,
     "TrustAccounting": true,
     "Reconciliation": true,
-    "Audit": true
+    "Audit": true,
+    "BookSync": true
 }
