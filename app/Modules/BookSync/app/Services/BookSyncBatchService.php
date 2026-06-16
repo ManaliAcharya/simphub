@@ -121,7 +121,8 @@ class BookSyncBatchService
     {
         $date   = CarbonImmutable::today()->format('Ymd');
         $suffix = strtolower(substr($merchant->merchant_id, 2, 6));
+        $random = strtolower(Str::random(6));
 
-        return "batch_{$date}_{$suffix}";
+        return "batch_{$date}_{$suffix}_{$random}";
     }
 }
