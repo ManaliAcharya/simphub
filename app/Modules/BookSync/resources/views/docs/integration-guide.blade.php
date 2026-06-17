@@ -521,7 +521,7 @@ curl -X POST {posting_url} \
                 <tbody>
                     <tr><td><code>reference</code></td><td><span class="req">Required</span></td><td>—</td><td>Your unique receipt/transaction ID (max 100). Deduplication key — same reference = skipped as <code>already_posted</code>.</td></tr>
                     <tr><td><code>amount</code></td><td><span class="req">Required</span></td><td>—</td><td>Sale amount before surcharge. Must be &gt; 0.</td></tr>
-                    <tr><td><code>customer_name</code></td><td><span class="opt">Optional</span></td><td>Default Customer</td><td>Must match an existing QBO customer DisplayName exactly. If provided but not found → <code>customer_not_found</code> (not retried). If omitted → merchant's Default Customer is used.</td></tr>
+                    <tr><td><code>customer_name</code></td><td><span class="opt">Optional</span></td><td>Default Customer</td><td>Only used when the merchant has <strong>no Default Customer</strong> configured. If a Default Customer is set, this field is ignored and the Default Customer is always used. When no default exists and <code>customer_name</code> is provided, it must match an existing QBO DisplayName exactly — not found → <code>customer_not_found</code> (not retried).</td></tr>
                     <tr><td><code>surcharge</code></td><td><span class="opt">Optional</span></td><td>0</td><td>Surcharge amount. Posts as a separate line item using the merchant's Surcharge Item. If &gt; 0 and surcharge is not enabled → <code>surcharge_not_enabled</code> (not retried).</td></tr>
                     <tr><td><code>date</code></td><td><span class="opt">Optional</span></td><td><code>batch_date</code></td><td>Transaction date (YYYY-MM-DD).</td></tr>
                     <tr><td><code>payment_method</code></td><td><span class="opt">Optional</span></td><td><code>Other</code></td><td>Must match an existing QBO PaymentMethod: <code>Cash</code>, <code>Credit Card</code>, <code>Debit Card</code>, <code>Check</code>, <code>Other</code>. Not found → <code>payment_method_not_found</code> (not retried).</td></tr>
@@ -603,7 +603,7 @@ curl -X POST {posting_url} \
                     <tr><td><span class="pill pill-yellow">queued</span></td><td>—</td><td>Accepted, posting in progress</td></tr>
                     <tr><td><span class="pill pill-red">failed</span></td><td>Yes — auto</td><td>Transient QBO error; will retry on schedule</td></tr>
                     <tr><td><span class="pill pill-red">permanently_failed</span></td><td>Manual resubmit</td><td>All 7 retry attempts exhausted. Re-submit the reference in a new batch to retry.</td></tr>
-                    <tr><td><span class="pill pill-red">customer_not_found</span></td><td>No</td><td><code>customer_name</code> provided but no matching QBO customer exists. Create the customer in QBO first.</td></tr>
+                    <tr><td><span class="pill pill-red">customer_not_found</span></td><td>No</td><td><code>customer_name</code> provided (and no Default Customer is set on the merchant) but no matching QBO customer exists. Create the customer in QBO first, or configure a Default Customer in the merchant QB setup.</td></tr>
                     <tr><td><span class="pill pill-red">payment_method_not_found</span></td><td>No</td><td><code>payment_method</code> provided but not found in QBO. Create it in QBO first.</td></tr>
                     <tr><td><span class="pill pill-red">surcharge_not_enabled</span></td><td>No</td><td>Surcharge amount provided but merchant has surcharge disabled. Enable it in the merchant QB setup.</td></tr>
                 </tbody>
@@ -656,7 +656,7 @@ Authorization: Bearer {client_api_key}</pre>
     <table>
         <thead><tr><th>QB Field</th><th>Value</th><th>Source</th></tr></thead>
         <tbody>
-            <tr><td>Customer</td><td>Walk-in Customer</td><td>Merchant's Default Customer (or matched QBO customer if <code>customer_name</code> provided)</td></tr>
+            <tr><td>Customer</td><td>Walk-in Customer</td><td>Merchant's Default Customer (always used when set; <code>customer_name</code> in payload is ignored). If no default, falls back to QBO lookup by <code>customer_name</code>.</td></tr>
             <tr><td>Deposit To</td><td>Business Checking</td><td>Merchant's Deposit Account setting</td></tr>
             <tr><td>Payment Method</td><td>Credit Card</td><td><code>payment_method</code> — must exist in QBO</td></tr>
             <tr><td>Date</td><td>2026-06-17</td><td><code>date</code> field (or <code>batch_date</code>)</td></tr>
