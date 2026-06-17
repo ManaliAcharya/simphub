@@ -42,12 +42,6 @@
         <strong>{{ $merchant->deposit_account_name }}</strong>
     </div>
     @endif
-    @if($merchant->default_income_account_name)
-    <div class="field">
-        <span>Income Account</span>
-        <strong>{{ $merchant->default_income_account_name }}</strong>
-    </div>
-    @endif
     @if($merchant->default_item_name)
     <div class="field">
         <span>Default Income Item</span>

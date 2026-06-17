@@ -26,10 +26,6 @@
         <strong>{{ $merchant->deposit_account_name ?: '—' }}</strong>
     </div>
     <div class="field">
-        <span>Income Account <span style="font-weight:400;color:#9ca3af;font-size:.8rem;">— credit</span></span>
-        <strong>{{ $merchant->default_income_account_name ?: '—' }}</strong>
-    </div>
-    <div class="field">
         <span>Default Item</span>
         <strong>{{ $merchant->default_item_name ?: '—' }}</strong>
     </div>
