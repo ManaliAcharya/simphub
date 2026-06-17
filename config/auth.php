@@ -42,6 +42,11 @@ return [
             'driver' => 'session',
             'provider' => 'users',
         ],
+
+        'booksync_client' => [
+            'driver' => 'session',
+            'provider' => 'booksync_clients',
+        ],
     ],
 
     /*
@@ -65,6 +70,11 @@ return [
         'users' => [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', User::class),
+        ],
+
+        'booksync_clients' => [
+            'driver' => 'eloquent',
+            'model' => \Modules\BookSync\Models\BookSyncClient::class,
         ],
 
         // 'users' => [
