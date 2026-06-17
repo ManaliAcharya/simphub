@@ -87,6 +87,68 @@
             @endif
         </div>
 
+        {{-- ── Surcharge Enabled ───────────────────────────────────── --}}
+        <div class="form-group" style="padding-top:4px;border-top:1px solid #f3f4f6;margin-top:8px;">
+            <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;gap:12px;">
+                <div>
+                    <span style="font-weight:600;font-size:.93rem;">Surcharge Enabled</span>
+                    <p style="font-size:.82rem;color:#9ca3af;margin:3px 0 0;font-weight:400;">Enable if your POS collects surcharge fees.</p>
+                </div>
+                <div class="toggle-wrap" style="flex-shrink:0;">
+                    <input type="checkbox" id="surcharge_enabled" name="surcharge_enabled" value="1"
+                        {{ $merchant->surcharge_enabled ? 'checked' : '' }}
+                        onchange="toggleSurcharge(this.checked)"
+                        style="display:none;">
+                    <div id="toggle-track" onclick="document.getElementById('surcharge_enabled').click();toggleSurcharge(document.getElementById('surcharge_enabled').checked)"
+                        style="width:44px;height:24px;border-radius:999px;background:{{ $merchant->surcharge_enabled ? '#2563eb' : '#d1d5db' }};cursor:pointer;position:relative;transition:background .2s;">
+                        <div id="toggle-knob" style="width:18px;height:18px;border-radius:50%;background:#fff;position:absolute;top:3px;left:{{ $merchant->surcharge_enabled ? '23px' : '3px' }};transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2);"></div>
+                    </div>
+                </div>
+            </label>
+        </div>
+
+        {{-- ── Surcharge Item ───────────────────────────────────────── --}}
+        <div id="surcharge-item-group" class="form-group"
+            style="{{ $merchant->surcharge_enabled ? '' : 'display:none;' }}">
+            <label for="surcharge_item_id">
+                Surcharge Item <span style="color:#c0392b;">*</span>
+                <span style="font-weight:400;color:#6b7280;font-size:.82rem;margin-left:4px;">— linked to Surcharge Income account</span>
+            </label>
+            <p style="font-size:.82rem;color:#9ca3af;margin:2px 0 8px;">Select a product or service linked to your Surcharge Income account. Don't see one? Create it in QuickBooks first, then click Refresh.</p>
+            @if(count($items) > 0)
+                <div style="display:flex;gap:8px;align-items:flex-start;">
+                    <select id="surcharge_item_id" name="surcharge_item_id"
+                        onchange="syncHidden('surcharge_item_id','surcharge_item_name',this)"
+                        style="flex:1;">
+                        <option value="">— Select a surcharge item —</option>
+                        @foreach($items as $item)
+                            <option value="{{ $item['id'] }}" data-name="{{ $item['name'] }}"
+                                {{ ($merchant->surcharge_item_id ?? '') === $item['id'] ? 'selected' : '' }}>
+                                {{ $item['name'] }}@if($item['type']) &nbsp;({{ $item['type'] }})@endif
+                            </option>
+                        @endforeach
+                    </select>
+                    <a href="{{ route('booksync.setup.refresh', $setupToken) }}"
+                        class="button btn-secondary"
+                        style="font-size:.8rem;padding:7px 14px;white-space:nowrap;flex-shrink:0;"
+                        title="Re-fetch items from QuickBooks">
+                        ↻ Refresh
+                    </a>
+                </div>
+                <input type="hidden" id="surcharge_item_name" name="surcharge_item_name"
+                    value="{{ $merchant->surcharge_item_name ?? '' }}">
+            @else
+                <div style="display:flex;gap:8px;align-items:flex-start;">
+                    <div class="alert alert-warning" style="margin:0;flex:1;">No service or non-inventory items found. Create one in QuickBooks first, then click Refresh.</div>
+                    <a href="{{ route('booksync.setup.refresh', $setupToken) }}"
+                        class="button btn-secondary"
+                        style="font-size:.8rem;padding:7px 14px;white-space:nowrap;flex-shrink:0;">
+                        ↻ Refresh
+                    </a>
+                </div>
+            @endif
+        </div>
+
         @if(count($accounts) > 0 && count($items) > 0 && count($customers) > 0)
         <div class="actions" style="margin-top:20px;">
             <button type="submit" class="button btn-primary">
@@ -105,6 +167,32 @@ function syncHidden(selectId, hiddenId, select) {
     const opt = select.options[select.selectedIndex];
     document.getElementById(hiddenId).value = opt.dataset.name || '';
 }
+
+function toggleSurcharge(enabled) {
+    const group  = document.getElementById('surcharge-item-group');
+    const select = document.getElementById('surcharge_item_id');
+    const track  = document.getElementById('toggle-track');
+    const knob   = document.getElementById('toggle-knob');
+
+    group.style.display = enabled ? '' : 'none';
+
+    if (select) {
+        select.required = enabled;
+        if (!enabled) select.value = '';
+    }
+
+    if (track) track.style.background = enabled ? '#2563eb' : '#d1d5db';
+    if (knob)  knob.style.left = enabled ? '23px' : '3px';
+}
+
+// Set correct required state on load
+document.addEventListener('DOMContentLoaded', function () {
+    const cb = document.getElementById('surcharge_enabled');
+    if (cb) {
+        const select = document.getElementById('surcharge_item_id');
+        if (select) select.required = cb.checked;
+    }
+});
 </script>
 
 </x-booksync::layouts.master>

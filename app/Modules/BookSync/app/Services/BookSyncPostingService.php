@@ -25,11 +25,24 @@ class BookSyncPostingService
                 throw new \RuntimeException('Merchant is missing default customer or item. Re-run QB setup.');
             }
 
+            $surchargeAmount = (float) ($transaction->surcharge_amount ?? 0);
+
+            if ($surchargeAmount > 0 && ! $merchant->surcharge_enabled) {
+                throw new \RuntimeException('surcharge_not_enabled: This merchant has not enabled surcharge posting. Enable it in the merchant QB setup.');
+            }
+
+            if ($surchargeAmount > 0 && $merchant->surcharge_enabled && ! $merchant->surcharge_item_id) {
+                throw new \RuntimeException('Merchant is missing surcharge item configuration. Re-run QB setup.');
+            }
+
             $method          = BookSyncQBClient::normalizePaymentMethod($transaction->payment_method);
             $paymentMethodId = $this->qb->findOrCreatePaymentMethod($merchant, $method);
 
-            $serviceItem = ['id' => $merchant->default_item_id, 'name' => $merchant->default_item_name];
-            $note        = $this->buildPrivateNote($transaction);
+            $serviceItem   = ['id' => $merchant->default_item_id, 'name' => $merchant->default_item_name];
+            $surchargeItem = $merchant->surcharge_enabled && $merchant->surcharge_item_id
+                ? ['id' => $merchant->surcharge_item_id, 'name' => $merchant->surcharge_item_name]
+                : null;
+            $note          = $this->buildPrivateNote($transaction);
 
             $result = $this->qb->createSalesReceipt(
                 merchant:        $merchant,
@@ -41,6 +54,8 @@ class BookSyncPostingService
                 docNumber:       $transaction->reference,
                 customerName:    $transaction->customer_name,
                 privateNote:     $note,
+                surchargeItem:   $surchargeItem,
+                surchargeAmount: $surchargeAmount,
             );
 
             $transaction->forceFill([
@@ -53,7 +68,9 @@ class BookSyncPostingService
             ])->save();
 
         } catch (Throwable $e) {
-            $retryCount = $transaction->retry_count + 1;
+            // surcharge_not_enabled requires human action — never retry
+            $noRetry    = str_starts_with($e->getMessage(), 'surcharge_not_enabled:');
+            $retryCount = $noRetry ? 7 : ($transaction->retry_count + 1);
             $exhausted  = $retryCount >= 7;
 
             $transaction->forceFill([
@@ -75,6 +92,11 @@ class BookSyncPostingService
 
         if ($transaction->memo) {
             $parts[] = $transaction->memo;
+        }
+
+        $surcharge = (float) ($transaction->surcharge_amount ?? 0);
+        if ($surcharge > 0) {
+            $parts[] = 'Surcharge: $' . number_format($surcharge, 2);
         }
 
         $parts[] = 'Posted via BookSync';

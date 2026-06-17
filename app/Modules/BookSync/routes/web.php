@@ -5,8 +5,12 @@ use Modules\BookSync\Http\Controllers\Admin\ApiDocsController;
 use Modules\BookSync\Http\Controllers\Admin\ClientController;
 use Modules\BookSync\Http\Controllers\Admin\MerchantController;
 use Modules\BookSync\Http\Controllers\Setup\MerchantSetupController;
+use Modules\BookSync\Http\Controllers\Docs\IntegrationGuideController;
 
 Route::middleware('web')->group(function (): void {
+
+    // ── Public integration guide ──────────────────────────────────────────────
+    Route::get('/booksync/docs', [IntegrationGuideController::class, 'show'])->name('booksync.docs');
 
     // ── Admin — Client management ─────────────────────────────────────────────
     Route::prefix('booksync/admin/clients')->name('booksync.admin.clients.')->group(function (): void {
@@ -38,6 +42,7 @@ Route::middleware('web')->group(function (): void {
         Route::post('/{setupToken}/account', [MerchantSetupController::class, 'saveAccount'])->name('save-account');
         Route::get('/{setupToken}/complete', [MerchantSetupController::class, 'complete'])->name('complete');
         Route::get('/{setupToken}/edit', [MerchantSetupController::class, 'edit'])->name('edit');
+        Route::get('/{setupToken}/refresh', [MerchantSetupController::class, 'refresh'])->name('refresh');
     });
 
 });

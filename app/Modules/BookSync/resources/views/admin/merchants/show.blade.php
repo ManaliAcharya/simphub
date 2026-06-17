@@ -54,6 +54,14 @@
         <strong>{{ $merchant->default_customer_name }}</strong>
     </div>
     @endif
+    <div class="field">
+        <span>Surcharge</span>
+        @if($merchant->surcharge_enabled)
+            <strong style="color:#1e8449;">Enabled — {{ $merchant->surcharge_item_name ?: '—' }}</strong>
+        @else
+            <strong style="color:#6b7280;">Disabled</strong>
+        @endif
+    </div>
     @if($merchant->qb_connected_at)
     <div class="field">
         <span>QB Connected</span>

@@ -68,6 +68,8 @@ class BookSyncBatchService
                     'customer_name'    => $txnData['customer_name'],
                     'customer_email'   => $txnData['customer_email'] ?? null,
                     'amount'           => $txnData['amount'],
+                    'surcharge_amount' => isset($txnData['surcharge']) && $txnData['surcharge'] > 0
+                        ? $txnData['surcharge'] : null,
                     'payment_method'   => $txnData['payment_method'] ?? 'Other',
                     'transaction_date' => $txnDate,
                     'memo'             => $txnData['memo'] ?? null,
@@ -88,6 +90,8 @@ class BookSyncBatchService
                 'customer_name'    => $txnData['customer_name'],
                 'customer_email'   => $txnData['customer_email'] ?? null,
                 'amount'           => $txnData['amount'],
+                'surcharge_amount' => isset($txnData['surcharge']) && $txnData['surcharge'] > 0
+                    ? $txnData['surcharge'] : null,
                 'payment_method'   => $txnData['payment_method'] ?? 'Other',
                 'transaction_date' => $txnDate,
                 'memo'             => $txnData['memo'] ?? null,

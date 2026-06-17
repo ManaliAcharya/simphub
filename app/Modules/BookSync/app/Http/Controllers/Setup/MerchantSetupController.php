@@ -67,14 +67,21 @@ class MerchantSetupController extends Controller
     {
         $merchant = BookSyncMerchant::where('setup_token', $setupToken)->firstOrFail();
 
-        $data = $request->validate([
+        $surchargeEnabled = (bool) $request->input('surcharge_enabled', false);
+
+        $rules = [
             'deposit_account_id'    => ['required', 'string'],
             'deposit_account_name'  => ['required', 'string'],
             'default_item_id'       => ['required', 'string'],
             'default_item_name'     => ['required', 'string'],
             'default_customer_id'   => ['required', 'string'],
             'default_customer_name' => ['required', 'string'],
-        ]);
+            'surcharge_enabled'     => ['nullable'],
+            'surcharge_item_id'     => $surchargeEnabled ? ['required', 'string'] : ['nullable', 'string'],
+            'surcharge_item_name'   => $surchargeEnabled ? ['required', 'string'] : ['nullable', 'string'],
+        ];
+
+        $data = $request->validate($rules);
 
         $postingToken = $merchant->posting_token ?? 'tok_' . Str::random(32);
 
@@ -85,11 +92,31 @@ class MerchantSetupController extends Controller
             'default_item_name'     => $data['default_item_name'],
             'default_customer_id'   => $data['default_customer_id'],
             'default_customer_name' => $data['default_customer_name'],
+            'surcharge_enabled'     => $surchargeEnabled,
+            'surcharge_item_id'     => $surchargeEnabled ? ($data['surcharge_item_id'] ?? null) : null,
+            'surcharge_item_name'   => $surchargeEnabled ? ($data['surcharge_item_name'] ?? null) : null,
             'posting_token'         => $postingToken,
             'status'                => 'active',
         ])->save();
 
         return redirect()->route('booksync.setup.complete', ['setupToken' => $setupToken]);
+    }
+
+    /** Refresh QB data (re-fetch accounts/items/customers) without repeating OAuth. */
+    public function refresh(string $setupToken)
+    {
+        $merchant = BookSyncMerchant::where('setup_token', $setupToken)
+            ->whereNotNull('qb_realm_id')
+            ->firstOrFail();
+
+        $accounts  = $this->qb->fetchDepositAccounts($merchant);
+        $items     = $this->qb->fetchItems($merchant);
+        $customers = $this->qb->fetchCustomers($merchant);
+        $editing   = $merchant->status === 'active';
+
+        return view('booksync::setup.select-account', compact(
+            'merchant', 'accounts', 'items', 'customers', 'setupToken', 'editing'
+        ));
     }
 
     /** Step 5: Show setup complete page. */

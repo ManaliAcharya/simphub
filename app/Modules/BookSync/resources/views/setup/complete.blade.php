@@ -33,6 +33,14 @@
         <span>Default Customer</span>
         <strong>{{ $merchant->default_customer_name ?: '—' }}</strong>
     </div>
+    <div class="field">
+        <span>Surcharge</span>
+        @if($merchant->surcharge_enabled)
+            <strong style="color:#1e8449;">Enabled — {{ $merchant->surcharge_item_name ?: '—' }}</strong>
+        @else
+            <strong style="color:#6b7280;">Disabled</strong>
+        @endif
+    </div>
 
     <div style="margin-top:16px;padding-top:14px;border-top:1px solid #f3f4f6;">
         <a href="{{ route('booksync.setup.edit', $merchant->setup_token) }}"

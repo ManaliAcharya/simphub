@@ -271,6 +271,8 @@ class BookSyncQBClient
         string $docNumber,
         ?string $customerName = null,
         ?string $privateNote = null,
+        ?array $surchargeItem = null,
+        float $surchargeAmount = 0.0,
     ): array {
         $merchant = $this->oauth->ensureValidToken($merchant);
 
@@ -278,24 +280,39 @@ class BookSyncQBClient
             ? "{$customerName} — {$docNumber}"
             : "POS Sale — {$docNumber}";
 
+        $lines = [
+            [
+                'Amount'              => $amount,
+                'DetailType'          => 'SalesItemLineDetail',
+                'Description'         => $description,
+                'SalesItemLineDetail' => [
+                    'ItemRef'   => ['value' => $serviceItem['id'], 'name' => $serviceItem['name']],
+                    'Qty'       => 1,
+                    'UnitPrice' => $amount,
+                ],
+            ],
+        ];
+
+        if ($surchargeItem && $surchargeAmount > 0) {
+            $lines[] = [
+                'Amount'              => $surchargeAmount,
+                'DetailType'          => 'SalesItemLineDetail',
+                'Description'         => "Surcharge — {$docNumber}",
+                'SalesItemLineDetail' => [
+                    'ItemRef'   => ['value' => $surchargeItem['id'], 'name' => $surchargeItem['name']],
+                    'Qty'       => 1,
+                    'UnitPrice' => $surchargeAmount,
+                ],
+            ];
+        }
+
         $payload = [
             'CustomerRef'         => ['value' => $customerId],
             'DepositToAccountRef' => ['value' => $merchant->deposit_account_id],
             'PaymentMethodRef'    => ['value' => $paymentMethodId],
             'TxnDate'             => $txnDate,
             'DocNumber'           => substr($docNumber, 0, 21),
-            'Line'                => [
-                [
-                    'Amount'              => $amount,
-                    'DetailType'          => 'SalesItemLineDetail',
-                    'Description'         => $description,
-                    'SalesItemLineDetail' => [
-                        'ItemRef'   => ['value' => $serviceItem['id'], 'name' => $serviceItem['name']],
-                        'Qty'       => 1,
-                        'UnitPrice' => $amount,
-                    ],
-                ],
-            ],
+            'Line'                => $lines,
         ];
 
         if ($privateNote) {

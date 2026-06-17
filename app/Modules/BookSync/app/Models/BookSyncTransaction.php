@@ -21,6 +21,7 @@ class BookSyncTransaction extends Model
             'next_retry_at'    => 'datetime',
             'posted_at'        => 'datetime',
             'amount'           => 'decimal:2',
+            'surcharge_amount' => 'decimal:2',
         ];
     }
 

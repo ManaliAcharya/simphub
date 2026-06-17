@@ -23,6 +23,7 @@ class PostBatchRequest extends FormRequest
             'transactions.*.payment_method' => ['nullable', 'string', 'in:Cash,Credit Card,Debit Card,Check,Other'],
             'transactions.*.date'           => ['nullable', 'date_format:Y-m-d'],
             'transactions.*.memo'           => ['nullable', 'string', 'max:500'],
+            'transactions.*.surcharge'      => ['nullable', 'numeric', 'min:0'],
         ];
     }
 }
