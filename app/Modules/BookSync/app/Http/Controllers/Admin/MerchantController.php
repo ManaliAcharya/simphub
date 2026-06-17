@@ -28,6 +28,8 @@ class MerchantController extends Controller
             'external_merchant_id' => ['nullable', 'string', 'max:100'],
         ]);
 
+        $signingSecret = 'bss_' . Str::random(52);
+
         $merchant = BookSyncMerchant::create([
             'client_id'            => $client->id,
             'name'                 => $data['name'],
@@ -35,6 +37,8 @@ class MerchantController extends Controller
             'external_merchant_id' => $data['external_merchant_id'] ?? null,
             'merchant_id'          => 'm_' . Str::uuid()->toString(),
             'setup_token'          => Str::random(48),
+            'posting_token'        => Str::random(48),
+            'signing_secret'       => $signingSecret,
             'status'               => 'pending_qb_connect',
         ]);
 

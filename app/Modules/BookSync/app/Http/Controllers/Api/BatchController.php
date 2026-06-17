@@ -62,7 +62,16 @@ class BatchController extends Controller
             ->first();
 
         if (! $merchant) {
-            return $this->err(['error' => 'Invalid merchant token or merchant not found.', 'rejection_reason' => 'merchant_not_found'], 404);
+            return $this->err([
+                'error'            => 'Invalid merchant token or merchant not found.',
+                'rejection_reason' => 'merchant_not_found',
+                '_debug'           => [
+                    'resolved_client_id' => $client->id,
+                    'posting_token'      => $merchantToken,
+                    'token_count'        => BookSyncMerchant::where('posting_token', $merchantToken)->count(),
+                    'combined_count'     => BookSyncMerchant::where('posting_token', $merchantToken)->where('client_id', $client->id)->count(),
+                ],
+            ], 404);
         }
 
         if (! $merchant->signing_secret) {

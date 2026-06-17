@@ -53,6 +53,7 @@ class MerchantApiController extends Controller
             'external_merchant_id' => $data['external_merchant_id'] ?? null,
             'merchant_id'          => 'm_' . Str::uuid()->toString(),
             'setup_token'          => Str::random(48),
+            'posting_token'        => Str::random(48),
             'signing_secret'       => $signingSecret,
             'callback_url'         => $data['callback_url'] ?? null,
             'status'               => 'pending_qb_connect',
