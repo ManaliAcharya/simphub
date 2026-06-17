@@ -39,9 +39,10 @@ class BookSyncPostingService
             }
 
             // ── Customer resolution ───────────────────────────────────────────
-            // If customer_name is provided, it must match an existing QBO customer.
-            // If not provided, fall back to the merchant's configured Default Customer.
-            if ($transaction->customer_name) {
+            // Default customer takes priority. Only look up by name when no default is set.
+            if ($merchant->default_customer_id) {
+                $customerId = $merchant->default_customer_id;
+            } elseif ($transaction->customer_name) {
                 $customerId = $this->qb->findCustomerByDisplayName($merchant, $transaction->customer_name);
                 if (! $customerId) {
                     throw new \RuntimeException(
@@ -49,7 +50,7 @@ class BookSyncPostingService
                     );
                 }
             } else {
-                $customerId = $merchant->default_customer_id;
+                $customerId = null;
             }
 
             // ── Payment method resolution ─────────────────────────────────────
