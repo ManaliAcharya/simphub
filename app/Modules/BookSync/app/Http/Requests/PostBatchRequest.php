@@ -17,7 +17,7 @@ class PostBatchRequest extends FormRequest
             'batch_date'                    => ['nullable', 'date_format:Y-m-d'],
             'transactions'                  => ['required', 'array', 'min:1', 'max:500'],
             'transactions.*.reference'      => ['required', 'string', 'max:100'],
-            'transactions.*.customer_name'  => ['required', 'string', 'max:255'],
+            'transactions.*.customer_name'  => ['nullable', 'string', 'max:255'],
             'transactions.*.customer_email' => ['nullable', 'email', 'max:255'],
             'transactions.*.amount'         => ['required', 'numeric', 'min:0.01'],
             'transactions.*.payment_method' => ['nullable', 'string', 'in:Cash,Credit Card,Debit Card,Check,Other'],

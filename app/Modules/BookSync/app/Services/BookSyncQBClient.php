@@ -45,6 +45,18 @@ class BookSyncQBClient
 
     // ── Customer management ───────────────────────────────────────────────────
 
+    /**
+     * Look up a QB customer by DisplayName. Returns the QB customer ID or null if not found.
+     * Used when a transaction provides an explicit customer_name.
+     */
+    public function findCustomerByDisplayName(BookSyncMerchant $merchant, string $displayName): ?string
+    {
+        $merchant = $this->oauth->ensureValidToken($merchant);
+        $id       = $this->findCustomerByName($merchant, $displayName);
+
+        return $id !== '' ? $id : null;
+    }
+
     public function findOrCreateCustomer(BookSyncMerchant $merchant, string $displayName, ?string $email = null): string
     {
         $merchant = $this->oauth->ensureValidToken($merchant);
@@ -165,7 +177,11 @@ class BookSyncQBClient
 
     // ── Payment method ────────────────────────────────────────────────────────
 
-    public function findOrCreatePaymentMethod(BookSyncMerchant $merchant, string $name): string
+    /**
+     * Find an existing QBO PaymentMethod by name. Returns null if not found.
+     * BookSync never creates payment methods — they must exist in QBO.
+     */
+    public function findPaymentMethod(BookSyncMerchant $merchant, string $name): ?string
     {
         $merchant = $this->oauth->ensureValidToken($merchant);
 
@@ -183,13 +199,7 @@ class BookSyncQBClient
             return (string) ($rows[0]['Id'] ?? '');
         }
 
-        $created = $this->request($merchant)
-            ->withQueryParameters($this->mv())
-            ->post('/paymentmethod', ['Name' => $name])
-            ->throw()
-            ->json();
-
-        return (string) data_get($created, 'PaymentMethod.Id', '');
+        return null;
     }
 
     // ── Default service item ──────────────────────────────────────────────────

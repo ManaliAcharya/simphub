@@ -5,6 +5,8 @@ namespace Modules\BookSync\Http\Controllers\Setup;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\BookSync\Models\BookSyncMerchant;
 use Modules\BookSync\Services\BookSyncQBClient;
@@ -99,7 +101,31 @@ class MerchantSetupController extends Controller
             'status'                => 'active',
         ])->save();
 
+        $this->fireSetupCallback($merchant->fresh());
+
         return redirect()->route('booksync.setup.complete', ['setupToken' => $setupToken]);
+    }
+
+    /** Fire the POS company's callback_url if one was registered, silently on failure. */
+    private function fireSetupCallback(BookSyncMerchant $merchant): void
+    {
+        if (! $merchant->callback_url) {
+            return;
+        }
+
+        try {
+            Http::timeout(5)->post($merchant->callback_url, [
+                'merchant_id' => $merchant->merchant_id,
+                'status'      => 'active',
+                'posting_url' => $merchant->postingUrl(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('BookSync: setup callback delivery failed', [
+                'merchant_id'  => $merchant->merchant_id,
+                'callback_url' => $merchant->callback_url,
+                'error'        => $e->getMessage(),
+            ]);
+        }
     }
 
     /** Refresh QB data (re-fetch accounts/items/customers) without repeating OAuth. */

@@ -48,6 +48,7 @@ class BookSyncBatchService
                         'qb_salesreceipt_id' => $existing->qb_salesreceipt_id,
                         'qb_customer_id'     => $existing->qb_customer_id,
                         'posted_at'          => $existing->posted_at,
+                        'original_batch_id'  => $existing->batch?->batch_id,
                     ];
                     continue;
                 }
@@ -114,11 +115,9 @@ class BookSyncBatchService
             'reference'          => $d['reference'],
             'status'             => 'already_posted',
             'amount'             => (float) $d['amount'],
-            'qb_salesreceipt_id' => $d['qb_salesreceipt_id'] ?? null,
-            'qb_customer_id'     => $d['qb_customer_id'] ?? null,
-            'message'            => $d['posted_at']
-                ? 'Transaction with this reference was posted on ' . \Carbon\Carbon::parse($d['posted_at'])->toIso8601String()
-                : 'Transaction with this reference already exists.',
+            'qb_txn_id'          => $d['qb_salesreceipt_id'] ?? null,
+            'doc_number'         => $d['reference'],
+            'original_batch_id'  => $d['original_batch_id'] ?? null,
         ], fn ($v) => $v !== null), $inMemoryDuplicates);
 
         return [
@@ -137,24 +136,21 @@ class BookSyncBatchService
     public function formatTransaction(BookSyncTransaction $t): array
     {
         $result = [
-            'reference' => $t->reference,
-            'status'    => $t->status,
-            'amount'    => (float) $t->amount,
+            'reference'  => $t->reference,
+            'status'     => $t->status,
+            'amount'     => (float) $t->amount,
         ];
 
         if ($t->qb_salesreceipt_id) {
-            $result['qb_salesreceipt_id'] = $t->qb_salesreceipt_id;
+            $result['qb_txn_id']  = $t->qb_salesreceipt_id;
+            $result['doc_number'] = $t->reference;
         }
 
-        if ($t->qb_customer_id) {
-            $result['qb_customer_id'] = $t->qb_customer_id;
+        if ($t->status === 'already_posted' && $t->batch) {
+            $result['original_batch_id'] = $t->batch->batch_id;
         }
 
-        if ($t->status === 'already_posted' && $t->posted_at) {
-            $result['message'] = 'Transaction with this reference was posted on ' . $t->posted_at->toIso8601String();
-        }
-
-        if ($t->status === 'failed' && $t->error_message) {
+        if (in_array($t->status, ['failed', 'permanently_failed'], true) && $t->error_message) {
             $result['error'] = $t->error_message;
         }
 

@@ -8,14 +8,17 @@ use Throwable;
 
 class BookSyncPostingService
 {
+    // Error prefixes that must never be retried — require human intervention
+    private const NO_RETRY_PREFIXES = [
+        'surcharge_not_enabled:',
+        'customer_not_found:',
+        'payment_method_not_found:',
+    ];
+
     public function __construct(
         private readonly BookSyncQBClient $qb,
     ) {}
 
-    /**
-     * Post a single transaction to QuickBooks.
-     * Returns the updated transaction record.
-     */
     public function post(BookSyncTransaction $transaction): BookSyncTransaction
     {
         $merchant = $transaction->merchant;
@@ -35,8 +38,29 @@ class BookSyncPostingService
                 throw new \RuntimeException('Merchant is missing surcharge item configuration. Re-run QB setup.');
             }
 
+            // ── Customer resolution ───────────────────────────────────────────
+            // If customer_name is provided, it must match an existing QBO customer.
+            // If not provided, fall back to the merchant's configured Default Customer.
+            if ($transaction->customer_name) {
+                $customerId = $this->qb->findCustomerByDisplayName($merchant, $transaction->customer_name);
+                if (! $customerId) {
+                    throw new \RuntimeException(
+                        'customer_not_found: No QuickBooks customer found with DisplayName "' . $transaction->customer_name . '"'
+                    );
+                }
+            } else {
+                $customerId = $merchant->default_customer_id;
+            }
+
+            // ── Payment method resolution ─────────────────────────────────────
             $method          = BookSyncQBClient::normalizePaymentMethod($transaction->payment_method);
-            $paymentMethodId = $this->qb->findOrCreatePaymentMethod($merchant, $method);
+            $paymentMethodId = $this->qb->findPaymentMethod($merchant, $method);
+
+            if (! $paymentMethodId) {
+                throw new \RuntimeException(
+                    'payment_method_not_found: No active QuickBooks PaymentMethod named "' . $method . '". Create it in QuickBooks first.'
+                );
+            }
 
             $serviceItem   = ['id' => $merchant->default_item_id, 'name' => $merchant->default_item_name];
             $surchargeItem = $merchant->surcharge_enabled && $merchant->surcharge_item_id
@@ -46,7 +70,7 @@ class BookSyncPostingService
 
             $result = $this->qb->createSalesReceipt(
                 merchant:        $merchant,
-                customerId:      $merchant->default_customer_id,
+                customerId:      $customerId,
                 paymentMethodId: $paymentMethodId,
                 serviceItem:     $serviceItem,
                 amount:          (float) $transaction->amount,
@@ -68,8 +92,7 @@ class BookSyncPostingService
             ])->save();
 
         } catch (Throwable $e) {
-            // surcharge_not_enabled requires human action — never retry
-            $noRetry    = str_starts_with($e->getMessage(), 'surcharge_not_enabled:');
+            $noRetry    = $this->isNonRetryableError($e->getMessage());
             $retryCount = $noRetry ? 7 : ($transaction->retry_count + 1);
             $exhausted  = $retryCount >= 7;
 
@@ -84,6 +107,17 @@ class BookSyncPostingService
         }
 
         return $transaction->fresh();
+    }
+
+    private function isNonRetryableError(string $message): bool
+    {
+        foreach (self::NO_RETRY_PREFIXES as $prefix) {
+            if (str_starts_with($message, $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function buildPrivateNote(BookSyncTransaction $transaction): string

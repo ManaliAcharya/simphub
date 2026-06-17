@@ -12,6 +12,7 @@ Route::middleware(['api', AuthenticateClientApiKey::class])->group(function (): 
     Route::get('booksync/api/v1/merchants', [MerchantApiController::class, 'index']);
     Route::post('booksync/api/v1/merchants', [MerchantApiController::class, 'store']);
     Route::get('booksync/api/v1/merchants/{merchantId}', [MerchantApiController::class, 'show']);
+    Route::post('booksync/api/v1/merchants/{merchantId}/rotate-secret', [MerchantApiController::class, 'rotateSecret']);
 
     // Batch status check
     Route::get('booksync/api/v1/batches/{batchId}', [BatchController::class, 'show']);

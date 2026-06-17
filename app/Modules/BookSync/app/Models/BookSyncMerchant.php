@@ -15,15 +15,19 @@ class BookSyncMerchant extends Model
 
     protected $guarded = [];
 
-    protected $hidden = ['qb_access_token', 'qb_refresh_token'];
+    protected $hidden = ['qb_access_token', 'qb_refresh_token', 'signing_secret'];
 
     protected function casts(): array
     {
         return [
-            'qb_access_token'    => 'encrypted',
-            'qb_refresh_token'   => 'encrypted',
-            'qb_token_expires_at' => 'datetime',
-            'qb_connected_at'    => 'datetime',
+            'qb_access_token'             => 'encrypted',
+            'qb_refresh_token'            => 'encrypted',
+            'signing_secret'              => 'encrypted',
+            'previous_signing_secret'     => 'encrypted',
+            'qb_token_expires_at'         => 'datetime',
+            'qb_connected_at'             => 'datetime',
+            'previous_secret_expires_at'  => 'datetime',
+            'surcharge_enabled'           => 'boolean',
         ];
     }
 
