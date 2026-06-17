@@ -29,4 +29,14 @@ class BookSyncServiceProvider extends ModuleServiceProvider
             ]);
         });
     }
+
+    public function boot(): void
+    {
+        parent::boot();
+
+        $this->app['router']->aliasMiddleware(
+            'auth.booksync_client',
+            \Modules\BookSync\Http\Middleware\AuthBookSyncClient::class,
+        );
+    }
 }

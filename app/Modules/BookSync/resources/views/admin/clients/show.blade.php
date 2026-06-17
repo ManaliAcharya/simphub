@@ -36,6 +36,17 @@
         <span>Created</span>
         <strong>{{ $client->created_at->format('M d, Y') }}</strong>
     </div>
+    <div class="field">
+        <span>Portal Login</span>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap;">
+            <code style="font-size:.82rem;">{{ url('/booksync/portal/login') }}</code>
+            @if($client->portal_password)
+                <span style="font-size:.78rem;color:#065f46;background:#d1fae5;padding:2px 8px;border-radius:12px;font-weight:600;">Password set</span>
+            @else
+                <span style="font-size:.78rem;color:#92400e;background:#fef3c7;padding:2px 8px;border-radius:12px;font-weight:600;">No password</span>
+            @endif
+        </div>
+    </div>
     <div class="field" style="grid-column:1/-1;">
         <span>API Key</span>
         <div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
@@ -102,6 +113,29 @@
             </tbody>
         </table>
     @endif
+</div>
+
+<div class="panel" style="margin-bottom:18px;">
+    <div style="padding:16px 20px;border-bottom:1px solid #f3f4f6;">
+        <h2 style="margin:0;font-size:1rem;">{{ $client->portal_password ? 'Reset Portal Password' : 'Set Portal Password' }}</h2>
+    </div>
+    <div style="padding:16px 20px;">
+        <form method="POST" action="{{ route('booksync.admin.clients.set-portal-password', $client->client_id) }}" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;">
+            @csrf
+            <div style="flex:1;min-width:200px;">
+                <label style="font-size:.78rem;font-weight:600;color:#6b7280;display:block;margin-bottom:5px;">New Password (min. 8 characters)</label>
+                <input type="password" name="portal_password" required minlength="8" maxlength="72" autocomplete="new-password"
+                    style="width:100%;padding:8px 12px;border:1.5px solid #e5e7eb;border-radius:8px;font-size:.88rem;font-family:inherit;">
+                @error('portal_password')<div style="color:#c0392b;font-size:.8rem;margin-top:4px;">{{ $message }}</div>@enderror
+            </div>
+            <button type="submit" class="button btn-primary" style="padding:9px 20px;font-size:.85rem;white-space:nowrap;">
+                {{ $client->portal_password ? 'Reset Password' : 'Set Password' }}
+            </button>
+        </form>
+        <p style="font-size:.78rem;color:#9ca3af;margin-top:10px;">
+            The client logs in at <a href="{{ url('/booksync/portal/login') }}" target="_blank" style="color:#2563eb;">{{ url('/booksync/portal/login') }}</a> using <strong>{{ $client->contact_email ?? '(no email set)' }}</strong> as their email.
+        </p>
+    </div>
 </div>
 
 <div class="actions">

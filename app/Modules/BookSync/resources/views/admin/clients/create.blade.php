@@ -39,6 +39,14 @@
         <div class="form-group">
             <label for="contact_email">Contact Email</label>
             <input type="email" id="contact_email" name="contact_email" value="{{ old('contact_email') }}" maxlength="255" placeholder="admin@acmepos.com">
+            <p style="font-size:.8rem;color:#6b7280;margin-top:4px;">Used as the login email for the client portal.</p>
+        </div>
+
+        <div class="form-group">
+            <label for="portal_password">Portal Password</label>
+            <input type="password" id="portal_password" name="portal_password" maxlength="72" placeholder="Min. 8 characters" autocomplete="new-password">
+            <p style="font-size:.8rem;color:#6b7280;margin-top:4px;">Optional now — you can set or reset it from the client detail page later.</p>
+            @error('portal_password')<div style="color:#c0392b;font-size:.85rem;margin-top:4px;">{{ $message }}</div>@enderror
         </div>
 
         <div class="form-group">

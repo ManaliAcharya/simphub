@@ -32,9 +32,10 @@ class ClientController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'name'               => ['required', 'string', 'max:255'],
-            'contact_email'      => ['nullable', 'email', 'max:255'],
-            'accounting_system'  => ['required', 'string', 'in:' . implode(',', $this->connectors->keys())],
+            'name'              => ['required', 'string', 'max:255'],
+            'contact_email'     => ['nullable', 'email', 'max:255'],
+            'accounting_system' => ['required', 'string', 'in:' . implode(',', $this->connectors->keys())],
+            'portal_password'   => ['nullable', 'string', 'min:8', 'max:72'],
         ]);
 
         $clientId  = 'cl_' . Str::uuid()->toString();
@@ -46,6 +47,7 @@ class ClientController extends Controller
             'accounting_system' => $data['accounting_system'],
             'client_id'         => $clientId,
             'client_api_key'    => $rawApiKey,
+            'portal_password'   => isset($data['portal_password']) ? bcrypt($data['portal_password']) : null,
             'status'            => 'active',
         ]);
 
@@ -74,5 +76,18 @@ class ClientController extends Controller
         $client->update(['status' => $client->status === 'active' ? 'inactive' : 'active']);
 
         return back()->with('success', 'Client status updated.');
+    }
+
+    public function setPortalPassword(Request $request, string $clientId): RedirectResponse
+    {
+        $client = BookSyncClient::where('client_id', $clientId)->firstOrFail();
+
+        $data = $request->validate([
+            'portal_password' => ['required', 'string', 'min:8', 'max:72'],
+        ]);
+
+        $client->update(['portal_password' => bcrypt($data['portal_password'])]);
+
+        return back()->with('success', 'Portal password updated.');
     }
 }
