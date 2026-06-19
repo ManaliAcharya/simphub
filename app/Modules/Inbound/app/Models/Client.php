@@ -25,9 +25,10 @@ class Client extends Model
             'allowed_terminals'        => 'array',
             'fee_surcharge_enabled'       => 'boolean',
             'cash_discount_details'       => 'array',
-            'qb_fee_override_enabled'     => 'boolean',
-            'qb_multi_mid_enabled'        => 'boolean',
-            'qb_surcharge_enabled'        => 'boolean',
+            'qb_fee_override_enabled'        => 'boolean',
+            'qb_multi_mid_enabled'           => 'boolean',
+            'qb_surcharge_enabled'           => 'boolean',
+            'payment_link_override_enabled'  => 'boolean',
         ];
     }
 

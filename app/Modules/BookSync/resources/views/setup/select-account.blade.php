@@ -99,7 +99,7 @@
                         {{ $merchant->surcharge_enabled ? 'checked' : '' }}
                         onchange="toggleSurcharge(this.checked)"
                         style="display:none;">
-                    <div id="toggle-track" onclick="document.getElementById('surcharge_enabled').click();toggleSurcharge(document.getElementById('surcharge_enabled').checked)"
+                    <div id="toggle-track"
                         style="width:44px;height:24px;border-radius:999px;background:{{ $merchant->surcharge_enabled ? '#2563eb' : '#d1d5db' }};cursor:pointer;position:relative;transition:background .2s;">
                         <div id="toggle-knob" style="width:18px;height:18px;border-radius:50%;background:#fff;position:absolute;top:3px;left:{{ $merchant->surcharge_enabled ? '23px' : '3px' }};transition:left .2s;box-shadow:0 1px 3px rgba(0,0,0,.2);"></div>
                     </div>

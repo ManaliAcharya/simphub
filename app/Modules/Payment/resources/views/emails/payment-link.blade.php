@@ -12,15 +12,15 @@
     </div>
     @endif
     <h2>Invoice ready for payment</h2>
-    <p>Your invoice is ready. Use the secure payment link below to complete payment.</p>
-    <p><strong>Invoice:</strong> {{ $invoice->invoice_number ? '#'.$invoice->invoice_number : $invoice->external_invoice_id }}</p>
-    <p><strong>Amount:</strong> {{ number_format($invoice->amount_cents / 100, 2) }} {{ $invoice->currency }}</p>
+    <p>A payment of <strong>{{ $invoice->currency }} {{ number_format($invoice->amount_cents / 100, 2) }}</strong> is due for Invoice <strong>#{{ $invoice->invoice_number ?? $invoice->external_invoice_id }}</strong>.</p>
     <p>
         <a href="{{ $paymentUrl }}" style="display: inline-block; padding: 12px 18px; background: #14213d; color: #fff; text-decoration: none; border-radius: 8px;">
-            Pay invoice
+            Pay now
         </a>
     </p>
-    <p>If the button does not work, open this URL:</p>
-    <p>{{ $paymentUrl }}</p>
+    <p style="color: #6b7280; font-size: 12px;">If the button does not work, open this URL:<br>{{ $paymentUrl }}</p>
+    @if(!empty($merchantName))
+    <p style="margin-top: 24px; color: #6b7280; font-size: 13px;">Thank you,<br>{{ $merchantName }}</p>
+    @endif
 </body>
 </html>

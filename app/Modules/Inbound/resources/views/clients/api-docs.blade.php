@@ -228,6 +228,11 @@ $apiDocsTabs = [
             </div>
         </div>
 
+        <x-inbound::notification-settings-form
+            :client="$client"
+            :form-action="route('inbound.clients.update-notification-settings', $client->pms_client_id)"
+        />
+
     </div>{{-- end credentials tab --}}
 
     {{-- ── Gateways tab ── --}}
@@ -974,6 +979,8 @@ if (abs(time() - (int)$timestamp) > 300) {
             a.classList.toggle('active', a.getAttribute('href') === '#' + current);
         });
     });
+
+
 </script>
     </section>
     </div>{{-- end apidocs tab --}}

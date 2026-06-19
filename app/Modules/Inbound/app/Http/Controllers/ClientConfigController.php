@@ -468,4 +468,33 @@ class ClientConfigController extends Controller
 
         return redirect()->back()->with('success', 'Logo removed.');
     }
+
+    public function updateNotificationSettings(Request $request, string $pmsClientId): RedirectResponse
+    {
+        $client  = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+        $enabled = (bool) $request->input('payment_link_override_enabled');
+
+        $validated = $request->validate([
+            'payment_link_override_enabled' => ['nullable', 'boolean'],
+            'payment_link_recipient'        => ['nullable', 'string', Rule::in(['admin', 'both'])],
+            'payment_link_admin_email'      => [
+                $enabled && in_array($request->input('payment_link_recipient'), ['admin', 'both'], true)
+                    ? 'required' : 'nullable',
+                'email',
+                'max:255',
+            ],
+        ]);
+
+        $recipient = $validated['payment_link_recipient'] ?? 'admin';
+
+        $client->update([
+            'payment_link_override_enabled' => $enabled,
+            'payment_link_recipient'        => $recipient,
+            'payment_link_admin_email'      => $enabled && in_array($recipient, ['admin', 'both'], true)
+                ? $validated['payment_link_admin_email']
+                : null,
+        ]);
+
+        return redirect()->back()->with('success', 'Payment link settings saved.');
+    }
 }

@@ -30,6 +30,7 @@ Route::middleware('web')->group(function (): void {
         Route::post('/{pms_client_id}/mid-routes', [ClientConfigController::class, 'saveMidRoutes'])->name('save-mid-routes');
         Route::post('/{pms_client_id}/logo', [ClientConfigController::class, 'uploadLogo'])->name('upload-logo');
         Route::delete('/{pms_client_id}/logo', [ClientConfigController::class, 'removeLogo'])->name('remove-logo');
+        Route::post('/{pms_client_id}/notification-settings', [ClientConfigController::class, 'updateNotificationSettings'])->name('update-notification-settings');
         Route::get('/terminal-created', [TerminalClientController::class, 'created'])->name('terminal-created');
         Route::get('/api-docs', [CustomPmsController::class, 'apiDocs'])->name('api-docs');
      

@@ -371,6 +371,11 @@
             :compact="true"
         />
 
+        <x-inbound::notification-settings-form
+            :client="$client"
+            :form-action="route('inbound.clients.update-notification-settings', $client->pms_client_id)"
+        />
+
     </div>{{-- end cc-panel-connection --}}
 
     {{-- ── Gateways tab ── --}}
