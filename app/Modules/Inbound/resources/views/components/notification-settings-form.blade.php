@@ -2,7 +2,7 @@
 
 @php
     $enabled    = (bool) ($client->payment_link_override_enabled ?? false);
-    $recipient  = $client->payment_link_recipient ?? 'customer';
+    $recipient  = in_array($client->payment_link_recipient ?? '', ['admin','both']) ? $client->payment_link_recipient : 'admin';
     $adminEmail = $client->payment_link_admin_email ?? '';
     $ns         = 'plr-' . substr(md5($client->pms_client_id), 0, 6);
 @endphp
@@ -40,22 +40,21 @@
                         Link recipient
                     </label>
                     <select name="payment_link_recipient" id="{{ $ns }}-recipient"
-                        onchange="plrRecipientChange('{{ $ns }}')"
                         style="width:100%;padding:9px 12px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font-size:13px;color:#132238;background:#fff;font-family:inherit;">
                         <option value="admin" {{ $recipient === 'admin' ? 'selected' : '' }}>Admin / Self</option>
                         <option value="both"  {{ $recipient === 'both'  ? 'selected' : '' }}>Both</option>
                     </select>
                 </div>
 
-                {{-- Admin email input --}}
-                <div id="{{ $ns }}-email-wrap" style="{{ in_array($recipient, ['admin','both']) ? '' : 'visibility:hidden;' }}">
+                {{-- Admin email input — always visible when section is on --}}
+                <div>
                     <label style="display:block;font-size:12px;font-weight:600;color:#6b7c93;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">
                         Admin email for payment links
                     </label>
                     <input type="email" name="payment_link_admin_email" id="{{ $ns }}-email"
                         value="{{ $adminEmail }}"
                         placeholder="billing@accountingfirm.com"
-                        {{ in_array($recipient, ['admin','both']) ? 'required' : '' }}
+                        required
                         style="width:100%;padding:9px 12px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font-size:13px;color:#132238;font-family:inherit;box-sizing:border-box;">
                 </div>
 
@@ -86,13 +85,5 @@ function plrToggle(ns, on) {
     document.getElementById(ns + '-section').style.display = on ? '' : 'none';
 }
 
-function plrRecipientChange(ns) {
-    const val   = document.getElementById(ns + '-recipient').value;
-    const wrap  = document.getElementById(ns + '-email-wrap');
-    const input = document.getElementById(ns + '-email');
-    const show  = val === 'admin' || val === 'both';
-    wrap.style.visibility = show ? 'visible' : 'hidden';
-    input.required        = show;
-    if (!show) input.value = '';
-}
+
 </script>
