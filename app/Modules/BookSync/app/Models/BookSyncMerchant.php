@@ -52,7 +52,7 @@ class BookSyncMerchant extends Model
             return null;
         }
 
-        return rtrim(config('app.url'), '/') . '/booksync/post/' . $this->posting_token;
+        return rtrim(config('app.url'), '/') . '/booksync/sale/' . $this->posting_token;
     }
 
     public function setupLink(): string

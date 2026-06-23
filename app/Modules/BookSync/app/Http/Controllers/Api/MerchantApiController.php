@@ -41,7 +41,8 @@ class MerchantApiController extends Controller
             'merchant_name'        => ['required', 'string', 'max:255'],
             'merchant_email'       => ['nullable', 'email', 'max:255'],
             'external_merchant_id' => ['nullable', 'string', 'max:100'],
-            'callback_url'         => ['nullable', 'url', 'max:2048'],
+            'callback_url_success' => ['nullable', 'url', 'max:2048'],
+            'callback_url_fail'    => ['nullable', 'url', 'max:2048'],
         ]);
 
         $signingSecret = 'bss_' . Str::random(52);
@@ -55,7 +56,8 @@ class MerchantApiController extends Controller
             'setup_token'          => Str::random(48),
             'posting_token'        => Str::random(48),
             'signing_secret'       => $signingSecret,
-            'callback_url'         => $data['callback_url'] ?? null,
+            'callback_url_success' => $data['callback_url_success'] ?? null,
+            'callback_url_fail'    => $data['callback_url_fail'] ?? null,
             'status'               => 'pending_qb_connect',
         ]);
 
@@ -137,6 +139,8 @@ class MerchantApiController extends Controller
             ] : null,
             'setup_link'           => $merchant->setupLink(),
             'posting_url'          => $merchant->postingUrl(),
+            'callback_url_success' => $merchant->callback_url_success,
+            'callback_url_fail'    => $merchant->callback_url_fail,
             'created_at'           => $merchant->created_at?->toIso8601String(),
             'qb_connected_at'      => $merchant->qb_connected_at?->toIso8601String(),
         ];

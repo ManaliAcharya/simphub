@@ -347,6 +347,94 @@ class BookSyncQBClient
         ];
     }
 
+    // ── Refund Receipt ────────────────────────────────────────────────────────
+
+    public function createRefundReceipt(
+        BookSyncMerchant $merchant,
+        string $customerId,
+        string $paymentMethodId,
+        array $serviceItem,
+        float $amount,
+        string $txnDate,
+        string $docNumber,
+        ?string $customerName = null,
+        ?string $privateNote = null,
+    ): array {
+        $merchant = $this->oauth->ensureValidToken($merchant);
+
+        $description = $customerName
+            ? "{$customerName} — {$docNumber}"
+            : "POS Refund — {$docNumber}";
+
+        $payload = [
+            'CustomerRef'         => ['value' => $customerId],
+            'DepositToAccountRef' => ['value' => $merchant->deposit_account_id],
+            'PaymentMethodRef'    => ['value' => $paymentMethodId],
+            'TxnDate'             => $txnDate,
+            'DocNumber'           => substr($docNumber, 0, 21),
+            'Line'                => [
+                [
+                    'Amount'              => $amount,
+                    'DetailType'          => 'SalesItemLineDetail',
+                    'Description'         => $description,
+                    'SalesItemLineDetail' => [
+                        'ItemRef'   => ['value' => $serviceItem['id'], 'name' => $serviceItem['name']],
+                        'Qty'       => 1,
+                        'UnitPrice' => $amount,
+                    ],
+                ],
+            ],
+        ];
+
+        if ($privateNote) {
+            $payload['PrivateNote'] = substr($privateNote, 0, 4000);
+        }
+
+        $response = $this->request($merchant)
+            ->withQueryParameters($this->mv())
+            ->post('/refundreceipt', $payload)
+            ->throw()
+            ->json();
+
+        $id = (string) data_get($response, 'RefundReceipt.Id', '');
+
+        if ($id === '') {
+            throw new RuntimeException('QuickBooks did not return a Refund Receipt ID.');
+        }
+
+        return [
+            'qb_refundreceipt_id' => $id,
+            'qb_customer_id'      => $customerId,
+        ];
+    }
+
+    // ── Void Sales Receipt ────────────────────────────────────────────────────
+
+    public function voidSalesReceipt(BookSyncMerchant $merchant, string $qbSalesReceiptId): void
+    {
+        $merchant = $this->oauth->ensureValidToken($merchant);
+
+        // Fetch SyncToken — QB requires it for optimistic concurrency on void
+        $read = $this->request($merchant)
+            ->get("/salesreceipt/{$qbSalesReceiptId}", $this->mv())
+            ->throw()
+            ->json();
+
+        $syncToken = (string) data_get($read, 'SalesReceipt.SyncToken', '');
+
+        if ($syncToken === '') {
+            throw new RuntimeException("Could not read SyncToken for Sales Receipt #{$qbSalesReceiptId}.");
+        }
+
+        $this->request($merchant)
+            ->withQueryParameters(['operation' => 'void', ...$this->mv()])
+            ->post('/salesreceipt', [
+                'Id'        => $qbSalesReceiptId,
+                'SyncToken' => $syncToken,
+            ])
+            ->throw();
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
     private function request(BookSyncMerchant $merchant): PendingRequest

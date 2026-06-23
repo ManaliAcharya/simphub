@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Modules\BookSync\Http\Controllers\Api\BatchController;
 use Modules\BookSync\Http\Controllers\Api\MerchantApiController;
+use Modules\BookSync\Http\Controllers\Api\RefundController;
 use Modules\BookSync\Http\Middleware\AuthenticateClientApiKey;
 
 // ── Client-authenticated API ──────────────────────────────────────────────────
@@ -18,5 +19,9 @@ Route::middleware(['api', AuthenticateClientApiKey::class])->group(function (): 
     Route::get('booksync/api/v1/batches/{batchId}', [BatchController::class, 'show']);
 
     // Transaction posting — uses merchant posting_token, not merchant_id
-    Route::post('booksync/post/{merchantToken}', [BatchController::class, 'post']);
+    Route::post('booksync/sale/{merchantToken}', [BatchController::class, 'post']);
+
+    // Refund and void — single-operation endpoints, same HMAC auth as posting
+    Route::post('booksync/refund/{merchantToken}', [RefundController::class, 'refund']);
+    Route::post('booksync/void/{merchantToken}', [RefundController::class, 'void']);
 });

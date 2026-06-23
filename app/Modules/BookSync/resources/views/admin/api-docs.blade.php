@@ -240,7 +240,7 @@ Content-Type: application/json</pre>
         <li>
             <div class="step-dot">4</div>
             <div>
-                <strong>Post transactions</strong> — send a batch <code>POST</code> to the merchant's <code>posting_url</code>.
+                <strong>Sale transactions</strong> — send a batch <code>POST</code> to the merchant's <code>posting_url</code>.
                 BookSync creates a QuickBooks Sales Receipt for each transaction.
             </div>
         </li>
@@ -379,7 +379,7 @@ Authorization: Bearer {your_api_key}</pre>
       "qb_company_name": "Downtown Auto Parts LLC",
       "deposit_account": "Business Checking - 4421",
       "setup_link": "{{ $baseUrl }}/booksync/setup/AbCdEf...",
-      "posting_url": "{{ $baseUrl }}/booksync/post/tok_a1b2c3d4e5f6",
+      "posting_url": "{{ $baseUrl }}/booksync/sale/tok_a1b2c3d4e5f6",
       "created_at": "2026-06-15T10:00:00Z",
       "qb_connected_at": "2026-06-15T14:30:00Z"
     }
@@ -424,7 +424,7 @@ Authorization: Bearer {your_api_key}</pre>
   "qb_company_name": "Downtown Auto Parts LLC",
   "deposit_account": "Business Checking - 4421",
   "setup_link": "{{ $baseUrl }}/booksync/setup/AbCdEf...",
-  "posting_url": "{{ $baseUrl }}/booksync/post/tok_a1b2c3d4e5f6",
+  "posting_url": "{{ $baseUrl }}/booksync/sale/tok_a1b2c3d4e5f6",
   "created_at": "2026-06-15T10:00:00Z",
   "qb_connected_at": "2026-06-15T14:30:00Z"
 }</pre>
@@ -454,11 +454,11 @@ Authorization: Bearer {your_api_key}</pre>
     <div class="section-title">Posting API</div>
     <p class="section-sub">Post daily transaction batches to QuickBooks. Each batch creates one Sales Receipt per transaction in the merchant's QuickBooks company.</p>
 
-    {{-- ── POST /booksync/post/{token} ── --}}
+    {{-- ── POST /booksync/sale/{token} ── --}}
     <div class="ep-card open">
         <div class="ep-head" onclick="toggleEp(this)">
             <span class="method m-post">POST</span>
-            <span class="ep-path">/booksync/post/{merchant_token}</span>
+            <span class="ep-path">/booksync/sale/{merchant_token}</span>
             <span class="ep-summary">Post a transaction batch</span>
             <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
         </div>
@@ -494,7 +494,7 @@ Authorization: Bearer {your_api_key}</pre>
                 <div class="code-label label-req">Example request</div>
                 <div class="code-block">
                     <button class="copy-code" onclick="copyCode(this)">Copy</button>
-                    <pre>POST {{ $baseUrl }}/booksync/post/tok_a1b2c3d4e5f6
+                    <pre>POST {{ $baseUrl }}/booksync/sale/tok_a1b2c3d4e5f6
 Authorization: Bearer {your_api_key}
 Content-Type: application/json
 

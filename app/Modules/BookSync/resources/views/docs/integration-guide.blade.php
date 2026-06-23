@@ -104,7 +104,7 @@
     <a href="#how-it-works">How It Works</a>
     <div class="nav-section">Authentication</div>
     <a href="#auth-management">Management Endpoints</a>
-    <a href="#auth-posting">Posting Endpoint</a>
+    <a href="#auth-posting">Sale Endpoint</a>
     <a href="#request-signing">Request Signing</a>
     <a href="#rotate-secret">Rotate Signing Secret</a>
     <div class="nav-section">Getting Started</div>
@@ -115,7 +115,9 @@
     <a href="#create-merchant">Create Merchant</a>
     <a href="#get-merchant">Get Merchant Status</a>
     <a href="#list-merchants">List Merchants</a>
-    <a href="#post-batch">Post Transactions</a>
+    <a href="#post-batch">Sale Transactions</a>
+    <a href="#refund">Refund Transaction</a>
+    <a href="#void">Void Transaction</a>
     <a href="#get-batch">Get Batch Status</a>
     <div class="nav-section">Concepts</div>
     <a href="#qb-entry">QuickBooks Entry</a>
@@ -149,8 +151,8 @@
     <ol class="steps">
         <li><div class="step-n">1</div><div>You <strong>create a merchant</strong> via API. BookSync returns a <code>merchant_id</code>, a <code>setup_link</code>, and a one-time <code>signing_secret</code>. Store the signing secret securely — it is never shown again.</div></li>
         <li><div class="step-n">2</div><div>You <strong>send the setup link</strong> to your merchant. They visit it, sign into QuickBooks Online, and configure their deposit account, income item, and default customer.</div></li>
-        <li><div class="step-n">3</div><div>BookSync <strong>notifies you</strong> via your optional <code>callback_url</code> the moment setup completes. Alternatively, poll the merchant status endpoint until <code>status === "active"</code>.</div></li>
-        <li><div class="step-n">4</div><div>You <strong>POST transaction batches</strong> to the merchant's <code>posting_url</code>, signing each request with HMAC-SHA256. BookSync creates a Sales Receipt in QuickBooks for each transaction.</div></li>
+        <li><div class="step-n">3</div><div>After setup, BookSync <strong>redirects the merchant's browser</strong> to your <code>callback_url_success</code> (or <code>callback_url_fail</code> on error), with <code>merchant_id</code> appended as a query parameter. Call the merchant status endpoint to confirm <code>status === "active"</code> and retrieve the <code>posting_url</code>.</div></li>
+        <li><div class="step-n">4</div><div>You <strong>POST sale batches</strong> to the merchant's <code>posting_url</code>, signing each request with HMAC-SHA256. BookSync creates a Sales Receipt in QuickBooks for each transaction.</div></li>
         <li><div class="step-n">5</div><div>Optionally <strong>check batch status</strong> to confirm posting outcomes or surface failures.</div></li>
     </ol>
 
@@ -167,10 +169,10 @@ Content-Type: application/json</pre>
     <div class="warn">Your Client API Key grants access to all merchants under your account. Keep it secret. Rotate it through your account manager if compromised.</div>
 
     {{-- AUTH — POSTING --}}
-    <h2 id="auth-posting">Authentication — Posting Endpoint</h2>
-    <p>The transaction posting endpoint requires <strong>three</strong> headers: the Client API Key, an HMAC signature, and a Unix timestamp:</p>
+    <h2 id="auth-posting">Authentication — Sale Endpoint</h2>
+    <p>The sale endpoint requires <strong>three</strong> headers: the Client API Key, an HMAC signature, and a Unix timestamp:</p>
     <div class="code-wrap">
-        <div class="code-label">Headers — posting endpoint</div>
+        <div class="code-label">Headers — sale endpoint</div>
         <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
             <pre>Authorization: Bearer {client_api_key}
 Content-Type: application/json
@@ -199,7 +201,7 @@ X-BookSync-Timestamp: {unix_timestamp}</pre>
     <div class="code-wrap">
         <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
             <pre>$signingSecret = 'bss_...';   // merchant signing_secret
-$postingUrl    = 'https://paymentmiddleware.myreporthub.dev/booksync/post/tok_...';
+$postingUrl    = 'https://paymentmiddleware.myreporthub.dev/booksync/sale/tok_...';
 $timestamp     = time();      // current Unix timestamp (integer)
 
 $body = json_encode([
@@ -292,14 +294,15 @@ await fetch(postingUrl, {
   -H "Authorization: Bearer {client_api_key}" \
   -H "Content-Type: application/json" \
   -d '{
-    "merchant_name": "Downtown Auto Parts",
-    "callback_url":  "https://your-pos.com/webhooks/booksync"
+    "merchant_name":        "Downtown Auto Parts",
+    "callback_url_success": "https://your-pos.com/booksync/success",
+    "callback_url_fail":    "https://your-pos.com/booksync/fail"
   }'
 # → 201: save merchant_id, setup_link, signing_secret</pre>
         </div>
     </div>
     <div class="code-wrap">
-        <div class="code-label">2 — Wait for active (poll or use callback)</div>
+        <div class="code-label">2 — Merchant redirected back — confirm active</div>
         <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
             <pre>curl {{ $baseUrl }}/booksync/api/v1/merchants/{merchant_id} \
   -H "Authorization: Bearer {client_api_key}"
@@ -346,19 +349,22 @@ curl -X POST {posting_url} \
     <p>The merchant can update their selections at any time by revisiting the setup link.</p>
 
     {{-- SETUP CALLBACK --}}
-    <h2 id="setup-callback">Setup Callback</h2>
-    <p>If you provide a <code>callback_url</code> when creating the merchant, BookSync POSTs to it the moment the merchant completes setup:</p>
+    <h2 id="setup-callback">Setup Redirect</h2>
+    <p>When the merchant completes or fails setup, BookSync redirects their browser to your registered URL with <code>merchant_id</code> appended as a query parameter. Your page should then call <a href="#get-merchant">Get Merchant Status</a> to confirm the outcome and retrieve the <code>posting_url</code>.</p>
+
     <div class="code-wrap">
-        <div class="code-label blue">POST {callback_url}</div>
+        <div class="code-label green">Success redirect — browser sent to</div>
         <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
-            <pre>{
-  "merchant_id": "m_8f3a2b1c",
-  "status": "active",
-  "posting_url": "{{ $baseUrl }}/booksync/post/tok_..."
-}</pre>
+            <pre>https://your-pos.com/booksync/success?merchant_id=m_8f3a2b1c&status=active</pre>
         </div>
     </div>
-    <p>The callback fires once, with a 5-second timeout. Delivery is best-effort — if your endpoint is unavailable, the event is not retried. Use the <a href="#get-merchant">Get Merchant Status</a> endpoint to reconcile if needed.</p>
+    <div class="code-wrap">
+        <div class="code-label red">Failure redirect — browser sent to</div>
+        <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
+            <pre>https://your-pos.com/booksync/fail?merchant_id=m_8f3a2b1c&error=qb_auth_declined</pre>
+        </div>
+    </div>
+    <p>If no <code>callback_url_success</code> or <code>callback_url_fail</code> is provided, the merchant stays on BookSync's setup page after completion. Both fields are optional but recommended for a seamless handoff.</p>
 
     <hr>
 
@@ -377,7 +383,8 @@ curl -X POST {posting_url} \
                     <tr><td><code>merchant_name</code></td><td>string</td><td><span class="req">Required</span></td><td>Display name (max 255)</td></tr>
                     <tr><td><code>merchant_email</code></td><td>string</td><td><span class="opt">Optional</span></td><td>Merchant contact email</td></tr>
                     <tr><td><code>external_merchant_id</code></td><td>string</td><td><span class="opt">Optional</span></td><td>Your internal ID for this merchant (max 100)</td></tr>
-                    <tr><td><code>callback_url</code></td><td>string</td><td><span class="opt">Optional</span></td><td>URL BookSync will POST to when merchant completes setup</td></tr>
+                    <tr><td><code>callback_url_success</code></td><td>string</td><td><span class="opt">Optional</span></td><td>Browser redirect URL after successful QB setup</td></tr>
+                    <tr><td><code>callback_url_fail</code></td><td>string</td><td><span class="opt">Optional</span></td><td>Browser redirect URL if QB connection or setup fails</td></tr>
                 </tbody>
             </table>
             <div class="code-wrap">
@@ -387,7 +394,8 @@ curl -X POST {posting_url} \
   "merchant_name":        "Island Dive Shop",
   "merchant_email":       "owner@islanddive.com",
   "external_merchant_id": "POS-MERCH-4421",
-  "callback_url":         "https://your-pos.com/webhooks/booksync"
+  "callback_url_success": "https://your-pos.com/booksync/success",
+  "callback_url_fail":    "https://your-pos.com/booksync/fail"
 }</pre>
                 </div>
             </div>
@@ -406,11 +414,13 @@ curl -X POST {posting_url} \
   "default_customer": null,
   "surcharge_enabled": false,
   "surcharge_item":  null,
-  "setup_link":      "{{ $baseUrl }}/booksync/setup/AbCdEf...",
-  "posting_url":     null,
-  "signing_secret":  "bss_a7c3e9f1d4b8...",
-  "created_at":      "2026-06-17T10:00:00Z",
-  "qb_connected_at": null
+  "setup_link":           "{{ $baseUrl }}/booksync/setup/AbCdEf...",
+  "posting_url":          null,
+  "callback_url_success": "https://your-pos.com/booksync/success",
+  "callback_url_fail":    "https://your-pos.com/booksync/fail",
+  "signing_secret":       "bss_a7c3e9f1d4b8...",
+  "created_at":           "2026-06-17T10:00:00Z",
+  "qb_connected_at":      null
 }</pre>
                 </div>
             </div>
@@ -461,7 +471,7 @@ curl -X POST {posting_url} \
   "default_customer":{ "id": "42", "name": "Walk-in Customer" },
   "surcharge_enabled": true,
   "surcharge_item":  { "id": "15", "name": "Surcharge Fee" },
-  "posting_url":     "{{ $baseUrl }}/booksync/post/tok_...",
+  "posting_url":     "{{ $baseUrl }}/booksync/sale/tok_...",
   "created_at":      "2026-06-17T10:00:00Z",
   "qb_connected_at": "2026-06-17T14:30:00Z"
 }</pre>
@@ -505,15 +515,15 @@ curl -X POST {posting_url} \
     </div>
 
     {{-- POST BATCH --}}
-    <h2 id="post-batch">Post Transactions</h2>
+    <h2 id="post-batch">Sale Transactions</h2>
     <div class="endpoint">
         <div class="endpoint-head">
             <span class="badge-post">POST</span>
-            <span class="endpoint-path">/booksync/post/{merchant_token}</span>
+            <span class="endpoint-path">/booksync/sale/{merchant_token}</span>
             <span class="endpoint-desc">Submit a signed batch of transactions</span>
         </div>
         <div class="endpoint-body">
-            <p>Use the full <code>posting_url</code> from the merchant status response. This endpoint requires all three authentication headers — see <a href="#auth-posting">Posting Authentication</a>.</p>
+            <p>Use the full <code>posting_url</code> from the merchant status response. This endpoint requires all three authentication headers — see <a href="#auth-posting">Sale Authentication</a>.</p>
 
             <h3>Transaction fields</h3>
             <table>
@@ -608,6 +618,112 @@ curl -X POST {posting_url} \
                     <tr><td><span class="pill pill-red">surcharge_not_enabled</span></td><td>No</td><td>Surcharge amount provided but merchant has surcharge disabled. Enable it in the merchant QB setup.</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    {{-- REFUND --}}
+    <h2 id="refund">Refund Transaction</h2>
+    <p>Creates a <strong>QuickBooks Refund Receipt</strong> — the accounting reversal of a Sale. Use this when a customer is owed money back. The original Sales Receipt is left untouched; QB records the refund as a separate document that offsets the income account.</p>
+    <div class="endpoint">
+        <div class="endpoint-head">
+            <span class="badge-post">POST</span>
+            <span class="endpoint-path">/booksync/refund/{merchant_token}</span>
+            <span class="endpoint-desc">Create a Refund Receipt in QuickBooks</span>
+        </div>
+        <div class="endpoint-body">
+            <p>Requires the same three authentication headers as the <a href="#auth-posting">sale endpoint</a>. The <code>merchant_token</code> is the same token from <code>posting_url</code>.</p>
+            <div class="code-wrap">
+                <div class="code-label">Request payload</div>
+                <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
+                    <pre>{
+  "reference":          "REF-2026-001",     // required — unique ID for this refund
+  "original_reference": "TXN-2026-089",     // optional — links to the original transaction
+  "amount":             47.50,              // required — refund amount (must be > 0)
+  "payment_method":     "Credit Card",      // optional — must exist in QuickBooks
+  "customer_name":      "John Smith",       // optional
+  "customer_email":     "john@example.com", // optional
+  "transaction_date":   "2026-06-19",       // optional — defaults to today
+  "memo":               "Partial refund"   // optional
+}</pre>
+                </div>
+            </div>
+            <div class="code-wrap">
+                <div class="code-label green">200 — Refund Receipt created</div>
+                <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
+                    <pre>{
+  "status":               "posted",
+  "reference":            "REF-2026-001",
+  "original_reference":   "TXN-2026-089",
+  "amount":               47.50,
+  "qb_refundreceipt_id":  "238",
+  "posted_at":            "2026-06-19T10:30:00+00:00"
+}</pre>
+                </div>
+            </div>
+            <div class="code-wrap">
+                <div class="code-label">409 — Reference already posted (safe duplicate)</div>
+                <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
+                    <pre>{
+  "status":              "already_posted",
+  "reference":           "REF-2026-001",
+  "qb_refundreceipt_id": "238"
+}</pre>
+                </div>
+            </div>
+            <table>
+                <thead><tr><th>Field</th><th>Required</th><th>Notes</th></tr></thead>
+                <tbody>
+                    <tr><td><code>reference</code></td><td>Yes</td><td>Unique per merchant — used for idempotency. Re-sending the same reference returns <code>already_posted</code>.</td></tr>
+                    <tr><td><code>original_reference</code></td><td>No</td><td>Stored for your records and included in the QB Private Note. Does not affect QB accounting.</td></tr>
+                    <tr><td><code>amount</code></td><td>Yes</td><td>Refund amount. Can be partial — does not need to match the original transaction amount.</td></tr>
+                    <tr><td><code>payment_method</code></td><td>No</td><td>Defaults to <code>Other</code>. Must match an active PaymentMethod name in QuickBooks.</td></tr>
+                    <tr><td><code>transaction_date</code></td><td>No</td><td>Date for the QB Refund Receipt. Defaults to today.</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {{-- VOID --}}
+    <h2 id="void">Void Transaction</h2>
+    <p>Voids an existing <strong>QuickBooks Sales Receipt</strong> that was created by BookSync. Voiding zeroes the receipt amount and reverses the accounting entry. Use this for same-day errors — for returns after the original transaction has settled, use <a href="#refund">Refund</a> instead.</p>
+    <div class="endpoint">
+        <div class="endpoint-head">
+            <span class="badge-post">POST</span>
+            <span class="endpoint-path">/booksync/void/{merchant_token}</span>
+            <span class="endpoint-desc">Void a Sales Receipt in QuickBooks</span>
+        </div>
+        <div class="endpoint-body">
+            <p>Requires the same three authentication headers as the sale endpoint. The transaction must have been successfully posted via <code>/booksync/post</code> first.</p>
+            <div class="code-wrap">
+                <div class="code-label">Request payload</div>
+                <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
+                    <pre>{
+  "original_reference": "TXN-2026-089"  // required — reference of the original posted transaction
+}</pre>
+                </div>
+            </div>
+            <div class="code-wrap">
+                <div class="code-label green">200 — Sales Receipt voided</div>
+                <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
+                    <pre>{
+  "status":             "voided",
+  "original_reference": "TXN-2026-089",
+  "qb_salesreceipt_id": "237",
+  "voided_at":          "2026-06-19T10:35:00+00:00"
+}</pre>
+                </div>
+            </div>
+            <div class="code-wrap">
+                <div class="code-label">409 — Already voided</div>
+                <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
+                    <pre>{
+  "status":             "already_voided",
+  "original_reference": "TXN-2026-089",
+  "qb_salesreceipt_id": "237"
+}</pre>
+                </div>
+            </div>
+            <div class="warn">Void only works on transactions that were posted through BookSync — the original <code>reference</code> must exist in BookSync's records with a valid QB Sales Receipt ID. If the transaction has not been successfully posted, the request returns <code>422</code>.</div>
         </div>
     </div>
 
@@ -716,10 +832,10 @@ Authorization: Bearer {client_api_key}</pre>
         <thead><tr><th>Code</th><th>Meaning</th><th>Action</th></tr></thead>
         <tbody>
             <tr><td><code>400</code></td><td>Missing or malformed request fields</td><td>Fix the payload and resend</td></tr>
-            <tr><td><code>401</code></td><td>Invalid API key, missing/invalid signature, or stale timestamp</td><td>Check all three auth headers; see <a href="#auth-posting">Posting Authentication</a></td></tr>
+            <tr><td><code>401</code></td><td>Invalid API key, missing/invalid signature, or stale timestamp</td><td>Check all three auth headers; see <a href="#auth-posting">Sale Authentication</a></td></tr>
             <tr><td><code>403</code></td><td>Merchant not active</td><td>Check <code>status</code> in the error body</td></tr>
-            <tr><td><code>404</code></td><td>Merchant token or batch ID not found</td><td>Verify the <code>posting_url</code> or <code>batch_id</code></td></tr>
-            <tr><td><code>409</code></td><td>Every transaction in the batch was already posted</td><td>No action — safe duplicate, all skipped</td></tr>
+            <tr><td><code>404</code></td><td>Merchant token, batch ID, or original transaction reference not found</td><td>Verify the <code>posting_url</code>, <code>batch_id</code>, or <code>original_reference</code></td></tr>
+            <tr><td><code>409</code></td><td>Already processed (all-duplicate batch, already-posted refund, already-voided transaction)</td><td>No action — safe duplicate</td></tr>
             <tr><td><code>422</code></td><td>Validation error (negative amount, bad date format, etc.)</td><td>Check <code>errors</code> object in the response</td></tr>
             <tr><td><code>500</code></td><td>BookSync internal error</td><td>Transactions retried automatically</td></tr>
             <tr><td><code>502/503</code></td><td>QuickBooks API unavailable</td><td>Transactions retried automatically</td></tr>

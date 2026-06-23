@@ -82,7 +82,7 @@
 @if($merchant->postingUrl())
 <div class="panel">
     <h2>Posting URL</h2>
-    <p class="copy" style="margin-bottom:10px;">The client application uses this URL to POST transaction batches.</p>
+    <p class="copy" style="margin-bottom:10px;">The client application uses this URL to POST sale batches.</p>
     <div class="field">
         <span>POST to this URL</span>
         <code>{{ $merchant->postingUrl() }}</code>

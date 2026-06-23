@@ -5,8 +5,6 @@ namespace Modules\BookSync\Http\Controllers\Setup;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Modules\BookSync\Models\BookSyncMerchant;
 use Modules\BookSync\Services\BookSyncQBClient;
@@ -43,9 +41,21 @@ class MerchantSetupController extends Controller
     public function callback(Request $request)
     {
         if ($request->query('error')) {
+            // Try to recover merchant from state so we can redirect to their fail URL
+            try {
+                $setupToken = $this->oauth->validateState($request->query('state', ''));
+                $merchant   = BookSyncMerchant::where('setup_token', $setupToken)->first();
+            } catch (\Throwable) {
+                $merchant = null;
+            }
+
+            if ($merchant?->callback_url_fail) {
+                return $this->redirectFail($merchant, 'qb_auth_declined');
+            }
+
             return view('booksync::setup.connect', [
-                'merchant'   => null,
-                'setupToken' => null,
+                'merchant'   => $merchant,
+                'setupToken' => $merchant?->setup_token,
                 'oauthError' => $request->query('error_description', 'QuickBooks authorization was declined.'),
             ]);
         }
@@ -101,31 +111,36 @@ class MerchantSetupController extends Controller
             'status'                => 'active',
         ])->save();
 
-        $this->fireSetupCallback($merchant->fresh());
+        $merchant = $merchant->fresh();
+
+        if ($merchant->callback_url_success) {
+            return $this->redirectSuccess($merchant);
+        }
 
         return redirect()->route('booksync.setup.complete', ['setupToken' => $setupToken]);
     }
 
-    /** Fire the POS company's callback_url if one was registered, silently on failure. */
-    private function fireSetupCallback(BookSyncMerchant $merchant): void
+    private function redirectSuccess(BookSyncMerchant $merchant): RedirectResponse
     {
-        if (! $merchant->callback_url) {
-            return;
-        }
+        return redirect($this->appendParams($merchant->callback_url_success, [
+            'merchant_id' => $merchant->merchant_id,
+            'status'      => 'active',
+        ]));
+    }
 
-        try {
-            Http::timeout(5)->post($merchant->callback_url, [
-                'merchant_id' => $merchant->merchant_id,
-                'status'      => 'active',
-                'posting_url' => $merchant->postingUrl(),
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('BookSync: setup callback delivery failed', [
-                'merchant_id'  => $merchant->merchant_id,
-                'callback_url' => $merchant->callback_url,
-                'error'        => $e->getMessage(),
-            ]);
-        }
+    private function redirectFail(BookSyncMerchant $merchant, string $error): RedirectResponse
+    {
+        return redirect($this->appendParams($merchant->callback_url_fail, [
+            'merchant_id' => $merchant->merchant_id,
+            'error'       => $error,
+        ]));
+    }
+
+    private function appendParams(string $url, array $params): string
+    {
+        $separator = str_contains($url, '?') ? '&' : '?';
+
+        return $url . $separator . http_build_query($params);
     }
 
     /** Refresh QB data (re-fetch accounts/items/customers) without repeating OAuth. */

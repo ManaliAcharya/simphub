@@ -5,40 +5,37 @@ namespace Modules\BookSync\Http\Controllers\Api;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Modules\BookSync\Http\Requests\PostBatchRequest;
-use Modules\BookSync\Models\BookSyncBatch;
+use Modules\BookSync\Http\Requests\RefundRequest;
+use Modules\BookSync\Http\Requests\VoidRequest;
 use Modules\BookSync\Models\BookSyncClient;
 use Modules\BookSync\Models\BookSyncMerchant;
 use Modules\BookSync\Services\BookSyncApiLogger;
-use Modules\BookSync\Services\BookSyncBatchService;
+use Modules\BookSync\Services\BookSyncRefundService;
 
-class BatchController extends Controller
+class RefundController extends Controller
 {
-    // Reject requests with a timestamp older than 5 minutes (replay protection)
     private const TIMESTAMP_TOLERANCE_SECONDS = 300;
 
     public function __construct(
-        private readonly BookSyncBatchService $batches,
-        private readonly BookSyncApiLogger    $logger,
+        private readonly BookSyncRefundService $refunds,
+        private readonly BookSyncApiLogger     $logger,
     ) {}
 
-    /** POST /booksync/sale/{merchant_token} */
-    public function post(PostBatchRequest $request, string $merchantToken): JsonResponse
+    /** POST /booksync/refund/{merchantToken} */
+    public function refund(RefundRequest $request, string $merchantToken): JsonResponse
     {
         /** @var BookSyncClient $client */
         $client   = $request->attributes->get('booksync_client');
         $merchant = null;
-        $batchId  = null;
 
-        $response = $this->handlePost($request, $merchantToken, $client, $merchant, $batchId);
+        $response = $this->handleRefund($request, $merchantToken, $client, $merchant);
 
         $this->logger->logPost(
             request:         $request,
             response:        $response,
             client:          $client,
             merchant:        $merchant,
-            batchId:         $batchId,
-            rejectionReason: $response->getStatusCode() === 200 || $response->getStatusCode() === 409
+            rejectionReason: $response->getStatusCode() < 400
                 ? null
                 : data_get(json_decode($response->getContent(), true), 'rejection_reason'),
         );
@@ -46,17 +43,89 @@ class BatchController extends Controller
         return $response;
     }
 
-    /**
-     * Core posting logic. $merchant and $batchId are passed by reference so
-     * the outer post() method can read them for audit logging.
-     */
-    private function handlePost(
-        PostBatchRequest $request,
+    /** POST /booksync/void/{merchantToken} */
+    public function void(VoidRequest $request, string $merchantToken): JsonResponse
+    {
+        /** @var BookSyncClient $client */
+        $client   = $request->attributes->get('booksync_client');
+        $merchant = null;
+
+        $response = $this->handleVoid($request, $merchantToken, $client, $merchant);
+
+        $this->logger->logPost(
+            request:         $request,
+            response:        $response,
+            client:          $client,
+            merchant:        $merchant,
+            rejectionReason: $response->getStatusCode() < 400
+                ? null
+                : data_get(json_decode($response->getContent(), true), 'rejection_reason'),
+        );
+
+        return $response;
+    }
+
+    private function handleRefund(
+        RefundRequest   $request,
+        string          $merchantToken,
+        BookSyncClient  $client,
+        ?BookSyncMerchant &$merchant,
+    ): JsonResponse {
+        $authError = $this->authenticate($request, $merchantToken, $client, $merchant);
+        if ($authError !== null) {
+            return $authError;
+        }
+
+        try {
+            $result = $this->refunds->createRefund($merchant, $request->validated());
+        } catch (\InvalidArgumentException $e) {
+            return $this->err(['error' => $e->getMessage(), 'rejection_reason' => 'not_found'], 404);
+        } catch (\Throwable $e) {
+            return $this->err(['error' => $e->getMessage(), 'rejection_reason' => 'qb_error'], 422);
+        }
+
+        $statusCode = $result['status'] === 'already_posted' ? 409 : 200;
+
+        return response()->json($result, $statusCode);
+    }
+
+    private function handleVoid(
+        VoidRequest      $request,
         string           $merchantToken,
         BookSyncClient   $client,
         ?BookSyncMerchant &$merchant,
-        ?string          &$batchId,
     ): JsonResponse {
+        $authError = $this->authenticate($request, $merchantToken, $client, $merchant);
+        if ($authError !== null) {
+            return $authError;
+        }
+
+        $originalReference = $request->validated()['original_reference'];
+
+        try {
+            $result = $this->refunds->voidTransaction($merchant, $originalReference);
+        } catch (\InvalidArgumentException $e) {
+            return $this->err(['error' => $e->getMessage(), 'rejection_reason' => 'not_found'], 404);
+        } catch (\Throwable $e) {
+            return $this->err(['error' => $e->getMessage(), 'rejection_reason' => 'qb_error'], 422);
+        }
+
+        $statusCode = $result['status'] === 'already_voided' ? 409 : 200;
+
+        return response()->json($result, $statusCode);
+    }
+
+    /**
+     * Resolve the merchant and verify HMAC signature.
+     * Returns a JsonResponse on auth failure, null on success.
+     * $merchant is populated by reference on success.
+     */
+    private function authenticate(
+        Request           $request,
+        string            $merchantToken,
+        BookSyncClient    $client,
+        ?BookSyncMerchant &$merchant,
+    ): ?JsonResponse {
         $merchant = BookSyncMerchant::where('posting_token', $merchantToken)
             ->where('client_id', $client->id)
             ->first();
@@ -65,26 +134,20 @@ class BatchController extends Controller
             return $this->err([
                 'error'            => 'Invalid merchant token or merchant not found.',
                 'rejection_reason' => 'merchant_not_found',
-                '_debug'           => [
-                    'resolved_client_id' => $client->id,
-                    'posting_token'      => $merchantToken,
-                    'token_count'        => BookSyncMerchant::where('posting_token', $merchantToken)->count(),
-                    'combined_count'     => BookSyncMerchant::where('posting_token', $merchantToken)->where('client_id', $client->id)->count(),
-                ],
             ], 404);
         }
 
         if (! $merchant->signing_secret) {
             return $this->err([
                 'error'            => 'Merchant has no signing secret.',
-                'detail'           => 'This merchant was created before HMAC signing was introduced. Re-create the merchant to obtain a signing_secret.',
+                'detail'           => 'Re-create the merchant to obtain a signing_secret.',
                 'rejection_reason' => 'no_signing_secret',
             ], 401);
         }
 
-        $authError = $this->verifySignature($request, $merchant);
-        if ($authError !== null) {
-            return $this->err($authError, 401);
+        $sigError = $this->verifySignature($request, $merchant);
+        if ($sigError !== null) {
+            return $this->err($sigError, 401);
         }
 
         if ($merchant->status !== 'active') {
@@ -93,7 +156,7 @@ class BatchController extends Controller
                 'status'           => $merchant->status,
                 'rejection_reason' => 'merchant_not_active',
                 'detail'           => match ($merchant->status) {
-                    'pending_qb_connect' => 'The merchant has not yet connected QuickBooks. Share the setup link.',
+                    'pending_qb_connect' => 'The merchant has not yet connected QuickBooks.',
                     'qb_token_expired'   => 'The merchant\'s QuickBooks token has expired. The merchant must reconnect.',
                     'disabled'           => 'This merchant has been disabled.',
                     default              => 'Merchant cannot accept transactions at this time.',
@@ -101,40 +164,9 @@ class BatchController extends Controller
             ], 403);
         }
 
-        ['batch' => $batch, 'duplicates' => $duplicates] = $this->batches->process($merchant, $request->validated());
-        $batchId = $batch->batch_id;
-
-        $statusCode = ($batch->skipped === $batch->total_transactions) ? 409 : 200;
-
-        return response()->json($this->batches->formatResponse($batch, $duplicates), $statusCode);
+        return null;
     }
 
-    /** GET /booksync/api/v1/batches/{batch_id} */
-    public function show(Request $request, string $batchId): JsonResponse
-    {
-        /** @var BookSyncClient $client */
-        $client = $request->attributes->get('booksync_client');
-
-        $batch = BookSyncBatch::where('batch_id', $batchId)
-            ->whereHas('merchant', fn ($q) => $q->where('client_id', $client->id))
-            ->with('transactions', 'merchant')
-            ->first();
-
-        if (! $batch) {
-            return response()->json(['error' => 'Batch not found.'], 404);
-        }
-
-        $batch->recalculateCounts();
-
-        return response()->json($this->batches->formatResponse($batch->fresh('transactions')));
-    }
-
-    /**
-     * Verify X-BookSync-Timestamp + X-BookSync-Signature.
-     * Signed payload = "{timestamp}.{raw_body}"
-     * During 30-minute rotation grace period, previous secret is also accepted.
-     * Returns null on success, or error array (with rejection_reason) on failure.
-     */
     private function verifySignature(Request $request, BookSyncMerchant $merchant): ?array
     {
         $timestamp = $request->header('X-BookSync-Timestamp');
@@ -173,13 +205,13 @@ class BatchController extends Controller
         }
 
         $signedPayload = $timestamp . '.' . $request->getContent();
+        $expected      = 'sha256=' . hash_hmac('sha256', $signedPayload, $merchant->signing_secret);
 
-        $expected = 'sha256=' . hash_hmac('sha256', $signedPayload, $merchant->signing_secret);
         if (hash_equals($expected, $signature)) {
             return null;
         }
 
-        // During rotation grace period, also accept the previous secret
+        // Accept previous secret during rotation grace period
         if (
             $merchant->previous_signing_secret
             && $merchant->previous_secret_expires_at
