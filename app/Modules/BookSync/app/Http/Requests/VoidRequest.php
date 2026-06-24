@@ -14,7 +14,8 @@ class VoidRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'original_reference' => ['required', 'string', 'max:100'],
+            'voids'                      => ['required', 'array', 'min:1', 'max:500'],
+            'voids.*.original_reference' => ['required', 'string', 'max:100'],
         ];
     }
 }

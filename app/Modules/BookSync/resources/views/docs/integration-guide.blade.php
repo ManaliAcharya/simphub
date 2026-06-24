@@ -116,8 +116,8 @@
     <a href="#get-merchant">Get Merchant Status</a>
     <a href="#list-merchants">List Merchants</a>
     <a href="#post-batch">Sale Transactions</a>
-    <a href="#refund">Refund Transaction</a>
-    <a href="#void">Void Transaction</a>
+    <a href="#refund">Refund Transactions</a>
+    <a href="#void">Void Transactions</a>
     <a href="#get-batch">Get Batch Status</a>
     <div class="nav-section">Concepts</div>
     <a href="#qb-entry">QuickBooks Entry</a>
@@ -623,12 +623,12 @@ curl -X POST {posting_url} \
 
     {{-- REFUND --}}
     <h2 id="refund">Refund Transaction</h2>
-    <p>Creates a <strong>QuickBooks Refund Receipt</strong> — the accounting reversal of a Sale. Use this when a customer is owed money back. The original Sales Receipt is left untouched; QB records the refund as a separate document that offsets the income account.</p>
+    <p>Creates <strong>QuickBooks Refund Receipts</strong> for one or more transactions in a single call. Each refund is processed synchronously and the result is returned inline. The original Sales Receipt is left untouched; QB records each refund as a separate document that offsets the income account.</p>
     <div class="endpoint">
         <div class="endpoint-head">
             <span class="badge-post">POST</span>
             <span class="endpoint-path">/booksync/refund/{merchant_token}</span>
-            <span class="endpoint-desc">Create a Refund Receipt in QuickBooks</span>
+            <span class="endpoint-desc">Create Refund Receipts in QuickBooks (batch)</span>
         </div>
         <div class="endpoint-body">
             <p>Requires the same three authentication headers as the <a href="#auth-posting">sale endpoint</a>. The <code>merchant_token</code> is the same token from <code>posting_url</code>.</p>
@@ -636,94 +636,114 @@ curl -X POST {posting_url} \
                 <div class="code-label">Request payload</div>
                 <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
                     <pre>{
-  "reference":          "REF-2026-001",     // required — unique ID for this refund
-  "original_reference": "TXN-2026-089",     // optional — links to the original transaction
-  "amount":             47.50,              // required — refund amount (must be > 0)
-  "payment_method":     "Credit Card",      // optional — must exist in QuickBooks
-  "customer_name":      "John Smith",       // optional
-  "customer_email":     "john@example.com", // optional
-  "transaction_date":   "2026-06-19",       // optional — defaults to today
-  "memo":               "Partial refund"   // optional
+  "refunds": [
+    {
+      "reference":          "REF-2026-001",     // required — unique ID for this refund
+      "original_reference": "TXN-2026-089",     // optional — links to the original transaction
+      "amount":             47.50,              // required — refund amount (must be > 0)
+      "payment_method":     "Credit Card",      // optional — must exist in QuickBooks
+      "customer_name":      "John Smith",       // optional
+      "customer_email":     "john@example.com", // optional
+      "transaction_date":   "2026-06-19",       // optional — defaults to today
+      "memo":               "Partial refund"    // optional
+    },
+    {
+      "reference": "REF-2026-002",
+      "amount":    120.00
+    }
+  ]
 }</pre>
                 </div>
             </div>
             <div class="code-wrap">
-                <div class="code-label green">200 — Refund Receipt created</div>
+                <div class="code-label green">200 — Batch processed</div>
                 <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
                     <pre>{
-  "status":               "posted",
-  "reference":            "REF-2026-001",
-  "original_reference":   "TXN-2026-089",
-  "amount":               47.50,
-  "qb_refundreceipt_id":  "238",
-  "posted_at":            "2026-06-19T10:30:00+00:00"
-}</pre>
-                </div>
-            </div>
-            <div class="code-wrap">
-                <div class="code-label">409 — Reference already posted (safe duplicate)</div>
-                <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
-                    <pre>{
-  "status":              "already_posted",
-  "reference":           "REF-2026-001",
-  "qb_refundreceipt_id": "238"
+  "total":   2,
+  "posted":  1,
+  "skipped": 1,
+  "failed":  0,
+  "results": [
+    {
+      "status":              "posted",
+      "reference":           "REF-2026-001",
+      "original_reference":  "TXN-2026-089",
+      "amount":              47.50,
+      "qb_refundreceipt_id": "238",
+      "posted_at":           "2026-06-19T10:30:00+00:00"
+    },
+    {
+      "status":              "already_posted",
+      "reference":           "REF-2026-002",
+      "qb_refundreceipt_id": "241"
+    }
+  ]
 }</pre>
                 </div>
             </div>
             <table>
                 <thead><tr><th>Field</th><th>Required</th><th>Notes</th></tr></thead>
                 <tbody>
-                    <tr><td><code>reference</code></td><td>Yes</td><td>Unique per merchant — used for idempotency. Re-sending the same reference returns <code>already_posted</code>.</td></tr>
-                    <tr><td><code>original_reference</code></td><td>No</td><td>Stored for your records and included in the QB Private Note. Does not affect QB accounting.</td></tr>
-                    <tr><td><code>amount</code></td><td>Yes</td><td>Refund amount. Can be partial — does not need to match the original transaction amount.</td></tr>
-                    <tr><td><code>payment_method</code></td><td>No</td><td>Defaults to <code>Other</code>. Must match an active PaymentMethod name in QuickBooks.</td></tr>
-                    <tr><td><code>transaction_date</code></td><td>No</td><td>Date for the QB Refund Receipt. Defaults to today.</td></tr>
+                    <tr><td><code>refunds</code></td><td>Yes</td><td>Array of refund objects (1–500 items).</td></tr>
+                    <tr><td><code>refunds.*.reference</code></td><td>Yes</td><td>Unique per merchant — used for idempotency. Re-sending the same reference returns <code>already_posted</code> in results.</td></tr>
+                    <tr><td><code>refunds.*.original_reference</code></td><td>No</td><td>Stored for your records and included in the QB Private Note. Does not affect QB accounting.</td></tr>
+                    <tr><td><code>refunds.*.amount</code></td><td>Yes</td><td>Refund amount. Can be partial — does not need to match the original transaction amount.</td></tr>
+                    <tr><td><code>refunds.*.payment_method</code></td><td>No</td><td>Defaults to <code>Other</code>. Must match an active PaymentMethod name in QuickBooks.</td></tr>
+                    <tr><td><code>refunds.*.transaction_date</code></td><td>No</td><td>Date for the QB Refund Receipt. Defaults to today.</td></tr>
                 </tbody>
             </table>
+            <p>Each item in <code>results</code> has a <code>status</code> of <code>posted</code>, <code>already_posted</code>, or <code>failed</code>. Failed items include an <code>error</code> field. The overall HTTP status is always <code>200</code> — check individual item statuses.</p>
         </div>
     </div>
 
     {{-- VOID --}}
     <h2 id="void">Void Transaction</h2>
-    <p>Voids an existing <strong>QuickBooks Sales Receipt</strong> that was created by BookSync. Voiding zeroes the receipt amount and reverses the accounting entry. Use this for same-day errors — for returns after the original transaction has settled, use <a href="#refund">Refund</a> instead.</p>
+    <p>Voids one or more existing <strong>QuickBooks Sales Receipts</strong> created by BookSync. Voiding zeroes the receipt amount and reverses the accounting entry. Use this for same-day errors — for returns after the original transaction has settled, use <a href="#refund">Refund</a> instead.</p>
     <div class="endpoint">
         <div class="endpoint-head">
             <span class="badge-post">POST</span>
             <span class="endpoint-path">/booksync/void/{merchant_token}</span>
-            <span class="endpoint-desc">Void a Sales Receipt in QuickBooks</span>
+            <span class="endpoint-desc">Void Sales Receipts in QuickBooks (batch)</span>
         </div>
         <div class="endpoint-body">
-            <p>Requires the same three authentication headers as the sale endpoint. The transaction must have been successfully posted via <code>/booksync/post</code> first.</p>
+            <p>Requires the same three authentication headers as the sale endpoint. Each transaction must have been successfully posted via <code>/booksync/sale</code> first.</p>
             <div class="code-wrap">
                 <div class="code-label">Request payload</div>
                 <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
                     <pre>{
-  "original_reference": "TXN-2026-089"  // required — reference of the original posted transaction
+  "voids": [
+    { "original_reference": "TXN-2026-089" },
+    { "original_reference": "TXN-2026-090" }
+  ]
 }</pre>
                 </div>
             </div>
             <div class="code-wrap">
-                <div class="code-label green">200 — Sales Receipt voided</div>
+                <div class="code-label green">200 — Batch processed</div>
                 <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
                     <pre>{
-  "status":             "voided",
-  "original_reference": "TXN-2026-089",
-  "qb_salesreceipt_id": "237",
-  "voided_at":          "2026-06-19T10:35:00+00:00"
+  "total":   2,
+  "voided":  1,
+  "skipped": 1,
+  "failed":  0,
+  "results": [
+    {
+      "status":             "voided",
+      "original_reference": "TXN-2026-089",
+      "qb_salesreceipt_id": "237",
+      "voided_at":          "2026-06-19T10:35:00+00:00"
+    },
+    {
+      "status":             "already_voided",
+      "original_reference": "TXN-2026-090",
+      "qb_salesreceipt_id": "241"
+    }
+  ]
 }</pre>
                 </div>
             </div>
-            <div class="code-wrap">
-                <div class="code-label">409 — Already voided</div>
-                <div class="code-block"><button class="copy-btn" onclick="cp(this)">Copy</button>
-                    <pre>{
-  "status":             "already_voided",
-  "original_reference": "TXN-2026-089",
-  "qb_salesreceipt_id": "237"
-}</pre>
-                </div>
-            </div>
-            <div class="warn">Void only works on transactions that were posted through BookSync — the original <code>reference</code> must exist in BookSync's records with a valid QB Sales Receipt ID. If the transaction has not been successfully posted, the request returns <code>422</code>.</div>
+            <div class="warn">Void only works on transactions that were posted through BookSync — each <code>original_reference</code> must exist in BookSync's records with a valid QB Sales Receipt ID. Unrecognised references return <code>failed</code> in the results array.</div>
+            <p>Each item in <code>results</code> has a <code>status</code> of <code>voided</code>, <code>already_voided</code>, or <code>failed</code>. Failed items include an <code>error</code> field. The overall HTTP status is always <code>200</code>.</p>
         </div>
     </div>
 

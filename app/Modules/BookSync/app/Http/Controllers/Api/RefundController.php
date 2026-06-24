@@ -66,9 +66,9 @@ class RefundController extends Controller
     }
 
     private function handleRefund(
-        RefundRequest   $request,
-        string          $merchantToken,
-        BookSyncClient  $client,
+        RefundRequest     $request,
+        string            $merchantToken,
+        BookSyncClient    $client,
         ?BookSyncMerchant &$merchant,
     ): JsonResponse {
         $authError = $this->authenticate($request, $merchantToken, $client, $merchant);
@@ -76,23 +76,52 @@ class RefundController extends Controller
             return $authError;
         }
 
-        try {
-            $result = $this->refunds->createRefund($merchant, $request->validated());
-        } catch (\InvalidArgumentException $e) {
-            return $this->err(['error' => $e->getMessage(), 'rejection_reason' => 'not_found'], 404);
-        } catch (\Throwable $e) {
-            return $this->err(['error' => $e->getMessage(), 'rejection_reason' => 'qb_error'], 422);
+        $results = [];
+        $posted  = 0;
+        $skipped = 0;
+        $failed  = 0;
+
+        foreach ($request->validated()['refunds'] as $refundData) {
+            try {
+                $result = $this->refunds->createRefund($merchant, $refundData);
+                if ($result['status'] === 'already_posted') {
+                    $skipped++;
+                } else {
+                    $posted++;
+                }
+                $results[] = $result;
+            } catch (\InvalidArgumentException $e) {
+                $failed++;
+                $results[] = [
+                    'reference' => $refundData['reference'] ?? null,
+                    'status'    => 'failed',
+                    'error'     => $e->getMessage(),
+                ];
+            } catch (\Throwable $e) {
+                $failed++;
+                $results[] = [
+                    'reference' => $refundData['reference'] ?? null,
+                    'status'    => 'failed',
+                    'error'     => $e->getMessage(),
+                ];
+            }
         }
 
-        $statusCode = $result['status'] === 'already_posted' ? 409 : 200;
+        $total = count($results);
 
-        return response()->json($result, $statusCode);
+        return response()->json([
+            'total'   => $total,
+            'posted'  => $posted,
+            'skipped' => $skipped,
+            'failed'  => $failed,
+            'results' => $results,
+        ]);
     }
 
     private function handleVoid(
-        VoidRequest      $request,
-        string           $merchantToken,
-        BookSyncClient   $client,
+        VoidRequest       $request,
+        string            $merchantToken,
+        BookSyncClient    $client,
         ?BookSyncMerchant &$merchant,
     ): JsonResponse {
         $authError = $this->authenticate($request, $merchantToken, $client, $merchant);
@@ -100,19 +129,47 @@ class RefundController extends Controller
             return $authError;
         }
 
-        $originalReference = $request->validated()['original_reference'];
+        $results      = [];
+        $voided       = 0;
+        $skipped      = 0;
+        $failed       = 0;
 
-        try {
-            $result = $this->refunds->voidTransaction($merchant, $originalReference);
-        } catch (\InvalidArgumentException $e) {
-            return $this->err(['error' => $e->getMessage(), 'rejection_reason' => 'not_found'], 404);
-        } catch (\Throwable $e) {
-            return $this->err(['error' => $e->getMessage(), 'rejection_reason' => 'qb_error'], 422);
+        foreach ($request->validated()['voids'] as $voidData) {
+            $ref = $voidData['original_reference'];
+            try {
+                $result = $this->refunds->voidTransaction($merchant, $ref);
+                if ($result['status'] === 'already_voided') {
+                    $skipped++;
+                } else {
+                    $voided++;
+                }
+                $results[] = $result;
+            } catch (\InvalidArgumentException $e) {
+                $failed++;
+                $results[] = [
+                    'original_reference' => $ref,
+                    'status'             => 'failed',
+                    'error'              => $e->getMessage(),
+                ];
+            } catch (\Throwable $e) {
+                $failed++;
+                $results[] = [
+                    'original_reference' => $ref,
+                    'status'             => 'failed',
+                    'error'              => $e->getMessage(),
+                ];
+            }
         }
 
-        $statusCode = $result['status'] === 'already_voided' ? 409 : 200;
+        $total = count($results);
 
-        return response()->json($result, $statusCode);
+        return response()->json([
+            'total'   => $total,
+            'voided'  => $voided,
+            'skipped' => $skipped,
+            'failed'  => $failed,
+            'results' => $results,
+        ]);
     }
 
     /**
