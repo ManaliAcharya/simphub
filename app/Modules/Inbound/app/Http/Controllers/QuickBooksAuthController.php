@@ -106,12 +106,7 @@ class QuickBooksAuthController extends Controller
             ->first();
 
         if ($connection) {
-            $connection->forceFill([
-                'access_token'     => null,
-                'refresh_token'    => null,
-                'token_expires_at' => null,
-                'last_error'       => 'Disconnected by user.',
-            ])->save();
+            $connection->delete();
         }
 
         return redirect()->route('inbound.quickbooks.page', [
