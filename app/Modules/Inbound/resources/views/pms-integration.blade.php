@@ -50,9 +50,18 @@
                         <div style="font-size:12px;color:#6b7280;margin-top:1px;">Connected {{ $connection->created_at->diffForHumans() }}</div>
                     </div>
                 </div>
-                @if ($connectUrl)
-                    <a href="{{ $connectUrl }}" class="button secondary" style="font-size:12px;padding:7px 16px;">Reconnect</a>
-                @endif
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    @if ($connectUrl)
+                        <a href="{{ $connectUrl }}" class="button secondary" style="font-size:12px;padding:7px 16px;">Reconnect</a>
+                    @endif
+                    @if ($provider === 'quickbooks' && $client)
+                        <form method="POST" action="{{ route('inbound.quickbooks.disconnect') }}" onsubmit="return confirm('Disconnect QuickBooks? The client will need to reconnect to resume invoice processing.');">
+                            @csrf
+                            <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                            <button type="submit" class="button secondary" style="font-size:12px;padding:7px 16px;color:#dc2626;border-color:#dc2626;">Disconnect</button>
+                        </form>
+                    @endif
+                </div>
             </div>
             @php
                 $connDetails = [];
