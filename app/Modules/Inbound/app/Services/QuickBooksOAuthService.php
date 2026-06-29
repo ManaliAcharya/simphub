@@ -111,6 +111,7 @@ class QuickBooksOAuthService
     public function refreshAccessToken(QuickBooksConnection $connection): QuickBooksConnection
     {
         if (! $connection->refresh_token) {
+            $connection->forceFill(['last_error' => 'Missing refresh token. Reconnect QuickBooks.'])->save();
             throw new RuntimeException('Missing QuickBooks refresh token.');
         }
 
@@ -120,8 +121,12 @@ class QuickBooksOAuthService
             ->post(config('services.quickbooks.token_url').'/oauth2/v1/tokens/bearer', [
                 'grant_type'    => 'refresh_token',
                 'refresh_token' => $connection->refresh_token,
-            ])
-            ->throw();
+            ]);
+
+        if ($response->failed()) {
+            $connection->forceFill(['last_error' => 'Token refresh failed — QuickBooks authorization may have been revoked. Reconnect QuickBooks.'])->save();
+            throw new RuntimeException('Failed to refresh QuickBooks token. Please reconnect.');
+        }
 
         return $this->persistTokens($response->json(), $connection);
     }

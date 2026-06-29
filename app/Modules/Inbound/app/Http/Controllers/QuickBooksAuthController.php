@@ -6,6 +6,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\View\View;
+use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Services\PmsOAuthStateService;
 use Modules\Inbound\Services\QuickBooksOAuthService;
 use Throwable;
@@ -90,6 +91,32 @@ class QuickBooksAuthController extends Controller
             'companies'     => $companies,
             'pms_client_id' => $pmsClientId,
             'callbackRealm' => $callbackRealm,
+        ]);
+    }
+
+    public function disconnect(Request $request): RedirectResponse
+    {
+        $pmsClientId = $request->validate([
+            'pms_client_id' => ['required', 'string'],
+        ])['pms_client_id'];
+
+        $connection = QuickBooksConnection::query()
+            ->where('provider', 'quickbooks')
+            ->where('pms_client_id', $pmsClientId)
+            ->first();
+
+        if ($connection) {
+            $connection->forceFill([
+                'access_token'     => null,
+                'refresh_token'    => null,
+                'token_expires_at' => null,
+                'last_error'       => 'Disconnected by user.',
+            ])->save();
+        }
+
+        return redirect()->route('inbound.quickbooks.page', [
+            'success'       => 'QuickBooks disconnected. Click "Connect QuickBooks" to reconnect.',
+            'pms_client_id' => $pmsClientId,
         ]);
     }
 

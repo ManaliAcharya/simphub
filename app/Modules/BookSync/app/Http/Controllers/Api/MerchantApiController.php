@@ -84,6 +84,32 @@ class MerchantApiController extends Controller
         return response()->json($this->formatMerchant($merchant));
     }
 
+    /** POST /booksync/api/v1/merchants/{merchant_id}/disconnect */
+    public function disconnect(Request $request, string $merchantId): JsonResponse
+    {
+        /** @var BookSyncClient $client */
+        $client = $request->attributes->get('booksync_client');
+
+        $merchant = BookSyncMerchant::where('merchant_id', $merchantId)
+            ->where('client_id', $client->id)
+            ->firstOrFail();
+
+        $merchant->forceFill([
+            'qb_access_token'     => null,
+            'qb_refresh_token'    => null,
+            'qb_token_expires_at' => null,
+            'qb_realm_id'         => null,
+            'status'              => 'pending_qb_connect',
+        ])->save();
+
+        return response()->json([
+            'merchant_id' => $merchant->merchant_id,
+            'status'      => 'pending_qb_connect',
+            'message'     => 'QuickBooks disconnected. Use the setup_link to reconnect.',
+            'setup_link'  => $merchant->setupLink(),
+        ]);
+    }
+
     /** POST /booksync/api/v1/merchants/{merchant_id}/rotate-secret */
     public function rotateSecret(Request $request, string $merchantId): JsonResponse
     {

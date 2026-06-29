@@ -81,6 +81,7 @@ Route::middleware('web')->group(function (): void {
         Route::get('/callback', [QuickBooksAuthController::class, 'callback'])->name('callback');
         Route::get('/select-company', [QuickBooksAuthController::class, 'selectCompany'])->name('select-company');
         Route::post('/confirm-company', [QuickBooksAuthController::class, 'confirmCompany'])->name('confirm-company');
+        Route::post('/disconnect', [QuickBooksAuthController::class, 'disconnect'])->name('disconnect');
     });
 
 });

@@ -8,7 +8,11 @@ use Modules\Inbound\Models\QuickBooksConnection;
 
 class QuickBooksApiClient
 {
-    private function request(QuickBooksConnection $connection): PendingRequest
+    public function __construct(
+        private readonly QuickBooksOAuthService $oauth,
+    ) {}
+
+    private function request(QuickBooksConnection &$connection): PendingRequest
     {
         $realmId = $connection->realmId();
 
@@ -19,7 +23,22 @@ class QuickBooksApiClient
         return Http::withToken($connection->access_token)
             ->acceptJson()
             ->asJson()
-            ->baseUrl(rtrim(config('services.quickbooks.base_url'), '/')."/v3/company/{$realmId}");
+            ->baseUrl(rtrim(config('services.quickbooks.base_url'), '/')."/v3/company/{$realmId}")
+            ->retry(2, 0, function (\Throwable $e, PendingRequest $req) use (&$connection): bool {
+                if (! $e instanceof \Illuminate\Http\Client\RequestException) {
+                    return false;
+                }
+                if ($e->response->status() !== 401) {
+                    return false;
+                }
+                try {
+                    $connection = $this->oauth->refreshAccessToken($connection);
+                    $req->withToken($connection->access_token);
+                    return true;
+                } catch (\Throwable) {
+                    return false;
+                }
+            }, throw: true);
     }
 
     private function minorVersion(): array

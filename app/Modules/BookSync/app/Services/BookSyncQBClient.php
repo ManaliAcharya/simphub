@@ -437,7 +437,7 @@ class BookSyncQBClient
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private function request(BookSyncMerchant $merchant): PendingRequest
+    private function request(BookSyncMerchant &$merchant): PendingRequest
     {
         if (! $merchant->qb_realm_id) {
             throw new RuntimeException('Merchant has no QuickBooks realm ID.');
@@ -449,7 +449,24 @@ class BookSyncQBClient
         return Http::withToken($merchant->qb_access_token)
             ->acceptJson()
             ->asJson()
-            ->baseUrl($baseUrl);
+            ->baseUrl($baseUrl)
+            ->retry(2, 0, function (\Throwable $e, PendingRequest $req) use (&$merchant): bool {
+                if (! $e instanceof \Illuminate\Http\Client\RequestException) {
+                    return false;
+                }
+                if ($e->response->status() !== 401) {
+                    return false;
+                }
+                // Token was revoked or expired mid-session — attempt refresh.
+                // refreshToken() updates the DB and sets status to qb_token_expired on failure.
+                try {
+                    $merchant = $this->oauth->refreshToken($merchant);
+                    $req->withToken($merchant->qb_access_token);
+                    return true;
+                } catch (\Throwable) {
+                    return false;
+                }
+            }, throw: true);
     }
 
     private function mv(): array
