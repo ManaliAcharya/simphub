@@ -196,6 +196,32 @@
         </div>
         @endif
 
+        {{-- QB Auto-Resend on Invoice Change --}}
+        @if ($provider === 'quickbooks' && $connection && $client)
+        <div class="cc-card">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                <div>
+                    <div class="cc-card-title" style="margin-bottom:2px;">Auto-Resend Payment Link on Invoice Change</div>
+                    <div class="cc-card-desc" style="margin:0;">
+                        When enabled, the payment link email is automatically re-sent when QuickBooks reports an invoice amount change greater than $1 or 1%. A 15-minute cooldown prevents duplicate sends.
+                    </div>
+                </div>
+                <form method="POST" action="{{ route('inbound.quickbooks.auto-resend-toggle') }}" id="qb-auto-resend-toggle-form">
+                    @csrf
+                    <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                    <input type="hidden" name="auto_resend_on_change" id="qb-auto-resend-val" value="{{ $client->auto_resend_on_change ? '1' : '0' }}">
+                    <button type="button"
+                            onclick="qbAutoResendToggle()"
+                            id="qb-auto-resend-btn"
+                            class="button {{ $client->auto_resend_on_change ? 'primary' : 'secondary' }}"
+                            style="white-space:nowrap;font-size:13px;min-width:72px;">
+                        {{ $client->auto_resend_on_change ? 'ON' : 'OFF' }}
+                    </button>
+                </form>
+            </div>
+        </div>
+        @endif
+
         {{-- Default Account (Clio) --}}
         @if ($provider === 'clio' && $client && $connection)
         <div class="cc-card">
@@ -673,6 +699,16 @@
             btn.textContent = next ? 'ON' : 'OFF';
             btn.className = next ? 'button primary' : 'button secondary';
             document.getElementById('qb-surcharge-toggle-form').submit();
+        }
+
+        function qbAutoResendToggle() {
+            var inp = document.getElementById('qb-auto-resend-val');
+            var btn = document.getElementById('qb-auto-resend-btn');
+            var next = inp.value !== '1';
+            inp.value = next ? '1' : '0';
+            btn.textContent = next ? 'ON' : 'OFF';
+            btn.className = next ? 'button primary' : 'button secondary';
+            document.getElementById('qb-auto-resend-toggle-form').submit();
         }
         </script>
         @endif

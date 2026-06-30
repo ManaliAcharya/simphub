@@ -4,6 +4,7 @@ namespace Modules\Payment\Mail;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -21,15 +22,16 @@ class PaymentLinkMail extends Mailable
         public Invoice $invoice,
         public PaymentSession $session,
         public string $paymentUrl,
+        public ?string $pdfContent = null,
+        public bool $isResend = false,
     ) {}
 
     public function envelope(): Envelope
     {
         $invoiceRef = $this->invoice->invoice_number ?? $this->invoice->external_invoice_id;
+        $subject    = ($this->isResend ? 'Updated: ' : '') . "Payment link for Invoice #{$invoiceRef}";
 
-        return new Envelope(
-            subject: "Payment link for Invoice #{$invoiceRef}",
-        );
+        return new Envelope(subject: $subject);
     }
 
     public function content(): Content
@@ -49,5 +51,19 @@ class PaymentLinkMail extends Mailable
             view: 'payment::emails.payment-link',
             with: compact('logoUrl', 'merchantName'),
         );
+    }
+
+    public function attachments(): array
+    {
+        if ($this->pdfContent === null || $this->pdfContent === '') {
+            return [];
+        }
+
+        $invoiceRef = $this->invoice->invoice_number ?? $this->invoice->external_invoice_id;
+
+        return [
+            Attachment::fromData(fn () => $this->pdfContent, "Invoice-{$invoiceRef}.pdf")
+                ->withMime('application/pdf'),
+        ];
     }
 }

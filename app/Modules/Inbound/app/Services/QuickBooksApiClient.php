@@ -3,6 +3,7 @@
 namespace Modules\Inbound\Services;
 
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Modules\Inbound\Models\QuickBooksConnection;
 
@@ -166,5 +167,53 @@ class QuickBooksApiClient
             ->get('/query', array_merge(['query' => $sql], $this->minorVersion()))
             ->throw()
             ->json();
+    }
+
+    public function readPayment(QuickBooksConnection $connection, string $paymentId): array
+    {
+        return $this->request($connection)
+            ->get("/payment/{$paymentId}", $this->minorVersion())
+            ->throw()
+            ->json();
+    }
+
+    public function fetchInvoicePdf(QuickBooksConnection $connection, string $invoiceId): ?string
+    {
+        $cacheKey = "qb_invoice_pdf_{$connection->id}_{$invoiceId}";
+
+        if (Cache::has($cacheKey)) {
+            return Cache::get($cacheKey);
+        }
+
+        $realmId = $connection->realmId();
+
+        if ($realmId === '') {
+            return null;
+        }
+
+        $baseUrl = rtrim(config('services.quickbooks.base_url'), '/')."/v3/company/{$realmId}";
+
+        try {
+            $response = Http::withToken($connection->access_token)
+                ->withHeaders(['Accept' => 'application/pdf'])
+                ->baseUrl($baseUrl)
+                ->get("/invoice/{$invoiceId}/pdf", $this->minorVersion())
+                ->throw();
+
+            $pdf = $response->body();
+
+            if ($pdf !== '') {
+                Cache::put($cacheKey, $pdf, now()->addMinutes(10));
+            }
+
+            return $pdf !== '' ? $pdf : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    public function clearPdfCache(QuickBooksConnection $connection, string $invoiceId): void
+    {
+        Cache::forget("qb_invoice_pdf_{$connection->id}_{$invoiceId}");
     }
 }

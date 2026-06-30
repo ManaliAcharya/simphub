@@ -4,6 +4,8 @@ namespace Modules\Inbound\Services;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
+use Modules\Inbound\Jobs\ProcessQBInvoiceLinkJob;
 use Modules\Inbound\Models\QuickBooksConnection;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -49,17 +51,43 @@ class QuickBooksWebhookService
                 $operation = strtolower((string) ($entity['operation'] ?? ''));
                 $id        = (string) ($entity['id'] ?? '');
 
-                if ($name !== 'invoice' || $id === '' || $operation === 'delete') {
+                if ($id === '') {
                     continue;
                 }
 
-                $this->inboundApi->callInvoiceIngestion('quickbooks', [
-                    'invoice_id'     => $id,
-                    'pms_client_id'  => $connection->pms_client_id,
-                    'realm_id'       => $realmId,
-                    'operation'      => $operation,
-                    'event_name'     => "invoice.{$operation}",
-                ]);
+                // Dispatch payment link lifecycle job for Invoice (all ops) and Payment (create)
+                if (
+                    $name === 'invoice'
+                    || ($name === 'payment' && $operation === 'create')
+                ) {
+                    ProcessQBInvoiceLinkJob::dispatch(
+                        $name,
+                        $operation,
+                        $id,
+                        $realmId,
+                        $connection->pms_client_id,
+                    );
+                }
+
+                // Invoice ingestion — existing flow, skip delete/void
+                if ($name === 'invoice' && ! in_array($operation, ['delete', 'void'], true)) {
+                    try {
+                        $this->inboundApi->callInvoiceIngestion('quickbooks', [
+                            'invoice_id'     => $id,
+                            'pms_client_id'  => $connection->pms_client_id,
+                            'realm_id'       => $realmId,
+                            'operation'      => $operation,
+                            'event_name'     => "invoice.{$operation}",
+                        ]);
+                    } catch (\Throwable $e) {
+                        Log::error('QuickBooks webhook: invoice ingestion failed', [
+                            'invoice_id'    => $id,
+                            'realm_id'      => $realmId,
+                            'pms_client_id' => $connection->pms_client_id,
+                            'error'         => $e->getMessage(),
+                        ]);
+                    }
+                }
             }
         }
 

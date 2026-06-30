@@ -18,7 +18,7 @@ class PaymentLinkService
         return $this->baseUrl().route('payment.page.show', ['session' => $session->hosted_url_token], false);
     }
 
-    public function sendInvoiceLinkOnce(Invoice $invoice, PaymentSession $session, array $emails): int
+    public function sendInvoiceLinkOnce(Invoice $invoice, PaymentSession $session, array $emails, ?string $pdfContent = null): int
     {
         // Normalize incoming customer email list
         $customerEmails = array_values(array_unique(array_filter(array_map(
@@ -78,7 +78,57 @@ class PaymentLinkService
         $sent       = 0;
 
         foreach ($toCustomer as $email) {
-            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl));
+            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent));
+            $sent++;
+        }
+
+        if ($toAdmin !== []) {
+            Mail::to($toAdmin[0])->send(new PaymentLinkAdminMail($invoice, $session, $paymentUrl));
+            $sent++;
+        }
+
+        return $sent;
+    }
+
+    public function resendPaymentLink(Invoice $invoice, PaymentSession $session, ?string $pdfContent = null): int
+    {
+        $client = $invoice->pms_client_id
+            ? Client::query()->where('pms_client_id', $invoice->pms_client_id)->first()
+            : null;
+
+        $overrideEnabled = (bool) ($client?->payment_link_override_enabled ?? false);
+        $recipient       = $overrideEnabled ? ($client?->payment_link_recipient ?? 'customer') : 'customer';
+        $adminEmail      = $overrideEnabled && $client?->payment_link_admin_email
+            ? trim(strtolower((string) $client->payment_link_admin_email))
+            : null;
+
+        $customerEmails = array_values(array_unique(array_filter(array_map(
+            static fn ($e) => is_string($e) ? trim(strtolower($e)) : null,
+            (array) ($invoice->recipient_emails ?? [])
+        ))));
+
+        $toCustomer = in_array($recipient, ['customer', 'both'], true) ? $customerEmails : [];
+        $toAdmin    = in_array($recipient, ['admin', 'both'], true) && $adminEmail ? [$adminEmail] : [];
+        $allRecipients = array_values(array_unique(array_merge($toCustomer, $toAdmin)));
+
+        if ($allRecipients === []) {
+            Log::warning('resendPaymentLink: no recipients resolved, skipping.', ['invoice_id' => $invoice->id]);
+            return 0;
+        }
+
+        DB::table('payment_sessions')
+            ->where('id', $session->id)
+            ->update([
+                'last_email_sent_at'        => now(),
+                'payment_link_last_sent_to' => json_encode($allRecipients, JSON_THROW_ON_ERROR),
+                'updated_at'                => now(),
+            ]);
+
+        $paymentUrl = $this->urlForSession($session);
+        $sent       = 0;
+
+        foreach ($toCustomer as $email) {
+            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent, true));
             $sent++;
         }
 

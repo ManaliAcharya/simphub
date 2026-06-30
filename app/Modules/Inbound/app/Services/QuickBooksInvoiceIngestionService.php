@@ -85,10 +85,13 @@ class QuickBooksInvoiceIngestionService
             ];
         });
 
+        $pdf = $this->client->fetchInvoicePdf($connection, $externalInvoiceId);
+
         $emailsSent = $this->paymentLinks->sendInvoiceLinkOnce(
             $result['invoice'],
             $result['payment_session'],
-            $recipientEmails
+            $recipientEmails,
+            $pdf
         );
 
         if ($emailsSent > 0) {
