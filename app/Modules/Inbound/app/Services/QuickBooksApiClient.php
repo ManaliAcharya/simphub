@@ -50,7 +50,6 @@ class QuickBooksApiClient
     public function fetchInvoice(QuickBooksConnection $connection, string $invoiceId): array
     {
         return $this->request($connection)
-            ->withQueryParameters(['include' => 'enhancedAllCustomFields'])
             ->get("/invoice/{$invoiceId}", $this->minorVersion())
             ->throw()
             ->json();
@@ -59,7 +58,6 @@ class QuickBooksApiClient
     public function fetchCustomer(QuickBooksConnection $connection, string $customerId): array
     {
         return $this->request($connection)
-            ->withQueryParameters(['include' => 'enhancedAllCustomFields'])
             ->get("/customer/{$customerId}", $this->minorVersion())
             ->throw()
             ->json();
