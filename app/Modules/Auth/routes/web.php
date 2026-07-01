@@ -69,4 +69,35 @@ Route::middleware(['web', 'throttle:global'])->group(function () {
         Route::post('/reauthenticate', [ReauthenticationController::class, 'verify'])
             ->name('auth.reauthenticate');
     });
+
+    Route::get('/debug-ip', function () {
+
+        return response()->json([
+            'ip' => request()->ip(),
+            'ips' => request()->ips(),
+
+            // Proxy headers
+            'x_forwarded_for' => request()->header('X-Forwarded-For'),
+            'x_forwarded_host' => request()->header('X-Forwarded-Host'),
+            'x_forwarded_proto' => request()->header('X-Forwarded-Proto'),
+
+            // Cloudflare headers
+            'cf_connecting_ip' => request()->header('CF-Connecting-IP'),
+            'cf_ip_country' => request()->header('CF-IPCountry'),
+            'cf_ray' => request()->header('CF-Ray'),
+
+            // Server side
+            'remote_addr' => request()->server('REMOTE_ADDR'),
+
+            // Laravel config check
+            'trusted_proxies' => config('trustedproxy.proxies'),
+
+            // Request scheme
+            'scheme' => request()->getScheme(),
+            'secure' => request()->secure(),
+
+            // User agent
+            'user_agent' => request()->userAgent(),
+        ]);
+    });
 });

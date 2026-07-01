@@ -16,6 +16,8 @@ $activeTab — default active tab id (first tab if not set)
 ])
 @php
     $defaultTab = $activeTab ?? ($tabs[0]['id'] ?? 'tab0');
+    $clientAccount = $client->account;
+
 
     $breadcrumbs = !empty($breadcrumbs)
         ? $breadcrumbs
@@ -633,8 +635,8 @@ $activeTab — default active tab id (first tab if not set)
                         {{ strtoupper(substr($client->client_name, 0, 1)) }}
                     </div>
                     <div class="cc-user-info">
-                        <div class="cc-user-name">{{ $client->client_name }}</div>
-                        <div class="cc-user-email">{{ $client->email ?? 'demo@example.com' }}</div>
+                        <div class="cc-user-name">{{ $client->client_name ?? '' }}</div>
+                        <div class="cc-user-email">{{ $clientAccount->email ?? '' }}</div>
                     </div>
                     <span class="cc-status"><span class="cc-status-dot"></span>Active</span>
                 </div>
