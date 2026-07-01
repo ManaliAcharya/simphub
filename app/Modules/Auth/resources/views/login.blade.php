@@ -83,7 +83,7 @@
                     </div>
 
                     <div class="fw-semibold text-gray-700">
-                        Sign in to manage your merchant account and payment integrations.
+                        Sign in to manage your client payment middleware account and payment integrations.
                     </div>
                 </div>
 

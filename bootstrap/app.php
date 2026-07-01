@@ -7,6 +7,7 @@ use Modules\Auth\Http\Middleware\MerchantSessionMiddleware;
 use Modules\Auth\Http\Middleware\PreventBackHistory;
 use Modules\Auth\Http\Middleware\RedirectIfMerchantAuthenticated;
 use Modules\Auth\Http\Middleware\RequireReauthentication;
+use Symfony\Component\HttpFoundation\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -16,7 +17,18 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
 
-        $middleware->trustProxies(at: '*');
+        /**
+         * Trust reverse proxies (Cloudflare, Load Balancer, etc.)
+         * This allows request()->ip() to return the real client IP
+         */
+        $middleware->trustProxies(
+            at: '*',
+            headers: Request::HEADER_X_FORWARDED_FOR |
+                Request::HEADER_X_FORWARDED_HOST |
+                Request::HEADER_X_FORWARDED_PORT |
+                Request::HEADER_X_FORWARDED_PROTO |
+                Request::HEADER_X_FORWARDED_AWS_ELB
+        );
 
         $middleware->alias([
             'no-cache'        => PreventBackHistory::class,

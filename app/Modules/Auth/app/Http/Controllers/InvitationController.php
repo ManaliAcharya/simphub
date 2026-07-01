@@ -51,7 +51,7 @@ class InvitationController extends Controller
             secure: app()->environment('production'),
             httpOnly: true,
             raw: false,
-            sameSite: 'Strict'
+            sameSite: 'Lax'
         );
 
         if ($request->expectsJson()) {

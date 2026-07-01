@@ -133,7 +133,7 @@ const InvitationAccept = (() => {
 
             console.log(response.data);
 
-            window.location.href = response.data.redirect_url || "/dashboard";
+            window.location.href = response.data.redirect_url;
         } catch (error) {
             showErrorAlert(getErrorMessage(error));
             setLoading(false);

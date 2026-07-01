@@ -36,6 +36,29 @@ class MerchantSessionMiddleware
             return $this->unauthenticated($request);
         }
 
+        $client = $session?->clientAccount?->client;
+        $clientAccount = $session->clientAccount;
+
+        // Check query string
+        if ($request->filled('pms_client_id')) {
+
+            abort_if(
+                $request->pms_client_id != $client->pms_client_id,
+                403,
+                'Unauthorized client access'
+            );
+        }
+
+        // Check route parameters
+        if ($request->route('pms_client_id')) {
+
+            abort_if(
+                $request->route('pms_client_id') != $client->pms_client_id,
+                403,
+                'Unauthorized client access'
+            );
+        }
+
         $request->attributes->set('merchant_session', $session);
         $request->attributes->set('client_account', $session->clientAccount);
 
