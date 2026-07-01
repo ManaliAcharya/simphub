@@ -180,7 +180,8 @@ class QuickBooksApiClient
         $cacheKey = "qb_invoice_pdf_{$connection->id}_{$invoiceId}";
 
         if (Cache::has($cacheKey)) {
-            return Cache::get($cacheKey);
+            $cached = Cache::get($cacheKey);
+            return $cached ? base64_decode($cached) : null;
         }
 
         $realmId = $connection->realmId();
@@ -209,7 +210,7 @@ class QuickBooksApiClient
                 return null;
             }
 
-            Cache::put($cacheKey, $pdf, now()->addMinutes(10));
+            Cache::put($cacheKey, base64_encode($pdf), now()->addMinutes(10));
 
             return $pdf;
         } catch (\Throwable $e) {
