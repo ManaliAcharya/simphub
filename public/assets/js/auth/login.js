@@ -172,7 +172,7 @@ const Login = (() => {
 
             await showSuccessAlert(response.data.message || "Login successful.");
 
-            window.location.href = response.data.redirect_url || "/dashboard";
+            window.location.href = response.data.redirect_url;
         } catch (error) {
             if (error.response?.data?.require_captcha) {
                 showCaptcha();
