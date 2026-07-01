@@ -30,7 +30,7 @@
             if (document.documentElement.hasAttribute("data-theme-mode")) {
                 themeMode = document.documentElement.getAttribute("data-theme-mode");
             } else {
-                themeMode = localStorage.getItem("data-theme") ? ? defaultThemeMode;
+                themeMode = localStorage.getItem("data-theme") ?? defaultThemeMode;
             }
 
             if (themeMode === "system") {

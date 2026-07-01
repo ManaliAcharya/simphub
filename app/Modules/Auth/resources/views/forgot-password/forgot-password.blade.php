@@ -177,6 +177,8 @@
             resetPassword: "{{ route('auth.forgot-password.reset') }}",
             login: "{{ route('auth.login') }}"
         };
+
+        console.log('Forgot Password Routes:', window.forgotPasswordRoutes);
     </script>
 
     <script src="{{ asset('assets/js/auth/forgot-password.js?v=' . time()) }}"></script>
