@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Modules\Auth\Services\InvitationService;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClientMidRoute;
 use Modules\Inbound\Services\ZohoRegionResolver;
@@ -18,6 +19,13 @@ use Modules\Routing\Models\TerminalConfiguration;
 
 class ClientConfigController extends Controller
 {
+    protected InvitationService $invitationService;
+    public function __construct(InvitationService $invitationService)
+    {
+        $this->invitationService = $invitationService;
+
+    }
+
     public function index(): View
     {
         $clients = Client::query()
@@ -96,6 +104,7 @@ class ClientConfigController extends Controller
             'webhook_flow_enabled'       => ['nullable', 'boolean'],
             'call_api_to_pms'            => ['nullable', 'boolean'],
             'client_calls_our_api'       => ['nullable', 'boolean'],
+            'client_email'               => ['required', 'email', 'max:255', 'unique:client_accounts,email_lower'],
         ]);
 
         if (strtoupper($validated['client_pms']) === 'ZOHO' && empty($validated['zoho_region'])) {
@@ -129,7 +138,14 @@ class ClientConfigController extends Controller
             'client_calls_our_api' => strtoupper($validated['client_pms']) === 'CUSTOM' ? true : ($isTerminal ? false : (bool) ($validated['client_calls_our_api'] ?? false)),
         ]);
 
-        
+
+        // Create a client account and send invitation email
+        $this->invitationService->createInvitation([
+            'client_id' => $client->id,
+            'email' => $validated['client_email'],
+            'admin_id' => 0
+        ]);
+
 
         if ($isTerminal) {
             return redirect()->route('inbound.clients.terminal-created', [
