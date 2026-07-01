@@ -495,6 +495,11 @@
         async function loadDetails() {
             const response = await fetch(`/api/v1/payment/sessions/${sessionToken}`);
             const details = await response.json();
+            if (!response.ok) {
+                els.title.textContent = details.message || 'This payment link is no longer available.';
+                els.copy.textContent = '';
+                return;
+            }
             state.details = details;
             const amount = (details.invoice.amount_cents / 100).toFixed(2);
             els.title.textContent = details.invoice.invoice_number
