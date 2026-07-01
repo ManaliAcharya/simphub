@@ -4,6 +4,8 @@ namespace Modules\Inbound\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Modules\Auth\Models\ClientAccount;
 
 class Client extends Model
 {
@@ -35,5 +37,14 @@ class Client extends Model
     public function usesTerminal(): bool
     {
         return ! empty($this->allowed_terminals);
+    }
+
+    public function account(): HasOne
+    {
+        return $this->hasOne(
+            ClientAccount::class,
+            'client_id',
+            'id'
+        );
     }
 }
