@@ -63,7 +63,7 @@ class AuthController extends Controller
                     secure: config('session.secure', app()->environment('production')),
                     httpOnly: true,
                     raw: false,
-                    sameSite: 'Strict'
+                    sameSite: 'Lax'
                 ));
         } catch (ValidationException $e) {
             return $this->errorResponse(
