@@ -15,13 +15,17 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
-            'no-cache'        =>  PreventBackHistory::class,
-            'merchant.guest'  =>  RedirectIfMerchantAuthenticated::class,
-            'merchant.auth'   =>  MerchantSessionMiddleware::class,
-            'reauth.required' =>  RequireReauthentication::class,
+            'no-cache'        => PreventBackHistory::class,
+            'merchant.guest'  => RedirectIfMerchantAuthenticated::class,
+            'merchant.auth'   => MerchantSessionMiddleware::class,
+            'reauth.required' => RequireReauthentication::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
-    })->create();
+    })
+    ->create();
