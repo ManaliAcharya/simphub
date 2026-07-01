@@ -87,13 +87,6 @@ class QuickBooksInvoiceIngestionService
 
         $pdf = $this->client->fetchInvoicePdf($connection, $externalInvoiceId);
 
-        if ($pdf === null) {
-            \Illuminate\Support\Facades\Log::warning('QB invoice PDF not available — email will be sent without attachment', [
-                'external_invoice_id' => $externalInvoiceId,
-                'pms_client_id'       => $pmsClientId,
-            ]);
-        }
-
         $emailsSent = $this->paymentLinks->sendInvoiceLinkOnce(
             $result['invoice'],
             $result['payment_session'],

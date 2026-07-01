@@ -39,6 +39,8 @@ class PaymentCheckoutService
 
     public function details(PaymentSession $session): array
     {
+        $this->assertLinkActive($session);
+
         $invoice = $session->invoice()->firstOrFail();
         $options = $this->filterAllowedGateways(
             $this->routingCandidates($session),
@@ -128,6 +130,8 @@ class PaymentCheckoutService
         string $transactionType = 'debit',
         array $extraBilling = [],
     ): Transaction {
+        $this->assertLinkActive($session);
+
         $invoice = $session->invoice()->firstOrFail();
 
         // ── Fee surcharge ──────────────────────────────────────────────────
@@ -830,5 +834,21 @@ class PaymentCheckoutService
                 );
             }
         }
+    }
+
+    private function assertLinkActive(PaymentSession $session): void
+    {
+        $status = (string) ($session->link_status ?? 'active');
+
+        if ($status === 'active') {
+            return;
+        }
+
+        throw new RuntimeException(match ($status) {
+            'voided'   => 'This invoice has been voided. The payment link is no longer valid.',
+            'disabled' => 'This payment link has been disabled.',
+            'paid'     => 'This invoice has already been paid.',
+            default    => 'This payment link is no longer available.',
+        });
     }
 }

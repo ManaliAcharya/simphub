@@ -202,25 +202,13 @@ class QuickBooksApiClient
             $pdf = $response->body();
 
             if ($pdf === '') {
-                \Illuminate\Support\Facades\Log::warning('QB PDF fetch returned empty body', [
-                    'invoice_id' => $invoiceId,
-                    'realm_id'   => $realmId,
-                    'status'     => $response->status(),
-                ]);
                 return null;
             }
 
             Cache::put($cacheKey, base64_encode($pdf), now()->addMinutes(10));
 
             return $pdf;
-        } catch (\Throwable $e) {
-            \Illuminate\Support\Facades\Log::error('QB PDF fetch failed', [
-                'invoice_id' => $invoiceId,
-                'realm_id'   => $realmId,
-                'error'      => $e->getMessage(),
-                'status'     => isset($response) ? $response->status() : null,
-                'body'       => isset($response) ? substr($response->body(), 0, 500) : null,
-            ]);
+        } catch (\Throwable) {
             return null;
         }
     }
