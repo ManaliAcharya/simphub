@@ -54,12 +54,10 @@ class RoutingEngine
     {
         $midCredentials = [];
 
-        if ($rule->mid_credentials) {
-            try {
-                $midCredentials = (array) decrypt($rule->mid_credentials);
-            } catch (\Throwable) {
-                $midCredentials = [];
-            }
+        try {
+            $midCredentials = (array) ($rule->mid_credentials ?? []);
+        } catch (\Throwable) {
+            $midCredentials = [];
         }
 
         return new RoutingDecision(
