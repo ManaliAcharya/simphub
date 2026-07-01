@@ -100,7 +100,6 @@
 </style>
 
 <div class="shell">
-
     <section class="panel">
         <p class="eyebrow">Client Onboarding</p>
         <h2>Create Client</h2>
@@ -109,11 +108,22 @@
         <form method="POST" action="{{ route('inbound.clients.store') }}">
             @csrf
 
-            {{-- Client name --}}
-            <label style="display:block;font-weight:600;font-size:13px;margin:20px 0 8px;color:#374151;">Client name</label>
-            <input type="text" placeholder="e.g. Acme Law Firm" name="client_name" value="{{ old('client_name') }}" required>
+          {{-- Client name --}}
+            <label style="display:block;font-weight:600;font-size:13px;margin:20px 0 8px;color:#374151;">
+                Client Name
+            </label>
 
-            
+            <input type="text" name="client_name" value="{{ old('client_name') }}" placeholder="e.g. Acme Law Firm" required>
+
+            {{-- Client email --}}
+            <label style="display:block;font-weight:600;font-size:13px;margin:20px 0 8px;color:#374151;">
+               Client Email
+            </label>
+
+            <input type="email" name="client_email" value="{{ old('client_email') }}"
+                placeholder="e.g. client@acmelaw.com" required>
+
+
             {{-- ══════════════════════════════════════════════════════
                  ONLINE PAYMENTS
             ═══════════════════════════════════════════════════════ --}}
