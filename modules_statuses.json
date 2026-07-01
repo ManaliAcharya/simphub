@@ -7,5 +7,7 @@
     "TrustAccounting": true,
     "Reconciliation": true,
     "Audit": true,
-    "BookSync": true
+    "BookSync": true,
+    "Auth": true,
+    "Dashboard": true
 }

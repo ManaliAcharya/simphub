@@ -123,5 +123,6 @@ return [
     */
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
+    'merchant_session_lifetime' => env('AUTH_MERCHANT_SESSION_LIFETIME', 720),
 
 ];

@@ -7,9 +7,13 @@
     "license": "MIT",
     "require": {
         "php": "^8.3",
+        "geoip2/geoip2": "^3.3",
+        "jenssegers/agent": "^2.6",
         "laravel/framework": "^13.0",
         "laravel/tinker": "^3.0",
-        "nwidart/laravel-modules": "^13.0"
+        "nwidart/laravel-modules": "^13.0",
+        "yajra/laravel-datatables": "13.0",
+        "yajra/laravel-datatables-html": "13.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
@@ -32,8 +36,13 @@
             "Modules\\Audit\\": "app/Modules/Audit/app/",
             "Modules\\BookSync\\": "app/Modules/BookSync/app/",
             "Database\\Factories\\": "database/factories/",
-            "Database\\Seeders\\": "database/seeders/"
-        }
+            "Database\\Seeders\\": "database/seeders/",
+            "Modules\\Auth\\": "app/Modules/Auth/app/",
+            "Modules\\Dashboard\\": "app/Modules/Dashboard/app/"
+        },
+        "files": [
+            "app/Helpers/helpers.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
