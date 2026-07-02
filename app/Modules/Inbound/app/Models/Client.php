@@ -34,6 +34,11 @@ class Client extends Model
         ];
     }
 
+    public function emailConfiguration(): HasOne
+    {
+        return $this->hasOne(EmailConfiguration::class, 'client_id');
+    }
+    
     public function usesTerminal(): bool
     {
         return ! empty($this->allowed_terminals);

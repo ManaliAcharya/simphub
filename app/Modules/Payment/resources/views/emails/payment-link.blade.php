@@ -4,23 +4,68 @@
     <meta charset="utf-8">
     <title>Invoice Payment Link</title>
 </head>
-<body style="font-family: Arial, sans-serif; color: #14213d; line-height: 1.5;">
-    @if(!empty($logoUrl))
-    <div style="margin-bottom: 24px;">
-        <img src="{{ $logoUrl }}" alt="Company Logo"
-             style="max-height: 60px; max-width: 200px; object-fit: contain; display: block;">
+<body style="font-family: Arial, sans-serif; color: #14213d; line-height: 1.5; margin: 0; padding: 0; background: #f5f5f5;">
+    <div style="max-width: 600px; margin: 32px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.07);">
+
+        <div style="padding: 32px 32px 24px;">
+
+            @if(!empty($logoUrl))
+            <div style="margin-bottom: 24px;">
+                <img src="{{ $logoUrl }}" alt="Company Logo"
+                     style="max-height: 60px; max-width: 200px; object-fit: contain; display: block;">
+            </div>
+            @endif
+
+            @if(!empty($bodyHeader))
+            <div style="margin-bottom: 20px; color: #374151; font-size: 14px;">{{ $bodyHeader }}</div>
+            @endif
+
+            <h2 style="color: #14213d; margin: 0 0 16px; font-size: 20px;">Invoice ready for payment</h2>
+
+            @if(!empty($customerName))
+            <p style="margin: 0 0 16px;">Hello <strong>{{ $customerName }}</strong>,</p>
+            @endif
+
+            <table style="width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: 14px;">
+                <tr>
+                    <td style="padding: 10px 14px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: bold; width: 40%; color: #374151;">Invoice Number</td>
+                    <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">#{{ $invoice->invoice_number ?? $invoice->external_invoice_id }}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 10px 14px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: bold; color: #374151;">Amount Due</td>
+                    <td style="padding: 10px 14px; border: 1px solid #e5e7eb;"><strong>{{ $invoice->currency }} {{ number_format($invoice->amount_cents / 100, 2) }}</strong></td>
+                </tr>
+                @if(!empty($dueDate))
+                <tr>
+                    <td style="padding: 10px 14px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: bold; color: #374151;">Due Date</td>
+                    <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">{{ $dueDate }}</td>
+                </tr>
+                @endif
+            </table>
+
+            <p style="margin: 0 0 16px;">
+                <a href="{{ $paymentUrl }}"
+                   style="display: inline-block; padding: 14px 28px; background: {{ $primaryColor ?? '#2196F3' }}; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">
+                    Pay Now
+                </a>
+            </p>
+
+            <p style="color: #6b7280; font-size: 12px; margin: 0 0 16px;">If the button does not work, copy this link into your browser:<br>{{ $paymentUrl }}</p>
+
+            @if(!empty($bodyFooter))
+            <div style="margin-top: 20px; color: #6b7280; font-size: 13px; border-top: 1px solid #e5e7eb; padding-top: 16px;">{{ $bodyFooter }}</div>
+            @endif
+
+            @if(!empty($merchantName))
+            <p style="margin-top: 24px; color: #6b7280; font-size: 13px;">Thank you,<br><strong>{{ $merchantName }}</strong></p>
+            @endif
+
+        </div>
+
+        <div style="background: #f9fafb; padding: 14px 32px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
+            This email was sent by {{ $merchantName ?? 'your merchant' }}. Please do not reply to this email directly.
+        </div>
+
     </div>
-    @endif
-    <h2>Invoice ready for payment</h2>
-    <p>A payment of <strong>{{ $invoice->currency }} {{ number_format($invoice->amount_cents / 100, 2) }}</strong> is due for Invoice <strong>#{{ $invoice->invoice_number ?? $invoice->external_invoice_id }}</strong>.</p>
-    <p>
-        <a href="{{ $paymentUrl }}" style="display: inline-block; padding: 12px 18px; background: #14213d; color: #fff; text-decoration: none; border-radius: 8px;">
-            Pay now
-        </a>
-    </p>
-    <p style="color: #6b7280; font-size: 12px;">If the button does not work, open this URL:<br>{{ $paymentUrl }}</p>
-    @if(!empty($merchantName))
-    <p style="margin-top: 24px; color: #6b7280; font-size: 13px;">Thank you,<br>{{ $merchantName }}</p>
-    @endif
 </body>
 </html>

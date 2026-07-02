@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Mail;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\Client;
+use Modules\Inbound\Models\EmailConfiguration;
 use Modules\Payment\Mail\PaymentLinkAdminMail;
 use Modules\Payment\Mail\PaymentLinkMail;
 
@@ -74,11 +75,12 @@ class PaymentLinkService
         // Do NOT reset payment_link_sent_at on delivery failure. Resetting it lets a PMS
         // webhook retry bypass the once-only guard and send a duplicate email. The claim
         // stays set; an admin can null-out payment_link_sent_at to trigger a resend.
-        $paymentUrl = $this->urlForSession($session);
-        $sent       = 0;
+        $paymentUrl  = $this->urlForSession($session);
+        $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
+        $sent        = 0;
 
         foreach ($toCustomer as $email) {
-            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent));
+            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent, false, $emailConfig));
             $sent++;
         }
 
@@ -124,11 +126,12 @@ class PaymentLinkService
                 'updated_at'                => now(),
             ]);
 
-        $paymentUrl = $this->urlForSession($session);
-        $sent       = 0;
+        $paymentUrl  = $this->urlForSession($session);
+        $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
+        $sent        = 0;
 
         foreach ($toCustomer as $email) {
-            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent, true));
+            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent, true, $emailConfig));
             $sent++;
         }
 

@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Inbound\Http\Controllers\CrmInvoiceController;
 use Modules\Inbound\Http\Controllers\CrmRefundController;
 use Modules\Inbound\Http\Controllers\CrmTransactionController;
+use Modules\Inbound\Http\Controllers\EmailConfigController;
 use Modules\Inbound\Http\Controllers\InvoiceIngestionController;
 use Modules\Inbound\Http\Controllers\MindbodyWebhookController;
 use Modules\Inbound\Http\Controllers\WebhookController;
@@ -22,4 +23,8 @@ Route::prefix('v1')->name('crm.')->middleware(CrmApiAuth::class)->group(function
     Route::get('/transactions',                           [CrmTransactionController::class, 'index'])->name('transactions.index');
     Route::post('/transactions/{transaction_id}/cancel',  [CrmTransactionController::class, 'cancel'])->name('transactions.cancel');
     Route::post('/refunds',                               [CrmRefundController::class, 'store'])->name('refunds.store');
+
+    Route::get('/clients/{client_id}/email-config',        [EmailConfigController::class, 'show'])->name('email-config.show');
+    Route::put('/clients/{client_id}/email-config',        [EmailConfigController::class, 'update'])->name('email-config.update');
+    Route::post('/clients/{client_id}/email-config/logo',  [EmailConfigController::class, 'uploadLogo'])->name('email-config.logo');
 });
