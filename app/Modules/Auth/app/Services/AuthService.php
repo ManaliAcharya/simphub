@@ -326,7 +326,7 @@ class AuthService
         ?string $ipAddress,
         ?string $userAgent
     ): void {
-        $location = $this->geoIpService->resolve($ipAddress);
+        $location = $this->geoIpService->resolve();
 
         $this->authAuditService->log([
             'client_account_id' => $account->id,

@@ -5,8 +5,6 @@ use Modules\Auth\Http\Controllers\AuthController;
 use Modules\Auth\Http\Controllers\ForgotPasswordController;
 use Modules\Auth\Http\Controllers\InvitationController;
 use Modules\Auth\Http\Controllers\ReauthenticationController;
-use Illuminate\Http\Request;
-use App\Support\Integrations\GeoIp\GeoIpService;
 
 Route::middleware(['web', 'throttle:global'])->group(function () {
 
@@ -70,22 +68,5 @@ Route::middleware(['web', 'throttle:global'])->group(function () {
 
         Route::post('/reauthenticate', [ReauthenticationController::class, 'verify'])
             ->name('auth.reauthenticate');
-    });
-
-    Route::get('/geoip-debug', function (Request $request, GeoIpService $geoIpService) {
-
-        return [
-            'request_ip' => $request->ip(),
-            'cf_connecting_ip' => $request->header('CF-Connecting-IP'),
-            'x_forwarded_for' => $request->header('X-Forwarded-For'),
-            'remote_addr' => $request->server('REMOTE_ADDR'),
-            'resolved_ip_auto' => $geoIpService->resolve(),
-            'resolved_location' => $geoIpService->resolve(),
-            'headers' => [
-                'user_agent' => $request->userAgent(),
-                'country' => $request->header('CF-IPCountry'),
-                'ray' => $request->header('CF-Ray'),
-            ],
-        ];
     });
 });

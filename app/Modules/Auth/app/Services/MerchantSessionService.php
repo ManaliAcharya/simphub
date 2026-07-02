@@ -58,7 +58,7 @@ class MerchantSessionService
 
         if ($ipAddress) {
             try {
-                $location = $this->geoIpService->resolve($ipAddress);
+                $location = $this->geoIpService->resolve();
             } catch (\Throwable $exception) {
                 report($exception);
             }
