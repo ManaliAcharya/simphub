@@ -13,6 +13,7 @@ use Illuminate\View\View;
 use Modules\Auth\Services\InvitationService;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClientMidRoute;
+use Modules\Inbound\Models\EmailConfiguration;
 use Modules\Inbound\Services\ZohoRegionResolver;
 use Modules\Routing\Models\RoutingRule;
 use Modules\Routing\Models\TerminalConfiguration;
@@ -512,5 +513,37 @@ class ClientConfigController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'Payment link settings saved.');
+    }
+
+    public function updateEmailConfig(Request $request, string $pmsClientId): RedirectResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        $validated = $request->validate([
+            'subject_template'         => ['nullable', 'string', 'max:500'],
+            'subject_template_updated' => ['nullable', 'string', 'max:500'],
+            'body_header'              => ['nullable', 'string', 'max:5000'],
+            'body_footer'              => ['nullable', 'string', 'max:5000'],
+            'primary_color'            => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
+            'reply_to_email'           => ['nullable', 'email', 'max:255'],
+            'reply_to_name'            => ['nullable', 'string', 'max:255'],
+            'attach_pdf'               => ['nullable', 'in:0,1'],
+        ]);
+
+        EmailConfiguration::updateOrCreate(
+            ['client_id' => $client->id],
+            [
+                'subject_template'         => $validated['subject_template'] ?: 'Invoice #{invoice_number} – Payment Required',
+                'subject_template_updated' => $validated['subject_template_updated'] ?: 'Updated: Invoice #{invoice_number} – Payment Required',
+                'body_header'              => $validated['body_header'] ?: null,
+                'body_footer'              => $validated['body_footer'] ?: null,
+                'primary_color'            => $validated['primary_color'] ?? '#2196F3',
+                'reply_to_email'           => $validated['reply_to_email'] ?: null,
+                'reply_to_name'            => $validated['reply_to_name'] ?: null,
+                'attach_pdf'               => ($validated['attach_pdf'] ?? '1') === '1',
+            ]
+        );
+
+        return redirect()->back()->with('success', 'Email settings saved.');
     }
 }

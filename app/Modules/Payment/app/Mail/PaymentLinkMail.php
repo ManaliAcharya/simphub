@@ -63,9 +63,7 @@ class PaymentLinkMail extends Mailable
 
         $merchantName = $client?->client_name;
 
-        if ($this->emailConfig?->logo_url) {
-            $logoUrl = $this->emailConfig->logo_url;
-        } elseif ($client?->logo_path && Storage::disk('public')->exists($client->logo_path)) {
+        if ($client?->logo_path && Storage::disk('public')->exists($client->logo_path)) {
             $logoUrl = rtrim(config('app.url'), '/') . '/storage/' . $client->logo_path;
         } else {
             $logoUrl = null;

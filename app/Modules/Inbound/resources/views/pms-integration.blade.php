@@ -4,6 +4,7 @@
         ['id' => 'gateways',   'label' => 'Gateways'],
         ['id' => 'fees',       'label' => 'Fee Configuration'],
         ['id' => 'webhooks',   'label' => 'Webhooks'],
+        ['id' => 'email',      'label' => 'Email Settings'],
     ];
 @endphp
 
@@ -813,6 +814,155 @@
         @endif
 
     </div>
+
+    {{-- ── Email Settings tab ── --}}
+    @php $emailConfig = $client->emailConfiguration; @endphp
+    <div id="cc-panel-email" class="cc-tab-panel">
+
+        <form method="POST" action="{{ route('inbound.clients.update-email-config', $client->pms_client_id) }}">
+            @csrf
+
+            {{-- Subject lines --}}
+            <div class="cc-card">
+                <div class="cc-card-title">Email Subject Lines</div>
+                <div class="cc-card-desc">
+                    Customise the subject line for the initial payment link email and for resend emails when an invoice amount changes.
+                    Use <code style="background:#f3f4f6;padding:1px 5px;border-radius:3px;font-size:12px;">{invoice_number}</code>,
+                    <code style="background:#f3f4f6;padding:1px 5px;border-radius:3px;font-size:12px;">{amount}</code> as variables.
+                </div>
+
+                <div class="cc-field">
+                    <label>Initial email subject</label>
+                    <input type="text" name="subject_template" maxlength="500"
+                           value="{{ old('subject_template', $emailConfig?->subject_template ?? 'Invoice #{invoice_number} – Payment Required') }}"
+                           placeholder="Invoice #{invoice_number} – Payment Required">
+                </div>
+
+                <div class="cc-field" style="margin-bottom:0;">
+                    <label>Resend / updated invoice subject</label>
+                    <input type="text" name="subject_template_updated" maxlength="500"
+                           value="{{ old('subject_template_updated', $emailConfig?->subject_template_updated ?? 'Updated: Invoice #{invoice_number} – Payment Required') }}"
+                           placeholder="Updated: Invoice #{invoice_number} – Payment Required">
+                </div>
+            </div>
+
+            {{-- Brand colour --}}
+            <div class="cc-card">
+                <div class="cc-card-title">Brand Colour</div>
+                <div class="cc-card-desc">Used for the "Pay Now" button in payment link emails. Your company logo is taken from the <strong>Company Logo</strong> section in the Connection tab.</div>
+
+                <div style="display:flex;align-items:center;gap:12px;">
+                    <input type="color" id="primary-color-picker"
+                           value="{{ old('primary_color', $emailConfig?->primary_color ?? '#2196F3') }}"
+                           style="width:44px;height:36px;padding:2px;border:1px solid var(--cc-border);border-radius:var(--cc-r-sm);cursor:pointer;background:#fff;"
+                           oninput="document.getElementById('primary-color-text').value=this.value">
+                    <input type="text" id="primary-color-text" name="primary_color" maxlength="7"
+                           value="{{ old('primary_color', $emailConfig?->primary_color ?? '#2196F3') }}"
+                           placeholder="#2196F3"
+                           pattern="^#[0-9a-fA-F]{6}$"
+                           style="width:110px;"
+                           oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value))document.getElementById('primary-color-picker').value=this.value">
+                    <div id="color-preview" style="width:80px;height:36px;border-radius:var(--cc-r-sm);border:1px solid var(--cc-border);background:{{ $emailConfig?->primary_color ?? '#2196F3' }};transition:background .2s;"></div>
+                    <span style="font-size:12px;color:var(--cc-text-3);">Preview</span>
+                </div>
+                <script>
+                document.getElementById('primary-color-text').addEventListener('input', function() {
+                    if (/^#[0-9a-fA-F]{6}$/.test(this.value)) {
+                        document.getElementById('color-preview').style.background = this.value;
+                    }
+                });
+                document.getElementById('primary-color-picker').addEventListener('input', function() {
+                    document.getElementById('color-preview').style.background = this.value;
+                });
+                </script>
+            </div>
+
+            {{-- Reply-to --}}
+            <div class="cc-card">
+                <div class="cc-card-title">Reply-To Address</div>
+                <div class="cc-card-desc">When customers reply to payment emails, their reply goes to this address. Leave blank to use the system default.</div>
+
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                    <div class="cc-field" style="margin-bottom:0;">
+                        <label>Reply-to email</label>
+                        <input type="email" name="reply_to_email" maxlength="255"
+                               value="{{ old('reply_to_email', $emailConfig?->reply_to_email ?? '') }}"
+                               placeholder="billing@yourfirm.com">
+                    </div>
+                    <div class="cc-field" style="margin-bottom:0;">
+                        <label>Reply-to name <span style="font-weight:400;color:var(--cc-text-3);">(optional)</span></label>
+                        <input type="text" name="reply_to_name" maxlength="255"
+                               value="{{ old('reply_to_name', $emailConfig?->reply_to_name ?? '') }}"
+                               placeholder="Billing Team">
+                    </div>
+                </div>
+            </div>
+
+            {{-- Body header / footer --}}
+            <div class="cc-card">
+                <div class="cc-card-title">Email Body Content</div>
+                <div class="cc-card-desc">
+                    Optional text shown above and below the invoice summary in the email.
+                    Available variables:
+                    @foreach(['{merchant_name}','{customer_name}','{invoice_number}','{amount}','{due_date}','{merchant_email}'] as $v)
+                        <code style="background:#f3f4f6;padding:1px 5px;border-radius:3px;font-size:11px;">{{ $v }}</code>{{ !$loop->last ? '' : '' }}
+                    @endforeach
+                </div>
+
+                <div class="cc-field">
+                    <label>Header text <span style="font-weight:400;color:var(--cc-text-3);">(appears above invoice summary)</span></label>
+                    <textarea name="body_header" rows="3" maxlength="5000"
+                              style="width:100%;padding:8px 12px;border:1px solid var(--cc-border);border-radius:var(--cc-r-sm);font-size:13px;font-family:inherit;resize:vertical;background:#fafafa;"
+                              placeholder="Dear {customer_name}, please find your invoice below.">{{ old('body_header', $emailConfig?->body_header ?? '') }}</textarea>
+                </div>
+
+                <div class="cc-field" style="margin-bottom:0;">
+                    <label>Footer text <span style="font-weight:400;color:var(--cc-text-3);">(appears below invoice summary)</span></label>
+                    <textarea name="body_footer" rows="3" maxlength="5000"
+                              style="width:100%;padding:8px 12px;border:1px solid var(--cc-border);border-radius:var(--cc-r-sm);font-size:13px;font-family:inherit;resize:vertical;background:#fafafa;"
+                              placeholder="Thank you for your business. Contact us at {merchant_email} with any questions.">{{ old('body_footer', $emailConfig?->body_footer ?? '') }}</textarea>
+                </div>
+            </div>
+
+            {{-- PDF attachment toggle --}}
+            <div class="cc-card">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                    <div>
+                        <div class="cc-card-title" style="margin-bottom:2px;">Attach Invoice PDF</div>
+                        <div style="font-size:13px;color:var(--cc-text-2);">When enabled, the invoice PDF is attached to the payment link email.</div>
+                    </div>
+                    @php $attachPdf = $emailConfig ? $emailConfig->attach_pdf : true; @endphp
+                    <div style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700;">
+                        <input type="hidden" name="attach_pdf" id="attach-pdf-val" value="{{ $attachPdf ? '1' : '0' }}">
+                        <button type="button" id="attach-pdf-on"
+                                onclick="emailToggle('attach-pdf-val','attach-pdf-on','attach-pdf-off',true)"
+                                style="padding:5px 14px;border:none;cursor:pointer;font-family:inherit;{{ $attachPdf ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">ON</button>
+                        <button type="button" id="attach-pdf-off"
+                                onclick="emailToggle('attach-pdf-val','attach-pdf-on','attach-pdf-off',false)"
+                                style="padding:5px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $attachPdf ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;">
+                <button type="submit" class="button primary" style="font-size:13px;padding:9px 24px;">Save email settings</button>
+            </div>
+
+            @error('primary_color')<p style="font-size:12px;color:#dc2626;margin-top:6px;">{{ $message }}</p>@enderror
+            @error('reply_to_email')<p style="font-size:12px;color:#dc2626;margin-top:6px;">{{ $message }}</p>@enderror
+        </form>
+
+        <script>
+        function emailToggle(valId, onId, offId, on) {
+            document.getElementById(valId).value = on ? '1' : '0';
+            document.getElementById(onId).style.background  = on ? '#132238' : '#fff';
+            document.getElementById(onId).style.color       = on ? '#fff'    : '#9ca3af';
+            document.getElementById(offId).style.background = on ? '#fff'    : '#f1f5f9';
+            document.getElementById(offId).style.color      = on ? '#9ca3af' : '#374151';
+        }
+        </script>
+
+    </div>{{-- end cc-panel-email --}}
 
 </x-inbound::client-config-layout>
 @else
