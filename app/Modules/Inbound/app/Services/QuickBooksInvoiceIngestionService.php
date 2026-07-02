@@ -40,6 +40,7 @@ class QuickBooksInvoiceIngestionService
                 ],
                 [
                     'pms_client_id'      => $pmsClientId,
+                    'invoice_number'     => $normalized['invoice_number'] ?: null,
                     'external_client_id' => $normalized['external_client_id'],
                     'status'             => $normalized['status'],
                     'fund_type'          => 'OPERATING',
@@ -155,6 +156,7 @@ class QuickBooksInvoiceIngestionService
 
         return [
             'external_invoice_id' => $id,
+            'invoice_number'      => (string) ($data['DocNumber'] ?? ''),
             'external_client_id'  => $customerId,
             'status'              => $status,
             'amount_cents'        => (int) round($amount * 100),

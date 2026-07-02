@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Invoice;
@@ -127,12 +128,16 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
             return;
         }
 
-        $liveTotal    = (float) data_get($liveData, 'Invoice.TotalAmt', 0);
-        $originalCents = (int) ($invoice->amount_cents ?? 0);
+        // Compare against Balance (what ingestion stores in amount_cents), not TotalAmt.
+        // TotalAmt stays fixed when a partial external payment reduces the Balance —
+        // comparing TotalAmt vs stored Balance would produce a false diff on every view.
+        $invoiceData     = Arr::get($liveData, 'Invoice', $liveData);
+        $liveBalance     = (float) ($invoiceData['Balance'] ?? $invoiceData['TotalAmt'] ?? 0);
+        $originalCents   = (int) ($invoice->amount_cents ?? 0);
         $originalDollars = $originalCents / 100;
 
-        $absoluteDiff  = abs($liveTotal - $originalDollars);
-        $relativeDiff  = $originalDollars > 0 ? ($absoluteDiff / $originalDollars) : 0;
+        $absoluteDiff = abs($liveBalance - $originalDollars);
+        $relativeDiff = $originalDollars > 0 ? ($absoluteDiff / $originalDollars) : 0;
 
         if ($absoluteDiff < 1.00 && $relativeDiff < 0.01) {
             return;
@@ -157,7 +162,7 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
                 'invoice_id'    => $invoice->id,
                 'qb_invoice_id' => $this->entityId,
                 'old_amount'    => $originalDollars,
-                'new_amount'    => $liveTotal,
+                'new_amount'    => $liveBalance,
             ]
         );
     }
