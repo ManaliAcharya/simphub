@@ -32,3 +32,25 @@ if (! function_exists('clientConfigUrl')) {
         };
     }
 }
+
+if (! function_exists('getClientIp')) {
+
+    /**
+     * Get real visitor IP.
+     * Supports Cloudflare proxy.
+     */
+    function getClientIp(?\Illuminate\Http\Request $request = null): ?string
+    {
+        $request = $request ?: request();
+
+        if ($ip = $request->header('CF-Connecting-IP')) {
+            return trim($ip);
+        }
+
+        if ($forwardedFor = $request->header('X-Forwarded-For')) {
+            return trim(explode(',', $forwardedFor)[0]);
+        }
+
+        return $request->ip();
+    }
+}
