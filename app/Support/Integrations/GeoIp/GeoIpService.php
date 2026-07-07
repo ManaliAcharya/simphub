@@ -11,7 +11,7 @@ class GeoIpService
     public function resolve(?string $ipAddress = null): string
     {
         // Get real user IP automatically if not provided
-        $ipAddress = $ipAddress ?: $this->getClientIp();
+        $ipAddress = $ipAddress ?: getClientIp();
 
         if (! $ipAddress || $this->isLocalIp($ipAddress)) {
             return 'Local development';
@@ -37,7 +37,6 @@ class GeoIpService
                 $record->mostSpecificSubdivision->name,
                 $record->country->name,
             ])) ?: 'Unknown location';
-
         } catch (Throwable $e) {
 
             Log::warning('GeoIP lookup failed.', [
@@ -47,20 +46,6 @@ class GeoIpService
 
             return 'Unknown location';
         }
-    }
-
-
-    /**
-     * Get real visitor IP.
-     * Supports Cloudflare proxy.
-     */
-    private function getClientIp(): ?string
-    {
-        $request = request();
-
-        return $request->header('CF-Connecting-IP')
-            ?? $request->header('X-Forwarded-For')
-            ?? $request->ip();
     }
 
 
