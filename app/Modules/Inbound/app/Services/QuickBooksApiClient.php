@@ -24,7 +24,7 @@ class QuickBooksApiClient
         return Http::withToken($connection->access_token)
             ->acceptJson()
             ->asJson()
-            ->baseUrl(rtrim(config('services.quickbooks.base_url'), '/')."/v3/company/{$realmId}")
+            ->baseUrl($this->baseUrl($connection)."/v3/company/{$realmId}")
             ->retry(2, 0, function (\Throwable $e, PendingRequest $req) use (&$connection): bool {
                 if (! $e instanceof \Illuminate\Http\Client\RequestException) {
                     return false;
@@ -45,6 +45,13 @@ class QuickBooksApiClient
     private function minorVersion(): array
     {
         return ['minorversion' => config('services.quickbooks.minor_version', '65')];
+    }
+
+    private function baseUrl(QuickBooksConnection $connection): string
+    {
+        return $connection->environment() === 'production'
+            ? rtrim((string) config('services.quickbooks.base_url_production'), '/')
+            : rtrim((string) config('services.quickbooks.base_url'), '/');
     }
 
     public function fetchInvoice(QuickBooksConnection $connection, string $invoiceId): array
@@ -190,7 +197,7 @@ class QuickBooksApiClient
             return null;
         }
 
-        $baseUrl = rtrim(config('services.quickbooks.base_url'), '/')."/v3/company/{$realmId}";
+        $baseUrl = $this->baseUrl($connection)."/v3/company/{$realmId}";
 
         try {
             $response = Http::withToken($connection->access_token)

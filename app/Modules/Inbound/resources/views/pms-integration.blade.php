@@ -69,6 +69,7 @@
                 if (!empty($realm_id))           $connDetails['Company Realm ID'] = $realm_id;
                 if (!empty($organization_name))  $connDetails['Organization']      = $organization_name;
                 if (!empty($organization_id))    $connDetails['Organization ID']   = $organization_id;
+                if (!empty($connection_environment)) $connDetails['Environment']   = ucfirst($connection_environment);
                 if ($connection->token_expires_at) $connDetails['Token Expires']   = $connection->token_expires_at->format('M j, Y');
             @endphp
             @if(count($connDetails))
@@ -83,6 +84,11 @@
             </div>
             @endif
         </div>
+        @if ($provider === 'quickbooks' && !empty($connection_environment) && $connection_environment !== ($configured_environment ?? 'sandbox'))
+            <div class="cc-notice error">
+                This client is configured for {{ ucfirst($configured_environment ?? 'sandbox') }}, but the active QuickBooks connection is {{ ucfirst($connection_environment) }}. Disconnect and reconnect QuickBooks to switch environments.
+            </div>
+        @endif
         @else
         <div class="cc-card" style="background:#fffbeb;border-color:#fde68a;">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">

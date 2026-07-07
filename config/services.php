@@ -68,9 +68,12 @@ return [
     'quickbooks' => [
         'client_id'              => env('QB_CLIENT_ID'),
         'client_secret'          => env('QB_CLIENT_SECRET'),
+        'client_id_production'     => env('QB_CLIENT_ID_PRODUCTION'),
+        'client_secret_production' => env('QB_CLIENT_SECRET_PRODUCTION'),
         'redirect_uri'           => env('QB_REDIRECT_URI', rtrim(env('APP_URL', 'http://localhost'), '/').'/inbound/quickbooks/callback'),
         'scope'                  => env('QB_SCOPE', 'com.intuit.quickbooks.accounting'),
         'base_url'               => rtrim(env('QB_BASE_URL', 'https://sandbox-quickbooks.api.intuit.com'), '/'),
+        'base_url_production'    => rtrim(env('QB_BASE_URL_PRODUCTION', 'https://quickbooks.api.intuit.com'), '/'),
         'oauth_base_url'         => rtrim(env('QB_OAUTH_BASE_URL', 'https://appcenter.intuit.com'), '/'),
         'token_url'              => rtrim(env('QB_TOKEN_URL', 'https://oauth.platform.intuit.com'), '/'),
         'webhook_callback_url'   => env('QB_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/quickbooks'),

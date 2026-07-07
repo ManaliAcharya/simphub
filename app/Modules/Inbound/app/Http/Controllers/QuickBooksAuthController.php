@@ -42,7 +42,7 @@ class QuickBooksAuthController extends Controller
             abort_unless(($payload['provider'] ?? null) === 'quickbooks', 422, 'OAuth state provider mismatch.');
 
             $realmId    = (string) $request->query('realmId', '');
-            $tokenData  = $oauth->exchangeCodeTokens((string) $request->query('code'));
+            $tokenData  = $oauth->exchangeCodeTokens((string) $request->query('code'), $pmsClientId);
             $companies  = $oauth->fetchCompanies((string) ($tokenData['access_token'] ?? ''));
 
             // Single company (or fetch failed) — bind immediately using the callback realmId

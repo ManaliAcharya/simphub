@@ -15,8 +15,10 @@ class QuickBooksOAuthService
 
     public function authorizationUrl(string $pmsClientId): string
     {
+        $environment = $this->environmentFor($pmsClientId);
+
         return config('services.quickbooks.oauth_base_url').'/connect/oauth2?'.http_build_query([
-            'client_id'     => $this->clientId(),
+            'client_id'     => $this->clientId($environment),
             'response_type' => 'code',
             'scope'         => config('services.quickbooks.scope', 'com.intuit.quickbooks.accounting'),
             'redirect_uri'  => $this->redirectUri(),
@@ -30,14 +32,16 @@ class QuickBooksOAuthService
             throw new RuntimeException('QuickBooks realmId is missing from the OAuth callback.');
         }
 
-        return $this->createConnection($this->exchangeCodeTokens($code), $realmId, $pmsClientId);
+        return $this->createConnection($this->exchangeCodeTokens($code, $pmsClientId), $realmId, $pmsClientId);
     }
 
-    public function exchangeCodeTokens(string $code): array
+    public function exchangeCodeTokens(string $code, string $pmsClientId): array
     {
+        $environment = $this->environmentFor($pmsClientId);
+
         return Http::asForm()
             ->acceptJson()
-            ->withBasicAuth($this->clientId(), $this->clientSecret())
+            ->withBasicAuth($this->clientId($environment), $this->clientSecret($environment))
             ->post(config('services.quickbooks.token_url').'/oauth2/v1/tokens/bearer', [
                 'grant_type'   => 'authorization_code',
                 'code'         => $code,
@@ -105,7 +109,7 @@ class QuickBooksOAuthService
             );
         }
 
-        return $this->persistTokens($tokenData, realmId: $realmId, pmsClientId: $pmsClientId);
+        return $this->persistTokens($tokenData, realmId: $realmId, pmsClientId: $pmsClientId, environment: $this->environmentFor($pmsClientId));
     }
 
     public function refreshAccessToken(QuickBooksConnection $connection): QuickBooksConnection
@@ -115,9 +119,11 @@ class QuickBooksOAuthService
             throw new RuntimeException('Missing QuickBooks refresh token.');
         }
 
+        $environment = $connection->environment();
+
         $response = Http::asForm()
             ->acceptJson()
-            ->withBasicAuth($this->clientId(), $this->clientSecret())
+            ->withBasicAuth($this->clientId($environment), $this->clientSecret($environment))
             ->post(config('services.quickbooks.token_url').'/oauth2/v1/tokens/bearer', [
                 'grant_type'    => 'refresh_token',
                 'refresh_token' => $connection->refresh_token,
@@ -165,6 +171,7 @@ class QuickBooksOAuthService
         ?QuickBooksConnection $connection = null,
         ?string $realmId = null,
         ?string $pmsClientId = null,
+        ?string $environment = null,
     ): QuickBooksConnection {
         $pmsClientId = $pmsClientId ?: $connection?->pms_client_id;
 
@@ -194,7 +201,7 @@ class QuickBooksOAuthService
             'token_expires_at' => isset($payload['expires_in'])
                 ? now()->addSeconds((int) $payload['expires_in'])
                 : $connection->token_expires_at,
-            'meta'             => array_merge($existingMeta, array_filter(['realm_id' => $realmId])),
+            'meta'             => array_merge($existingMeta, array_filter(['realm_id' => $realmId, 'environment' => $environment])),
             'last_error'       => null,
         ]);
 
@@ -203,14 +210,21 @@ class QuickBooksOAuthService
         return $connection->fresh();
     }
 
-    private function clientId(): string
+    private function environmentFor(string $pmsClientId): string
     {
-        return $this->requiredConfig('client_id');
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->first();
+
+        return (string) data_get($client?->gateway_credentials, 'environment', 'sandbox');
     }
 
-    private function clientSecret(): string
+    private function clientId(string $environment): string
     {
-        return $this->requiredConfig('client_secret');
+        return $this->requiredConfig($environment === 'production' ? 'client_id_production' : 'client_id');
+    }
+
+    private function clientSecret(string $environment): string
+    {
+        return $this->requiredConfig($environment === 'production' ? 'client_secret_production' : 'client_secret');
     }
 
     private function redirectUri(): string

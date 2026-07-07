@@ -8,4 +8,9 @@ class QuickBooksConnection extends PmsConnection
     {
         return (string) data_get($this->meta, 'realm_id', '');
     }
+
+    public function environment(): string
+    {
+        return (string) data_get($this->meta, 'environment', 'sandbox');
+    }
 }

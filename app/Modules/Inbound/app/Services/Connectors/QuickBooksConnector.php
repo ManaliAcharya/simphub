@@ -88,14 +88,16 @@ class QuickBooksConnector implements PmsConnectorInterface
         }
 
         return [
-            'heading'               => 'Connect QuickBooks for a configured client',
-            'copy'                  => 'Authenticate with QuickBooks Online to enable invoice webhooks and payment sync.',
-            'webhook_url'           => $webhookUrl,
-            'realm_id'              => $realmId,
-            'qb_accounts'           => $qbAccounts,
-            'qb_income_accounts'    => $qbIncomeAccounts,
-            'qb_account_load_error' => $qbAccountLoadError,
-            'webhook_instructions'  => [],
+            'heading'                => 'Connect QuickBooks for a configured client',
+            'copy'                   => 'Authenticate with QuickBooks Online to enable invoice webhooks and payment sync.',
+            'webhook_url'            => $webhookUrl,
+            'realm_id'               => $realmId,
+            'qb_accounts'            => $qbAccounts,
+            'qb_income_accounts'     => $qbIncomeAccounts,
+            'qb_account_load_error'  => $qbAccountLoadError,
+            'webhook_instructions'   => [],
+            'connection_environment' => $connection instanceof QuickBooksConnection ? $connection->environment() : null,
+            'configured_environment' => (string) data_get($client?->gateway_credentials, 'environment', 'sandbox'),
         ];
     }
 }
