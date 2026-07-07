@@ -66,6 +66,7 @@
             </div>
             @php
                 $connDetails = [];
+                if (!empty($company_name))       $connDetails['Company Name']     = $company_name;
                 if (!empty($realm_id))           $connDetails['Company Realm ID'] = $realm_id;
                 if (!empty($organization_name))  $connDetails['Organization']      = $organization_name;
                 if (!empty($organization_id))    $connDetails['Organization ID']   = $organization_id;

@@ -13,4 +13,9 @@ class QuickBooksConnection extends PmsConnection
     {
         return (string) data_get($this->meta, 'environment', 'sandbox');
     }
+
+    public function companyName(): string
+    {
+        return (string) data_get($this->meta, 'company_name', '');
+    }
 }

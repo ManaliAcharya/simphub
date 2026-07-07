@@ -48,7 +48,8 @@ class QuickBooksAuthController extends Controller
             // Single company (or fetch failed) — bind immediately using the callback realmId
             if (count($companies) <= 1) {
                 $selectedRealm = $companies[0]['realmId'] ?? $realmId;
-                $oauth->createConnection($tokenData, $selectedRealm ?: $realmId, $pmsClientId);
+                $companyName   = $companies[0]['companyName'] ?? null;
+                $oauth->createConnection($tokenData, $selectedRealm ?: $realmId, $pmsClientId, $companyName);
 
                 return redirect()->route('inbound.quickbooks.page', [
                     'success'       => 'QuickBooks connected successfully.',
@@ -139,7 +140,10 @@ class QuickBooksAuthController extends Controller
         }
 
         try {
-            $oauth->createConnection($tokenData, $validated['realm_id'], $pmsClientId);
+            $selected    = collect($companies)->firstWhere('realmId', $validated['realm_id']);
+            $companyName = $selected['companyName'] ?? null;
+
+            $oauth->createConnection($tokenData, $validated['realm_id'], $pmsClientId, $companyName);
 
             session()->forget(['qb_pending_tokens', 'qb_pending_pms_client', 'qb_pending_companies', 'qb_callback_realm_id']);
 

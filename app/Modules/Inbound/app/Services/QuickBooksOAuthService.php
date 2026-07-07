@@ -88,7 +88,7 @@ class QuickBooksOAuthService
             ->all();
     }
 
-    public function createConnection(array $tokenData, string $realmId, string $pmsClientId): QuickBooksConnection
+    public function createConnection(array $tokenData, string $realmId, string $pmsClientId, ?string $companyName = null): QuickBooksConnection
     {
         if ($realmId === '') {
             throw new RuntimeException('QuickBooks realmId is required to save a connection.');
@@ -109,7 +109,7 @@ class QuickBooksOAuthService
             );
         }
 
-        return $this->persistTokens($tokenData, realmId: $realmId, pmsClientId: $pmsClientId, environment: $this->environmentFor($pmsClientId));
+        return $this->persistTokens($tokenData, realmId: $realmId, pmsClientId: $pmsClientId, environment: $this->environmentFor($pmsClientId), companyName: $companyName);
     }
 
     public function refreshAccessToken(QuickBooksConnection $connection): QuickBooksConnection
@@ -172,6 +172,7 @@ class QuickBooksOAuthService
         ?string $realmId = null,
         ?string $pmsClientId = null,
         ?string $environment = null,
+        ?string $companyName = null,
     ): QuickBooksConnection {
         $pmsClientId = $pmsClientId ?: $connection?->pms_client_id;
 
@@ -201,7 +202,7 @@ class QuickBooksOAuthService
             'token_expires_at' => isset($payload['expires_in'])
                 ? now()->addSeconds((int) $payload['expires_in'])
                 : $connection->token_expires_at,
-            'meta'             => array_merge($existingMeta, array_filter(['realm_id' => $realmId, 'environment' => $environment])),
+            'meta'             => array_merge($existingMeta, array_filter(['realm_id' => $realmId, 'environment' => $environment, 'company_name' => $companyName])),
             'last_error'       => null,
         ]);
 
