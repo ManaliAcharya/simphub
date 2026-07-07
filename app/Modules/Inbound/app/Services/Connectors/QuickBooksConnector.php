@@ -98,6 +98,7 @@ class QuickBooksConnector implements PmsConnectorInterface
             'webhook_instructions'   => [],
             'connection_environment' => $connection instanceof QuickBooksConnection ? $connection->environment() : null,
             'configured_environment' => (string) data_get($client?->gateway_credentials, 'environment', 'sandbox'),
+            'configured_environment_raw' => data_get($client?->gateway_credentials, 'environment'),
         ];
     }
 }

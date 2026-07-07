@@ -97,6 +97,17 @@
                     <div>
                         <div class="cc-card-title" style="color:#92400e;">{{ $providerLabel }} not connected</div>
                         <div style="font-size:13px;color:#78350f;margin-top:2px;">Complete the connection to start processing invoices.</div>
+                        @if ($provider === 'quickbooks')
+                            @php $connectEnv = $configured_environment ?? 'sandbox'; @endphp
+                            <div style="font-size:12px;color:#78350f;margin-top:6px;display:flex;align-items:center;gap:6px;">
+                                <span style="width:8px;height:8px;border-radius:50%;background:{{ $connectEnv === 'production' ? '#16a34a' : '#f59e0b' }};flex-shrink:0;"></span>
+                                @if (empty($configured_environment_raw ?? null))
+                                    No environment selected in Gateway Credentials — connecting will default to <strong>Sandbox</strong>.
+                                @else
+                                    Connecting will use the <strong>{{ ucfirst($connectEnv) }}</strong> QuickBooks environment (from this client's Gateway Credentials setting).
+                                @endif
+                            </div>
+                        @endif
                     </div>
                 </div>
                 @if ($connectUrl)
