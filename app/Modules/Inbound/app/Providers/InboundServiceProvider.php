@@ -2,6 +2,8 @@
 
 namespace Modules\Inbound\Providers;
 
+use Illuminate\Console\Scheduling\Schedule;
+use Modules\Inbound\Jobs\PollAdvancedMdChargesJob;
 use Modules\Inbound\Services\Connectors\ClioConnector;
 use Modules\Inbound\Services\Connectors\LawcusConnector;
 use Modules\Inbound\Services\Connectors\QuickBooksConnector;
@@ -9,7 +11,6 @@ use Modules\Inbound\Services\Connectors\WaveConnector;
 use Modules\Inbound\Services\Connectors\ZohoConnector;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Nwidart\Modules\Support\ModuleServiceProvider;
-use Illuminate\Console\Scheduling\Schedule;
 
 class InboundServiceProvider extends ModuleServiceProvider
 {
@@ -60,8 +61,15 @@ class InboundServiceProvider extends ModuleServiceProvider
      * 
      * @param $schedule
      */
-    // protected function configureSchedules(Schedule $schedule): void
-    // {
-    //     $schedule->command('inspire')->hourly();
-    // }
+    public function boot(): void
+    {
+        parent::boot();
+
+        $this->app->booted(function () {
+            $schedule = $this->app->make(Schedule::class);
+            $schedule->job(PollAdvancedMdChargesJob::class)->everyFiveMinutes()
+                ->withoutOverlapping()
+                ->onOneServer();
+        });
+    }
 }

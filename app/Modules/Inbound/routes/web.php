@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Inbound\Http\Controllers\AdvancedMdIntegrationController;
 use Modules\Inbound\Http\Controllers\ClientConfigController;
 use Modules\Inbound\Http\Controllers\MindbodyController;
 use Modules\Inbound\Http\Controllers\PmsAuthController;
@@ -103,6 +104,12 @@ Route::middleware('web')->group(function (): void {
         Route::post('/connect', [MindbodyController::class, 'connect'])->name('connect');
         Route::post('/disconnect', [MindbodyController::class, 'disconnect'])->name('disconnect');
         Route::post('/settings', [MindbodyController::class, 'saveSettings'])->name('settings');
+    });
+
+    Route::prefix('inbound/advancedmd')->name('inbound.advancedmd.')->middleware(['merchant.auth', 'no-cache'])->group(function (): void {
+        Route::get('/', [AdvancedMdIntegrationController::class, 'show'])->name('page');
+        Route::post('/connect', [AdvancedMdIntegrationController::class, 'connect'])->name('connect');
+        Route::post('/disconnect', [AdvancedMdIntegrationController::class, 'disconnect'])->name('disconnect');
     });
 
 

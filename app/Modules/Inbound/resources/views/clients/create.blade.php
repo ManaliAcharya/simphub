@@ -187,6 +187,12 @@
                             </div>
                             <div class="tile-name">Mindbody</div>
                         </div>
+                        <div class="tile pms {{ old('client_pms') === 'ADVANCEDMD' ? 'selected' : '' }}" data-value="ADVANCEDMD" onclick="selectPMS(this)">
+                            <div class="logo-box">
+                                <div style="width:40px;height:40px;border-radius:8px;background:#eef2ff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#4338ca;letter-spacing:-.5px;">AMD</div>
+                            </div>
+                            <div class="tile-name">AdvancedMD</div>
+                        </div>
                     </div>
                 </div>
 
@@ -279,10 +285,10 @@
 </div>
 
 <script>
-    const pmsInput       = document.getElementById('client_pms_input');
+    const pmsInput        = document.getElementById('client_pms_input');
     const zohoRegionField = document.getElementById('zoho-region-field');
     const zohoRegionInput = document.getElementById('zoho_region_input');
-    const pmsRow         = document.getElementById('pms-row');
+    const pmsRow          = document.getElementById('pms-row');
 
     // ── Integration type ────────────────────────────────────
     window.setIntegrationType = function (type) {
