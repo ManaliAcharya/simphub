@@ -54,7 +54,7 @@ class PayaSandboxChargeService
         \Log::debug('Paya direct charge request', ['method' => $processMethod, 'xml' => $xml]);
         $processResult = $client->__soapCall($processMethod, [['DataPacket' => $xml]]);
         $rawResult = (string) ($processResult->{$processMethod.'Result'} ?? '');
-        \Log::debug('Paya direct charge response', ['raw' => $rawResult]);
+        \Log::debug('Paya direct charge response', ['method' => $processMethod, 'raw' => $rawResult]);
 
         return $this->parseChargeResponse($rawResult, $paymentInfo->Identifier ?? 'A');
     }
@@ -84,9 +84,11 @@ class PayaSandboxChargeService
         }
 
         $processResult = $client->__soapCall($processMethod, [['DataPacket' => $xml]]);
+        $rawResult = (string) ($processResult->{$processMethod.'Result'} ?? '');
+        \Log::debug('Paya token charge response', ['method' => $processMethod, 'raw' => $rawResult]);
 
         return $this->parseChargeResponse(
-            (string) ($processResult->{$processMethod.'Result'} ?? ''),
+            $rawResult,
             $paymentInfo->Identifier ?? 'A',
         );
     }
@@ -158,6 +160,9 @@ class PayaSandboxChargeService
             'DL_STATE'     => $paymentInfo->DLState,
             'DL_NUMBER'    => $paymentInfo->DLNumber,
         ] as $name => $value) {
+            if (in_array($name, ['DL_STATE', 'DL_NUMBER'], true) && trim((string) $value) === '') {
+                continue;
+            }
             $consumer->appendChild($dom->createElement($name, (string) $value));
         }
         $consumer->appendChild($dom->createElement('COURTESY_CARD_ID'));
@@ -235,6 +240,11 @@ class PayaSandboxChargeService
             'DL_STATE' => $paymentInfo->DLState,
             'DL_NUMBER' => $paymentInfo->DLNumber,
         ] as $name => $value) {
+            // Skip DL fields when not configured — terminals with DLOptional schema
+            // reject any DL value that doesn't match the state mask, so omit rather than guess.
+            if (in_array($name, ['DL_STATE', 'DL_NUMBER'], true) && trim((string) $value) === '') {
+                continue;
+            }
             $consumer->appendChild($dom->createElement($name, (string) $value));
         }
         $consumer->appendChild($dom->createElement('COURTESY_CARD_ID'));
@@ -292,8 +302,8 @@ class PayaSandboxChargeService
             'State' => env('PAYA_STATE', 'TN'),
             'Zip' => env('PAYA_ZIP', '38103'),
             'PhoneNumber' => env('PAYA_PHONE_NUMBER', '9015551212'),
-            'DLState' => env('PAYA_DL_STATE', 'TN'),
-            'DLNumber' => env('PAYA_DL_NUMBER', '12345'),
+            'DLState' => env('PAYA_DL_STATE', ''),
+            'DLNumber' => env('PAYA_DL_NUMBER', ''),
         ];
     }
 

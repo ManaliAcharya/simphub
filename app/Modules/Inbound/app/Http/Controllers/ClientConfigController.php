@@ -114,7 +114,7 @@ class ClientConfigController extends Controller
                 ->withInput();
         }
 
-        $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
+$isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
 
         $client = Client::query()->create([
             'pms_client_id'            => (string) Str::uuid(),
@@ -155,12 +155,13 @@ class ClientConfigController extends Controller
         }
 
         $provider = match ($client->client_pms) {
-            'ZOHO'       => 'zoho',
-            'QUICKBOOKS' => 'quickbooks',
-            'WAVE'       => 'wave',
-            'MINDBODY'   => 'mindbody',
-            'CUSTOM'     => 'custom',
-            default      => 'clio',
+            'ZOHO'        => 'zoho',
+            'QUICKBOOKS'  => 'quickbooks',
+            'WAVE'        => 'wave',
+            'MINDBODY'    => 'mindbody',
+            'ADVANCEDMD'  => 'advancedmd',
+            'CUSTOM'      => 'custom',
+            default       => 'clio',
         };
 
         return redirect()->route('inbound.clients.created', [

@@ -17,6 +17,11 @@ class QuickBooksWebhookService
 
     public function handleIncoming(Request $request): Response
     {
+        Log::info('QuickBooks webhook: received', [
+            'has_signature_header' => $request->hasHeader('intuit-signature'),
+            'raw_body'             => $request->getContent(),
+        ]);
+
         // Verify the intuit-signature header using the webhook verifier token.
         $verifierToken = (string) config('services.quickbooks.webhook_verifier_token', '');
 
@@ -26,6 +31,8 @@ class QuickBooksWebhookService
             $expected  = base64_encode(hash_hmac('sha256', $payload, $verifierToken, true));
 
             if (! hash_equals($expected, $signature)) {
+                Log::warning('QuickBooks webhook: signature verification failed');
+
                 return response()->json(['message' => 'Invalid QuickBooks webhook signature.'], 401);
             }
         }
@@ -37,12 +44,20 @@ class QuickBooksWebhookService
             $entities = (array) Arr::get($notification, 'dataChangeEvent.entities', []);
 
             if ($realmId === '' || empty($entities)) {
+                Log::info('QuickBooks webhook: notification skipped — missing realmId or entities', [
+                    'realm_id' => $realmId,
+                ]);
+
                 continue;
             }
 
             $connection = $this->findConnectionByRealmId($realmId);
 
             if (! $connection) {
+                Log::warning('QuickBooks webhook: no matching connection for realmId', [
+                    'realm_id' => $realmId,
+                ]);
+
                 continue;
             }
 

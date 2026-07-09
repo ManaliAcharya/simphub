@@ -12,14 +12,14 @@ class InternalInboundApiCaller
 {
     public function callInvoiceIngestion(string $source, array $payload): array
     {
-        $body = json_encode($payload, JSON_THROW_ON_ERROR);
-
+        // Pass payload as form POST parameters so $request->input() works
+        // reliably in sub-requests. JSON body via app()->handle() is not
+        // parsed consistently in Laravel 11 sub-request handling.
         $request = Request::create(
             uri: "/api/v1/inbound/invoices/{$source}",
             method: 'POST',
-            content: $body,
+            parameters: $payload,
             server: [
-                'CONTENT_TYPE' => 'application/json',
                 'HTTP_ACCEPT' => 'application/json',
             ],
         );
