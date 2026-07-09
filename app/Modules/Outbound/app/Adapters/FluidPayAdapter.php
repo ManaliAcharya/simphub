@@ -28,6 +28,11 @@ class FluidPayAdapter implements GatewayAdapterInterface
             return GatewayResponse::declined('FluidPay API key is not configured.');
         }
 
+        \Log::debug('FluidPay charge attempt', [
+            'base_url'    => $baseUrl,
+            'api_key_prefix' => substr($apiKey, 0, 10).'...',
+        ]);
+
         $httpResponse = Http::withHeaders(['Authorization' => $apiKey])
             ->timeout(45)
             ->post("{$baseUrl}/api/transaction", [
