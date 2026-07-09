@@ -28,8 +28,8 @@ class FluidPayAdapter implements GatewayAdapterInterface
             return GatewayResponse::declined('FluidPay API key is not configured.');
         }
 
-        $raw = Http::withHeaders(['Authorization' => $apiKey])
-            ->timeout(180)
+        $httpResponse = Http::withHeaders(['Authorization' => $apiKey])
+            ->timeout(45)
             ->post("{$baseUrl}/api/transaction", [
                 'type'           => 'sale',
                 'amount'         => $request->amountInCents,
@@ -37,12 +37,22 @@ class FluidPayAdapter implements GatewayAdapterInterface
                 'payment_method' => [
                     'token' => $request->token,
                 ],
-            ])
-            ->throw()
-            ->json();
+            ]);
+
+        $raw = $httpResponse->json() ?? [];
+
+        if (! $httpResponse->successful()) {
+            $msg = (string) ($raw['msg'] ?? $raw['message'] ?? "FluidPay API error (HTTP {$httpResponse->status()})");
+            \Log::error('FluidPay charge HTTP error', [
+                'status'  => $httpResponse->status(),
+                'base_url' => $baseUrl,
+                'msg'     => $msg,
+            ]);
+            return GatewayResponse::declined($msg, null, $raw);
+        }
 
         // Response shape: { status, msg, data: { id, response, response_code, ... } }
-        $data         = $raw['data'] ?? $raw;
+        $data          = $raw['data'] ?? $raw;
         $transactionId = (string) ($data['id'] ?? '');
         $responseCode  = (int)    ($data['response_code'] ?? 0);
         $responseText  = (string) ($data['response'] ?? $raw['msg'] ?? 'Unknown error');
@@ -73,11 +83,16 @@ class FluidPayAdapter implements GatewayAdapterInterface
 
         $body = ['amount' => $request->amountInCents];
 
-        $raw = Http::withHeaders(['Authorization' => $apiKey])
-            ->timeout(180)
-            ->post("{$baseUrl}/api/transaction/{$request->gatewayTxnId}/refund", $body)
-            ->throw()
-            ->json();
+        $httpResponse = Http::withHeaders(['Authorization' => $apiKey])
+            ->timeout(45)
+            ->post("{$baseUrl}/api/transaction/{$request->gatewayTxnId}/refund", $body);
+
+        $raw = $httpResponse->json() ?? [];
+
+        if (! $httpResponse->successful()) {
+            $msg = (string) ($raw['msg'] ?? $raw['message'] ?? "FluidPay API error (HTTP {$httpResponse->status()})");
+            return GatewayResponse::declined($msg, null, $raw);
+        }
 
         $data         = $raw['data'] ?? $raw;
         $transactionId = (string) ($data['id'] ?? '');
@@ -107,11 +122,16 @@ class FluidPayAdapter implements GatewayAdapterInterface
             return GatewayResponse::declined('FluidPay API key is not configured.');
         }
 
-        $raw = Http::withHeaders(['Authorization' => $apiKey])
+        $httpResponse = Http::withHeaders(['Authorization' => $apiKey])
             ->timeout(30)
-            ->post("{$baseUrl}/api/transaction/{$gatewayTxnId}/void")
-            ->throw()
-            ->json();
+            ->post("{$baseUrl}/api/transaction/{$gatewayTxnId}/void");
+
+        $raw = $httpResponse->json() ?? [];
+
+        if (! $httpResponse->successful()) {
+            $msg = (string) ($raw['msg'] ?? $raw['message'] ?? "FluidPay API error (HTTP {$httpResponse->status()})");
+            return GatewayResponse::declined($msg, null, $raw);
+        }
 
         $data         = $raw['data'] ?? $raw;
         $transactionId = (string) ($data['id'] ?? $gatewayTxnId);

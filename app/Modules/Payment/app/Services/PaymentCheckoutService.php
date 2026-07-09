@@ -366,20 +366,32 @@ class PaymentCheckoutService
             'billing_keys' => array_keys($billing),
         ]);
 
-        $response = $this->gateways->make($decision->gateway)->charge(new ChargeRequest(
-            token: $token,
-            amountInCents: $totalAmountCents,
-            currency: (string) $invoice->currency,
-            idempotencyKey: (string) $session->idempotency_key,
-            midCredentials: $decision->midCredentials,
-            billing: $billing,
-            metadata: [
+        try {
+            $response = $this->gateways->make($decision->gateway)->charge(new ChargeRequest(
+                token: $token,
+                amountInCents: $totalAmountCents,
+                currency: (string) $invoice->currency,
+                idempotencyKey: (string) $session->idempotency_key,
+                midCredentials: $decision->midCredentials,
+                billing: $billing,
+                metadata: [
+                    'invoice_id' => $invoice->id,
+                    'payment_session_id' => $session->id,
+                    'routing_rule_id' => $routingRuleId,
+                ],
+                transactionType: $transactionType,
+            ));
+        } catch (\Throwable $e) {
+            $session->forceFill(['status' => 'FAILED'])->save();
+            $invoice->forceFill(['status' => 'FAILED', 'pms_sync_status' => 'FAILED'])->save();
+            $this->idempotency->fail((string) $session->idempotency_key);
+            \Log::error('PaymentCheckoutService: charge threw exception', [
+                'gateway'    => $decision->gateway,
                 'invoice_id' => $invoice->id,
-                'payment_session_id' => $session->id,
-                'routing_rule_id' => $routingRuleId,
-            ],
-            transactionType: $transactionType,
-        ));
+                'error'      => $e->getMessage(),
+            ]);
+            throw new RuntimeException('Payment could not be processed: '.$e->getMessage(), 0, $e);
+        }
 
         \Log::debug('PaymentCheckoutService: charge response', [
             'approved' => $response->approved,
