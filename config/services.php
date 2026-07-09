@@ -102,10 +102,14 @@ return [
     ],
 
     'fluidpay' => [
-        'base_url'      => rtrim(env('FLUIDPAY_BASE_URL', 'https://sandbox.fluidpay.com'), '/'),
-        'tokenizer_url' => env('FLUIDPAY_TOKENIZER_URL'),
-        'public_key'    => env('FLUIDPAY_PUBLIC_KEY'),
-        'api_key'       => env('FLUIDPAY_API_KEY'),
+        'base_url'              => rtrim(env('FLUIDPAY_BASE_URL', 'https://sandbox.fluidpay.com'), '/'),
+        'base_url_production'   => rtrim(env('FLUIDPAY_BASE_URL_PRODUCTION', 'https://app.fluidpay.com'), '/'),
+        'tokenizer_url'             => env('FLUIDPAY_TOKENIZER_URL'),
+        'tokenizer_url_production'  => env('FLUIDPAY_TOKENIZER_URL_PRODUCTION'),
+        'public_key'            => env('FLUIDPAY_PUBLIC_KEY'),
+        'public_key_production' => env('FLUIDPAY_PUBLIC_KEY_PRODUCTION'),
+        'api_key'               => env('FLUIDPAY_API_KEY'),
+        'api_key_production'    => env('FLUIDPAY_API_KEY_PRODUCTION'),
     ],
 
     'wave' => [
