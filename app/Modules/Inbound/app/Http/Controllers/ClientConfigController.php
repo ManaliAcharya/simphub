@@ -14,6 +14,7 @@ use Modules\Auth\Services\InvitationService;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClientMidRoute;
 use Modules\Inbound\Models\EmailConfiguration;
+use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Services\ZohoRegionResolver;
 use Modules\Routing\Models\RoutingRule;
 use Modules\Routing\Models\TerminalConfiguration;
@@ -183,6 +184,29 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
             : null;
 
         return view('inbound::clients.created', compact('client', 'shareUrl', 'provider'));
+    }
+
+    public function redirectAction(string $pmsClientId): RedirectResponse
+    {
+        $connection = PmsConnection::query()
+            ->where('pms_client_id', $pmsClientId)
+            ->orderByDesc('updated_at')
+            ->first();
+
+        $provider = $connection?->provider ?? 'clio';
+
+        $routeName = match ($provider) {
+            'quickbooks' => 'inbound.quickbooks.page',
+            'zoho'       => 'inbound.zoho.page',
+            'lawcus'     => 'inbound.lawcus.page',
+            'wave'       => 'inbound.wave.page',
+            'mindbody'   => 'inbound.mindbody.page',
+            'advancedmd' => 'inbound.advancedmd.page',
+            'custom'     => 'inbound.clients.api-docs',
+            default      => 'inbound.clio.page',
+        };
+
+        return redirect()->route($routeName, ['pms_client_id' => $pmsClientId]);
     }
 
     public function updateWebhookUrl(Request $request, string $pmsClientId): RedirectResponse

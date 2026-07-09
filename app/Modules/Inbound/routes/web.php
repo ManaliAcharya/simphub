@@ -38,6 +38,9 @@ Route::middleware('web')->group(function (): void {
             Route::post('/{pms_client_id}/email-config', [ClientConfigController::class, 'updateEmailConfig'])->name('update-email-config');
             Route::get('/terminal-created', [TerminalClientController::class, 'created'])->name('terminal-created');
             Route::get('/api-docs', [CustomPmsController::class, 'apiDocs'])->name('api-docs');
+            Route::get('/{pms_client_id}/{action}', [ClientConfigController::class, 'redirectAction'])
+                ->where('action', 'email-config|fees|gateways|gateway-credentials|webhook-url|notification-settings|qb-settings|mid-routes|logo')
+                ->name('redirect-action');
         });
     });
 
