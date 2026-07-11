@@ -547,8 +547,8 @@ class SyncInvoicePaidListener
             $paymentPayload =
             [
                 "allowTransactionDuplicates" => $transaction->allowTransactionDuplicates,
-                "appointmentId" => $transaction->appointment_id,
-                "carrierId" => $transaction->carrier_id,
+                "appointmentId" => $invoice->visit_id,
+                "carrierId" => null,
                 "charges" => [],
                 "checkId" => null,
                 "checkNumber" => "",
@@ -563,14 +563,14 @@ class SyncInvoicePaidListener
                 "depositDate" => now()->format('Y-m-d'),
                 "patientId" => $transaction->patient_id,
                 "paySource" => 2,
-                "paymentAmount" => $transaction->amount,
+                "paymentAmount" => $totalCents,
                 "paymentCode" => "PP",
                 "paymentMethodId" => 1,
                 "postingMethod" => "Trans Entry",
                 "profileId" => "prof5",
                 "respPartyId" => "resp6984505",
                 "transactionId" => null,
-                "unappliedPaymentAmount" => $transaction->amount,
+                "unappliedPaymentAmount" => $totalCents,
                 "unappliedVisitId" => $invoice->visit_id,
                 "zipCode" => "15136",
             ];
