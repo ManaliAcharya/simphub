@@ -600,41 +600,9 @@ class PaymentCheckoutService
 
     private function payaAvailability(Invoice $invoice): array
     {
-        // Custom and Wave always use static ACH credentials — no customer fields required.
-        if (in_array((string) $invoice->pms_source, ['custom', 'wave'], true)) {
-            return ['available' => true, 'reason' => null];
-        }
-
-        $details = $this->resolvePayaBankDetails($invoice);
-
-        if ($details['missing'] !== []) {
-            $refreshed = $this->refreshCustomerPayload($invoice);
-
-            if ($refreshed !== null) {
-                $refreshed->save();
-                $details = $this->resolvePayaBankDetails($refreshed);
-            }
-        }
-
-        if ($details['missing'] !== []) {
-            // Fall back to env-configured default ACH credentials before marking unavailable
-            $defaultRouting = env('PAYA_ROUTING_NUMBER', '');
-            $defaultAccount = env('PAYA_ACCOUNT_NUMBER', '');
-
-            if ($defaultRouting !== '' && $defaultAccount !== '') {
-                return ['available' => true, 'reason' => null];
-            }
-
-            return [
-                'available' => false,
-                'reason'    => 'Missing account number / routing number in customer custom fields.',
-            ];
-        }
-
-        return [
-            'available' => true,
-            'reason'    => null,
-        ];
+        // Customer always enters routing/account on the checkout form — no pre-fetched
+        // bank details required regardless of PMS source.
+        return ['available' => true, 'reason' => null];
     }
 
     /**

@@ -80,9 +80,9 @@ class MerchantSessionMiddleware
             ], 401);
         }
 
-        session([
-            'url.intended' => $request->getRequestUri(),
-        ]);
+        if ($request->isMethod('GET')) {
+            session(['url.intended' => $request->getRequestUri()]);
+        }
 
         return redirect()->route('auth.login');
     }

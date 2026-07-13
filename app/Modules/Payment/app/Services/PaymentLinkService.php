@@ -9,6 +9,7 @@ use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\EmailConfiguration;
+use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Payment\Mail\PaymentLinkAdminMail;
 use Modules\Payment\Mail\PaymentLinkMail;
 
@@ -77,10 +78,11 @@ class PaymentLinkService
         // stays set; an admin can null-out payment_link_sent_at to trigger a resend.
         $paymentUrl  = $this->urlForSession($session);
         $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
+        $fromName    = $this->resolveFromName($invoice, $client);
         $sent        = 0;
 
         foreach ($toCustomer as $email) {
-            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent, false, $emailConfig));
+            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent, false, $emailConfig, $fromName));
             $sent++;
         }
 
@@ -128,10 +130,11 @@ class PaymentLinkService
 
         $paymentUrl  = $this->urlForSession($session);
         $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
+        $fromName    = $this->resolveFromName($invoice, $client);
         $sent        = 0;
 
         foreach ($toCustomer as $email) {
-            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent, true, $emailConfig));
+            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent, true, $emailConfig, $fromName));
             $sent++;
         }
 
@@ -146,5 +149,21 @@ class PaymentLinkService
     private function baseUrl(): string
     {
         return rtrim((string) config('services.payment.host_url', config('app.url')), '/');
+    }
+
+    private function resolveFromName(Invoice $invoice, ?Client $client): ?string
+    {
+        if ((string) $invoice->pms_source !== 'quickbooks' || $client === null) {
+            return null;
+        }
+
+        $connection = QuickBooksConnection::query()
+            ->where('provider', 'quickbooks')
+            ->where('pms_client_id', $client->pms_client_id)
+            ->first();
+
+        $name = $connection?->companyName() ?? '';
+
+        return $name !== '' ? $name : null;
     }
 }

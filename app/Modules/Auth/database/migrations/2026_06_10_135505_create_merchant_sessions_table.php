@@ -16,7 +16,7 @@ return new class extends Migration
             $table->uuid('client_account_id');
             $table->string('session_token_hash')->unique();
             $table->timestamp('last_activity_at');
-            $table->timestamp('absolute_expires_at');
+            $table->timestamp('absolute_expires_at')->nullable();
             $table->string('ip_address')->nullable();
             $table->text('user_agent')->nullable();
             $table->timestamp('revoked_at')->nullable();

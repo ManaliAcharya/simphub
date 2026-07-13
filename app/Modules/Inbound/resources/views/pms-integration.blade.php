@@ -837,6 +837,19 @@
     @php $emailConfig = $client->emailConfiguration; @endphp
     <div id="cc-panel-email" class="cc-tab-panel">
 
+        @if($provider === 'quickbooks' && !empty($company_name))
+        {{-- From Name (read-only, derived from QB company) --}}
+        <div class="cc-card" style="background:var(--cc-bg-2,#f9fafb);border:1px solid var(--cc-border);">
+            <div class="cc-card-title">From Name</div>
+            <div class="cc-card-desc">Payment link emails are sent with this name in the <strong>From</strong> field — pulled automatically from your QuickBooks company name.</div>
+            <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+                <input type="text" value="{{ $company_name }}" disabled
+                       style="flex:1;max-width:340px;background:var(--cc-bg,#fff);color:var(--cc-text-2,#6b7280);cursor:not-allowed;opacity:.85;">
+                <span style="font-size:12px;color:var(--cc-text-3,#9ca3af);">Not editable — synced from QuickBooks</span>
+            </div>
+        </div>
+        @endif
+
         <form method="POST" action="{{ route('inbound.clients.update-email-config', $client->pms_client_id) }}">
             @csrf
 

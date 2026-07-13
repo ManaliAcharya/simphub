@@ -28,6 +28,7 @@ class PaymentLinkMail extends Mailable
         public ?string $pdfContent = null,
         public bool $isResend = false,
         public ?EmailConfiguration $emailConfig = null,
+        public ?string $fromName = null,
     ) {}
 
     public function envelope(): Envelope
@@ -52,7 +53,11 @@ class PaymentLinkMail extends Mailable
             $replyTo = [new Address($this->emailConfig->reply_to_email, $this->emailConfig->reply_to_name ?? '')];
         }
 
-        return new Envelope(subject: $subject, replyTo: $replyTo);
+        $from = $this->fromName
+            ? new Address((string) config('mail.from.address'), $this->fromName)
+            : null;
+
+        return new Envelope(from: $from, subject: $subject, replyTo: $replyTo);
     }
 
     public function content(): Content
