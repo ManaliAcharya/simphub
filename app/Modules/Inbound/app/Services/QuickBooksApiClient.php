@@ -54,6 +54,22 @@ class QuickBooksApiClient
             : rtrim((string) config('services.quickbooks.base_url'), '/');
     }
 
+    public function fetchCompanyName(QuickBooksConnection $connection): string
+    {
+        $realmId = $connection->realmId();
+
+        try {
+            $data = $this->request($connection)
+                ->get("/companyinfo/{$realmId}", $this->minorVersion())
+                ->throw()
+                ->json();
+
+            return (string) data_get($data, 'CompanyInfo.CompanyName', '');
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
     public function fetchInvoice(QuickBooksConnection $connection, string $invoiceId): array
     {
         return $this->request($connection)

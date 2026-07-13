@@ -73,6 +73,8 @@ class QuickBooksConnector implements PmsConnectorInterface
         $qbIncomeAccounts    = [];
         $qbAccountLoadError  = null;
 
+        $companyName = '';
+
         if ($connection instanceof QuickBooksConnection && $client) {
             if ($connection->realmId() === '') {
                 $qbAccountLoadError = 'QuickBooks company (Realm ID) is missing on this connection. Please reconnect QuickBooks to fix this.';
@@ -81,8 +83,21 @@ class QuickBooksConnector implements PmsConnectorInterface
                     $freshConnection  = $this->oauth->ensureValidAccessToken($connection);
                     $qbAccounts       = $this->api->fetchChartOfAccounts($freshConnection);
                     $qbIncomeAccounts = $this->api->fetchIncomeAccounts($freshConnection);
+
+                    // Lazily populate company_name in meta if it was never stored
+                    $companyName = $connection->companyName();
+                    if ($companyName === '') {
+                        $fetched = $this->api->fetchCompanyName($freshConnection);
+                        if ($fetched !== '') {
+                            $meta = (array) ($connection->meta ?? []);
+                            $meta['company_name'] = $fetched;
+                            $connection->forceFill(['meta' => $meta])->save();
+                            $companyName = $fetched;
+                        }
+                    }
                 } catch (\Throwable $e) {
                     $qbAccountLoadError = 'Could not load QuickBooks chart of accounts: '.$e->getMessage();
+                    $companyName = $connection->companyName();
                 }
             }
         }
@@ -99,7 +114,7 @@ class QuickBooksConnector implements PmsConnectorInterface
             'connection_environment' => $connection instanceof QuickBooksConnection ? $connection->environment() : null,
             'configured_environment' => (string) data_get($client?->gateway_credentials, 'environment', 'sandbox'),
             'configured_environment_raw' => data_get($client?->gateway_credentials, 'environment'),
-            'company_name'           => $connection instanceof QuickBooksConnection ? $connection->companyName() : '',
+            'company_name'           => $companyName,
         ];
     }
 }
