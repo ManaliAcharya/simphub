@@ -5,12 +5,19 @@ use Modules\Inbound\Http\Controllers\AdvancedMdIntegrationController;
 use Modules\Inbound\Http\Controllers\ClientConfigController;
 use Modules\Inbound\Http\Controllers\MindbodyController;
 use Modules\Inbound\Http\Controllers\PmsAuthController;
+use Modules\Inbound\Http\Controllers\PmsFeatureSettingsController;
 use Modules\Inbound\Http\Controllers\PmsIntegrationController;
 use Modules\Inbound\Http\Controllers\QuickBooksAuthController;
 use Modules\Inbound\Http\Controllers\CustomPmsController;
 use Modules\Inbound\Http\Controllers\TerminalClientController;
 
 Route::middleware('web')->group(function (): void {
+
+    // ── Admin settings ────────────────────────────────────────────────────
+    Route::prefix('inbound/settings')->name('inbound.settings.')->group(function (): void {
+        Route::get('/pms-features', [PmsFeatureSettingsController::class, 'show'])->name('pms-features');
+        Route::post('/pms-features', [PmsFeatureSettingsController::class, 'update'])->name('pms-features.update');
+    });
 
     // ── Public / admin routes (no merchant login required) ────────────────
     Route::get('/setup/{provider}/{token}', [PmsIntegrationController::class, 'showByToken'])
@@ -137,6 +144,9 @@ Route::middleware('web')->group(function (): void {
                     ->name('confirm-company');
 
                 Route::post('/disconnect', [QuickBooksAuthController::class, 'disconnect'])->name('disconnect');
+
+                Route::post('/refresh-company-name', [PmsIntegrationController::class, 'refreshQbCompanyName'])
+                    ->name('refresh-company-name');
             });
 
             // Public routes

@@ -18,6 +18,7 @@ use Modules\Inbound\Services\LawcusApiClient;
 use Modules\Inbound\Services\LawcusOAuthService;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Modules\Inbound\Services\QuickBooksApiClient;
+use App\Support\PmsFeatures;
 use Modules\Routing\Models\RoutingRule;
 use Modules\Inbound\Services\QuickBooksOAuthService;
 use Modules\Inbound\Models\WaveConnection;
@@ -348,6 +349,62 @@ class PmsIntegrationController extends Controller
         ]);
     }
 
+    public function refreshQbCompanyName(
+        Request $request,
+        QuickBooksOAuthService $oauth,
+        QuickBooksApiClient $api,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'pms_client_id' => ['required', 'string'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        $connection = QuickBooksConnection::query()
+            ->where('provider', 'quickbooks')
+            ->where('pms_client_id', $client->pms_client_id)
+            ->first();
+
+        if (! $connection) {
+            return redirect()->route('inbound.quickbooks.page', [
+                'pms_client_id' => $client->pms_client_id,
+                'error'         => 'No QuickBooks connection found.',
+                'tab'           => 'email',
+            ]);
+        }
+
+        try {
+            $fresh      = $oauth->ensureValidAccessToken($connection);
+            $fetched    = $api->fetchCompanyName($fresh);
+
+            if ($fetched === '') {
+                return redirect()->route('inbound.quickbooks.page', [
+                    'pms_client_id' => $client->pms_client_id,
+                    'error'         => 'Could not retrieve company name from QuickBooks.',
+                    'tab'           => 'email',
+                ]);
+            }
+
+            $meta = (array) ($fresh->meta ?? []);
+            $meta['company_name'] = $fetched;
+            $fresh->forceFill(['meta' => $meta])->save();
+
+            return redirect()->route('inbound.quickbooks.page', [
+                'pms_client_id' => $client->pms_client_id,
+                'success'       => "Company name updated to \"{$fetched}\".",
+                'tab'           => 'email',
+            ]);
+        } catch (\Throwable $e) {
+            return redirect()->route('inbound.quickbooks.page', [
+                'pms_client_id' => $client->pms_client_id,
+                'error'         => 'Failed to refresh company name: ' . $e->getMessage(),
+                'tab'           => 'email',
+            ]);
+        }
+    }
+
     private function render(
         string $provider,
         string $pmsClientId,
@@ -404,6 +461,7 @@ class PmsIntegrationController extends Controller
             // Hide the permanent setup link card from clients who arrived via shortlink (persists through OAuth)
             'isClientSession'    => session('client_session_id') === ($client?->pms_client_id ?? null),
             'callbackUrl' => route("inbound.{$provider}.callback"),
+            'features'    => PmsFeatures::for($provider),
             ...$data,
         ]);
     }

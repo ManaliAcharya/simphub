@@ -1,13 +1,19 @@
 {{--
   Shared fee configuration form.
-  Props: $client, $formAction, $btnClass ('copy-btn' for api-docs | 'button primary' for pms)
+  Props: $client, $formAction, $btnClass, $features (optional PmsFeatures instance)
 --}}
-@props(['client', 'formAction', 'btnClass' => 'button primary'])
+@props(['client', 'formAction', 'btnClass' => 'button primary', 'features' => null])
 
 @php
-    $feeEnabled   = (bool) $client->fee_surcharge_enabled;
-    $feeMode      = $client->fee_mode ?? 'surcharge';
-    $isCd         = $feeMode === 'cash_discount';
+    $feeEnabled    = (bool) $client->fee_surcharge_enabled;
+    $allowedModes  = $features ? $features->feeModes() : ['surcharge', 'cash_discount'];
+    $feeMode       = $client->fee_mode ?? 'surcharge';
+    // If the saved mode is no longer allowed for this provider, fall back to the first allowed mode.
+    if (! in_array($feeMode, $allowedModes)) {
+        $feeMode = $allowedModes[0] ?? 'surcharge';
+    }
+    $isCd          = $feeMode === 'cash_discount';
+    $cashDiscountAllowed = in_array('cash_discount', $allowedModes);
     $cd           = (array) ($client->cash_discount_details ?? []);
 
     // Build gateway fee rows: group by fee type
@@ -51,6 +57,7 @@
                         <p style="margin:2px 0 0;font-size:12px;color:#6b7c93;">Fee is added on top of the invoice amount at checkout.</p>
                     </div>
                 </label>
+                @if($cashDiscountAllowed)
                 <label style="display:flex;gap:10px;padding:10px 13px;border:1px solid {{ $isCd ? 'rgba(19,34,56,.25)' : 'rgba(19,34,56,.1)' }};border-radius:10px;cursor:pointer;transition:border .15s;">
                     <input type="radio" name="fee_mode" value="cash_discount" {{ $isCd ? 'checked' : '' }}
                            onchange="fcfModeChange('{{ $ns }}')"
@@ -60,6 +67,7 @@
                         <p style="margin:2px 0 0;font-size:12px;color:#6b7c93;">Gateway payments include the fee. Checkout also shows a cash/check option at the original amount with your offline payment details.</p>
                     </div>
                 </label>
+                @endif
             </div>
         </div>
 

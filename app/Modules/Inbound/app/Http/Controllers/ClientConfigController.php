@@ -7,6 +7,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Storage;
+use App\Support\PmsFeatures;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -331,13 +332,14 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
 
     public function updateFees(Request $request, string $pmsClientId): RedirectResponse
     {
-        $client  = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
-        $isCd    = $request->input('fee_mode') === 'cash_discount';
-        $feeOn   = (bool) $request->input('fee_surcharge_enabled');
+        $client       = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+        $allowedModes = PmsFeatures::for(strtolower((string) $client->client_pms))->feeModes();
+        $isCd         = $request->input('fee_mode') === 'cash_discount';
+        $feeOn        = (bool) $request->input('fee_surcharge_enabled');
 
         $validated = $request->validate([
             'fee_surcharge_enabled'  => ['nullable', 'boolean'],
-            'fee_mode'               => ['nullable', 'string', Rule::in(['surcharge', 'cash_discount'])],
+            'fee_mode'               => ['nullable', 'string', Rule::in($allowedModes)],
             'cc_fee_percent'         => ['nullable', 'numeric', 'min:0', 'max:99.99'],
             'ach_fee_percent'        => ['nullable', 'numeric', 'min:0', 'max:99.99'],
             'fee_disclosure'         => [$isCd ? 'required' : 'nullable', 'string', 'max:1000'],

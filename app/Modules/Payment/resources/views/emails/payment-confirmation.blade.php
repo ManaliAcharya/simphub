@@ -19,13 +19,6 @@
     {{-- Body --}}
     <div style="padding:28px 32px 32px;">
 
-        {{-- Green checkmark --}}
-        <div style="margin-bottom:18px;">
-            <span style="display:inline-flex;align-items:center;justify-content:center;width:48px;height:48px;background:#22c55e;border-radius:50%;">
-                <span style="color:#ffffff;font-size:26px;line-height:1;font-weight:700;">&#10003;</span>
-            </span>
-        </div>
-
         {{-- Amount heading --}}
         <h1 style="margin:0 0 6px;font-size:26px;font-weight:700;color:#111827;line-height:1.2;">
             You paid {{ $currency }} {{ $invoiceAmount }}

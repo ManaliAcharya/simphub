@@ -453,6 +453,7 @@
                 :client="$client"
                 :form-action="route('inbound.clients.update-fees', $client->pms_client_id)"
                 btn-class="button primary"
+                :features="$features"
             />
         </div>
 
@@ -842,16 +843,30 @@
         <div class="cc-card" style="background:var(--cc-bg-2,#f9fafb);border:1px solid var(--cc-border);">
             <div class="cc-card-title">From Name</div>
             <div class="cc-card-desc">Payment link emails are sent with this name in the <strong>From</strong> field — pulled automatically from your QuickBooks company name.</div>
-            <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">
                 @if(!empty($company_name))
                     <input type="text" value="{{ $company_name }}" disabled
-                           style="flex:1;max-width:340px;background:var(--cc-bg,#fff);color:var(--cc-text-2,#6b7280);cursor:not-allowed;opacity:.85;">
+                           style="flex:1;max-width:320px;background:var(--cc-bg,#fff);color:var(--cc-text-2,#6b7280);cursor:not-allowed;opacity:.85;">
                     <span style="font-size:12px;color:var(--cc-text-3,#9ca3af);">Not editable — synced from QuickBooks</span>
                 @else
                     <span style="font-size:13px;color:var(--cc-text-3,#9ca3af);font-style:italic;">
-                        Not available — visit the QuickBooks Connection tab and reconnect to sync the company name.
+                        Company name not yet synced.
                     </span>
                 @endif
+
+                <form method="POST" action="{{ route('inbound.quickbooks.refresh-company-name') }}" style="margin:0;">
+                    @csrf
+                    <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                    <button type="submit" class="button"
+                            style="font-size:12px;padding:6px 14px;display:inline-flex;align-items:center;gap:6px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="23 4 23 10 17 10"></polyline>
+                            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                        </svg>
+                        Refresh from QuickBooks
+                    </button>
+                </form>
             </div>
         </div>
         @endif
