@@ -84,7 +84,7 @@ class PaymentCheckoutService
                 'success_redirect_url' => $invoice->success_redirect_url ?: null,
                 'cancel_redirect_url'  => $invoice->cancel_redirect_url ?: null,
             ],
-            'payment_options' => $options->map(function ($decision) use ($invoice, $clientGwCreds, $commonEnv) {
+            'payment_options' => $options->map(function ($decision) use ($invoice, $clientGwCreds, $commonEnv, $feeClient) {
                 $availability = strtolower((string) $decision->gateway) === 'paya'
                     ? $this->payaAvailability($invoice)
                     : ['available' => true, 'reason' => null];
