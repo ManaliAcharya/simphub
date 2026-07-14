@@ -66,13 +66,23 @@ class AdvancedMdApiClient
             fn ($c) => (string) ($c['@id'] ?? '') === $chargeId
         ) ?? ($charges[0] ?? []);
 
-        return [
+        $context = [
             'patient_id'    => (string) ($patient['@id'] ?? ''),
             'visit_id'      => (string) ($visit['@id'] ?? ''),
             'profile_id'    => (string) ($visit['@profile'] ?? ''),
             'resp_party_id' => (string) ($charge['@respparty'] ?? ''),
             'charge_id'     => (string) ($charge['@id'] ?? $chargeId),
         ];
+
+        Log::info('AdvancedMD getChargeBillingContext resolved', [
+            'requested_charge_id' => $chargeId,
+            'context'             => $context,
+            'patient_found'       => $patient !== [],
+            'visit_found'         => $visit !== [],
+            'charges_found'       => count($charges),
+        ]);
+
+        return $context;
     }
 
     /**
@@ -255,6 +265,14 @@ class AdvancedMdApiClient
     public function recordPayment(AdvancedMdPractice $practice, array $patientPayload): array
     {
         try {
+
+            Log::info('AdvancedMD Outbound Payload Debug', [
+                'practice_id' => $practice->id,
+                'office_key'  => $practice->office_key,
+                'url'         => $practice->rest_pm_url . '/transaction/payments',
+                'patient_id'  => $patientPayload['patientId'] ?? 'Missing',
+                'raw_body'    => json_encode($patientPayload),
+            ]);
 
             $response = Http::withToken($practice->session_token)
                 ->acceptJson()

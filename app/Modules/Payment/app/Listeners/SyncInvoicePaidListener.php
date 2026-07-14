@@ -590,6 +590,8 @@ class SyncInvoicePaidListener
                 "zipCode" => "15136",
             ];
 
+            Log::info('AdvancedMD outgoing payment payload', ['payload' => $paymentPayload]);
+
             $this->advancedMdApi->recordPayment($connection, $paymentPayload);
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
