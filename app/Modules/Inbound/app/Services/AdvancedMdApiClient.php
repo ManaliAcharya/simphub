@@ -7,6 +7,7 @@ use Modules\Inbound\Models\AdvancedMdPractice;
 use RuntimeException;
 use SimpleXMLElement;
 
+use Illuminate\Support\Facades\Log;
 class AdvancedMdApiClient
 {
     // ── REST PM endpoints (Bearer token, JSON response) ────────────────────────
@@ -191,6 +192,50 @@ class AdvancedMdApiClient
         ]);
 
         return $this->xmlToArray($xml);
+    }
+
+    /**
+     * Post a patient payment against one or more charges.
+     *
+     * $patientPayload must match the AMD addpayments patient structure:
+     *   @patientid, @amount, @paycode, @paymethod, @checknumber, chargelist, etc.
+     * Populate it from getChargeDetail data so all required balance fields are present.
+     *
+     * Payment method codes: 3=Visa, 4=MC, 5=Discover, 6=Amex, 7=OtherCard, 15=ACH/EFT
+     */
+    public function recordPayment(AdvancedMdPractice $practice, array $patientPayload): array
+    {
+        try {
+
+            $response = Http::withToken($practice->session_token)
+                ->acceptJson()
+                ->post(
+                    $practice->rest_pm_url . "/transaction/payments",
+                    $patientPayload
+                );
+
+            if ($response->successful()) {
+                return $response->json();
+            }
+
+            Log::warning('AdvancedMD Payment Error', [
+                'status' => $response->status(),
+                'response' => $response->body(),
+            ]);
+
+            throw new Exception(
+                $response->json('message')
+                    ?? 'Payment creation failed.'
+            );
+
+        } catch (Exception $e) {
+
+            Log::warning('PMS Exception', [
+                'message' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
     }
 
     // ── Internals ──────────────────────────────────────────────────────────────
