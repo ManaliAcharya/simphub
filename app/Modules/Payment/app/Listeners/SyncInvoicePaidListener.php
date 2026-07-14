@@ -537,16 +537,21 @@ class SyncInvoicePaidListener
             if ($totalCents <= 0) {
 
                 AuditLogger::log('AdvancedMD_DEBUG', 'invoice', $invoice->id, [
-                    'connection_id'      => $connection->id,
-                    'charge_id'        => $transaction->id,
-                    'date_changed'     => $datechanged,
+                    'connection_id' => $connection->id,
+                    'charge_id'     => $transaction->id,
                 ]);
                 throw new \RuntimeException('Zero patient balance.');
             }
 
+            // TODO: profileId, respPartyId, zipCode, appointmentId/unappliedVisitId, and the
+            // charges[] allocation are still placeholder values copied from a one-off manual
+            // test (tests/Feature/RecordPaymentTest.php) against a single known patient/charge.
+            // These need to be looked up per patient/charge (likely via getChargeDetail()) before
+            // this can reliably post payments for an arbitrary invoice — confirm the correct
+            // AMD REST field names/shape before relying on this in production.
             $paymentPayload =
             [
-                "allowTransactionDuplicates" => $transaction->allowTransactionDuplicates,
+                "allowTransactionDuplicates" => false,
                 "appointmentId" => $invoice->visit_id,
                 "carrierId" => null,
                 "charges" => [],
@@ -561,7 +566,7 @@ class SyncInvoicePaidListener
                 "creditCardToken" => null,
                 "cvnFilled" => false,
                 "depositDate" => now()->format('Y-m-d'),
-                "patientId" => $transaction->patient_id,
+                "patientId" => $invoice->external_client_id,
                 "paySource" => 2,
                 "paymentAmount" => $totalCents,
                 "paymentCode" => "PP",
@@ -585,7 +590,6 @@ class SyncInvoicePaidListener
                 'gateway'             => $transaction->gateway,
                 'gateway_txn_id'      => $transaction->gateway_txn_id,
                 'external_invoice_id' => $invoice->external_invoice_id,
-                'line_items_paid'     => count($allocations),
             ]);
         } catch (\Throwable $exception) {
             $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
