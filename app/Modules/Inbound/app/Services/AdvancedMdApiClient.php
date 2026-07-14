@@ -121,6 +121,11 @@ class AdvancedMdApiClient
         $charges  = [];
         $seenIds  = [];
 
+        // Diagnostics only — lets logs distinguish "AMD returned nothing for this
+        // window" from "AMD returned charges but none had updatestatus=N".
+        $chargeNodesSeen = 0;
+        $skippedStatuses = [];
+
         foreach ($visits as $visit) {
             $patients = $this->asNodeList($visit['patientlist']['patient'] ?? []);
 
@@ -129,10 +134,15 @@ class AdvancedMdApiClient
                 $patientName = (string) ($patient['@name'] ?? '');
 
                 foreach ($this->asNodeList($patient['chargelist']['charge'] ?? []) as $charge) {
+                    $chargeNodesSeen++;
+
                     $status   = strtoupper((string) ($charge['@updatestatus'] ?? ''));
                     $chargeId = (string) ($charge['@chargeid'] ?? $charge['@id'] ?? '');
 
                     if ($status !== 'N' || $chargeId === '' || isset($seenIds[$chargeId])) {
+                        if ($status !== 'N') {
+                            $skippedStatuses[$status] = ($skippedStatuses[$status] ?? 0) + 1;
+                        }
                         continue;
                     }
 
@@ -149,6 +159,16 @@ class AdvancedMdApiClient
                 }
             }
         }
+
+        Log::info('AdvancedMD listChargesSince result', [
+            'practice_id'       => $practice->id,
+            'datechanged'       => $datechanged,
+            'servertime'        => $servertime,
+            'visits_found'      => count($visits),
+            'charge_nodes_seen' => $chargeNodesSeen,
+            'charges_matched'   => count($charges),
+            'skipped_statuses'  => $skippedStatuses,
+        ]);
 
         return [
             'charges'    => $charges,

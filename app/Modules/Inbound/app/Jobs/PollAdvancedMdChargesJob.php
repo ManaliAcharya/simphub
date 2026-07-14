@@ -27,11 +27,17 @@ class PollAdvancedMdChargesJob implements ShouldQueue
         AdvancedMdApiClient $api,
         AdvancedMdChargeIngestionService $ingestion,
     ): void {
+        $practiceCount = AdvancedMdPractice::query()->where('is_active', true)->count();
+
+        Log::info('AdvancedMD poll job started', ['active_practices' => $practiceCount]);
+
         AdvancedMdPractice::query()
             ->where('is_active', true)
             ->each(function (AdvancedMdPractice $practice) use ($sessionService, $api, $ingestion): void {
                 $this->pollPractice($practice, $sessionService, $api, $ingestion);
             });
+
+        Log::info('AdvancedMD poll job finished', ['active_practices' => $practiceCount]);
     }
 
     private function pollPractice(
@@ -49,18 +55,52 @@ class PollAdvancedMdChargesJob implements ShouldQueue
                 ?? ($practice->last_polled_at?->format('m/d/Y g:i:s A'))
                 ?? now()->subMinutes(10)->format('m/d/Y g:i:s A');
 
+            Log::info('AdvancedMD polling practice', [
+                'practice_id' => $practice->id,
+                'office_key'  => $practice->office_key,
+                'datechanged' => $datechanged,
+            ]);
+
             $result = $api->listChargesSince($practice, $datechanged);
+
+            if (empty($result['charges'])) {
+                Log::info('AdvancedMD poll found no new charges', [
+                    'practice_id' => $practice->id,
+                    'datechanged' => $datechanged,
+                    'servertime'  => $result['servertime'],
+                ]);
+            }
+
+            $ingested = 0;
+            $skipped  = 0;
+            $failed   = 0;
 
             foreach ($result['charges'] as $charge) {
                 try {
-                    $ingestion->ingest($practice, $charge);
+                    $outcome = $ingestion->ingest($practice, $charge);
+                    if (! empty($outcome['skipped'])) {
+                        $skipped++;
+                    } else {
+                        $ingested++;
+                    }
                 } catch (\Throwable $e) {
+                    $failed++;
                     Log::error('AdvancedMD charge ingestion failed', [
                         'practice_id' => $practice->id,
                         'charge_id'   => $charge['charge_id'],
                         'error'       => $e->getMessage(),
                     ]);
                 }
+            }
+
+            if (! empty($result['charges'])) {
+                Log::info('AdvancedMD poll ingestion summary', [
+                    'practice_id' => $practice->id,
+                    'found'       => count($result['charges']),
+                    'ingested'    => $ingested,
+                    'skipped'     => $skipped,
+                    'failed'      => $failed,
+                ]);
             }
 
             $practice->forceFill([
