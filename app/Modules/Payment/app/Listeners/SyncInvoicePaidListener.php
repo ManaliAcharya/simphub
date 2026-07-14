@@ -564,9 +564,10 @@ class SyncInvoicePaidListener
                 ($transaction->cardholder_first_name ?? '') . ' ' . ($transaction->cardholder_last_name ?? '')
             ) ?: null;
 
-            // TEMP DIAGNOSTIC — force a non-null value to test whether AMD rejects a null
-            // creditCardName. Remove this line once we know either way.
-            $cardholderName = $cardholderName ?: 'Test Patient';
+            // AMD's financial fields expect plain decimal dollars, not cents — sending 7500
+            // instead of 75.00 tells AMD the patient paid $7,500.00, which is a very plausible
+            // cause of a swallowed database-level 500.
+            $totalDollars = round($totalCents / 100, 2);
 
             // TODO: zipCode has no confirmed source yet (not present in getChargeDetail's
             // response) — check the patient search/demographics payload already stored in
@@ -581,7 +582,7 @@ class SyncInvoicePaidListener
                 "charges" => [
                     [
                         "chargeId" => $billing['charge_id'],
-                        "amount"   => $totalCents,
+                        "amount"   => $totalDollars,
                     ],
                 ],
                 "checkId" => null,
@@ -597,15 +598,16 @@ class SyncInvoicePaidListener
                 "depositDate" => now()->format('Y-m-d'),
                 "patientId" => $billing['patient_id'] ?: $invoice->external_client_id,
                 "paySource" => 2,
-                "paymentAmount" => $totalCents,
+                "paymentAmount" => $totalDollars,
                 "paymentCode" => "PP",
                 "paymentMethodId" => 1,
                 "postingMethod" => "Trans Entry",
                 "profileId" => $billing['profile_id'],
                 "respPartyId" => $billing['resp_party_id'],
                 "transactionId" => null,
-                "unappliedPaymentAmount" => $totalCents,
-                "unappliedVisitId" => $billing['visit_id'],
+                // Fully applied to the single charge above, so nothing is left unapplied.
+                "unappliedPaymentAmount" => 0.00,
+                "unappliedVisitId" => null,
                 "zipCode" => "15136",
             ];
 

@@ -66,12 +66,15 @@ class AdvancedMdApiClient
             fn ($c) => (string) ($c['@id'] ?? '') === $chargeId
         ) ?? ($charges[0] ?? []);
 
+        // AMD's response IDs carry a type-prefix (charge5502389, vst9756656, prof4, resp6984505),
+        // but per AMD's API docs, inbound financial requests expect the bare numeric ID —
+        // prefixes are only for identifying object type in outbound/response payloads.
         $context = [
-            'patient_id'    => (string) ($patient['@id'] ?? ''),
-            'visit_id'      => (string) ($visit['@id'] ?? ''),
-            'profile_id'    => (string) ($visit['@profile'] ?? ''),
-            'resp_party_id' => (string) ($charge['@respparty'] ?? ''),
-            'charge_id'     => (string) ($charge['@id'] ?? $chargeId),
+            'patient_id'    => $this->stripAmdIdPrefix((string) ($patient['@id'] ?? '')),
+            'visit_id'      => $this->stripAmdIdPrefix((string) ($visit['@id'] ?? '')),
+            'profile_id'    => $this->stripAmdIdPrefix((string) ($visit['@profile'] ?? '')),
+            'resp_party_id' => $this->stripAmdIdPrefix((string) ($charge['@respparty'] ?? '')),
+            'charge_id'     => $this->stripAmdIdPrefix((string) ($charge['@id'] ?? $chargeId)),
         ];
 
         Log::info('AdvancedMD getChargeBillingContext resolved', [
@@ -227,6 +230,17 @@ class AdvancedMdApiClient
 
         // A list of nodes already has integer keys; a single node has string "@..." keys.
         return array_is_list($node) ? $node : [$node];
+    }
+
+    /**
+     * Strip AMD's object-type prefix (charge5502389 -> 5502389, vst9756656 -> 9756656,
+     * prof4 -> 4, resp6984505 -> 6984505). Per AMD's API docs, these prefixes only label
+     * the object type in outbound/response payloads — inbound financial requests expect
+     * the bare numeric ID.
+     */
+    private function stripAmdIdPrefix(string $id): string
+    {
+        return preg_replace('/^\D+/', '', $id) ?? $id;
     }
 
     /**
