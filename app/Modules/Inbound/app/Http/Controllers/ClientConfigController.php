@@ -239,6 +239,8 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
             'gateway_credentials.paya.terminal_id'    => ['nullable', 'string', 'max:50'],
             'gateway_credentials.nmi.security_key'    => ['nullable', 'string', 'max:500'],
             'gateway_credentials.nmi.public_key'      => ['nullable', 'string', 'max:500'],
+            'gateway_display_names'                   => ['nullable', 'array'],
+            'gateway_display_names.*'                 => ['nullable', 'string', 'max:60'],
         ]);
 
         $incoming = (array) ($request->input('gateway_credentials') ?? []);
@@ -270,32 +272,17 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
             }
         }
 
-        $client->update([
-            'gateway_credentials' => ! empty($stored) ? $stored : null,
-        ]);
-
-        return redirect()->back()->with('success', 'Gateway credentials saved.');
-    }
-
-    public function updateGatewayDisplayNames(Request $request, string $pmsClientId): RedirectResponse
-    {
-        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
-
-        $validated = $request->validate([
-            'gateway_display_names'              => ['nullable', 'array'],
-            'gateway_display_names.*'            => ['nullable', 'string', 'max:60'],
-        ]);
-
-        $names = collect((array) ($validated['gateway_display_names'] ?? []))
+        $displayNames = collect((array) ($request->input('gateway_display_names') ?? []))
             ->mapWithKeys(fn ($name, $gateway) => [strtolower((string) $gateway) => trim((string) $name)])
             ->filter(fn ($name) => $name !== '')
             ->all();
 
         $client->update([
-            'gateway_display_names' => ! empty($names) ? $names : null,
+            'gateway_credentials'   => ! empty($stored) ? $stored : null,
+            'gateway_display_names' => ! empty($displayNames) ? $displayNames : null,
         ]);
 
-        return redirect()->back()->with('success', 'Payment method names saved.');
+        return redirect()->back()->with('success', 'Gateway credentials saved.');
     }
 
     public function updateGateways(Request $request, string $pmsClientId): RedirectResponse

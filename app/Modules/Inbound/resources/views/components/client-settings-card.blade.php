@@ -133,6 +133,7 @@
             @php
                 $gwCreds = (array) ($client->gateway_credentials ?? []);
                 $activeGateways = array_map('strtolower', $client->allowed_payment_gateways ?? []);
+                $displayNames   = (array) ($client->gateway_display_names ?? []);
                 $credDefs = [
                     'fluidpay' => [
                         ['key' => 'api_key',     'label' => 'Private Key',   'type' => 'password'],
@@ -180,6 +181,21 @@
                         <div style="background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;padding:14px;">
                             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7c93;margin-bottom:10px;">{{ strtoupper($gw) }}</div>
                             <div style="display:grid;gap:8px;">
+                                <div class="cc-field" style="margin:0;">
+                                    <label>
+                                        Display Name
+                                        <span class="csc-tip-wrap">
+                                            <span class="csc-tip-icon">i</span>
+                                            <span class="csc-tip-box">Shown to the customer on the payment page instead of "{{ strtoupper($gw) }}" (e.g. "Credit Card", "Bank Transfer"). Leave blank to show the gateway name.</span>
+                                        </span>
+                                    </label>
+                                    <input type="text"
+                                           name="gateway_display_names[{{ $gw }}]"
+                                           value="{{ $displayNames[$gw] ?? '' }}"
+                                           placeholder="{{ strtoupper($gw) }}"
+                                           maxlength="60"
+                                           style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
+                                </div>
                                 @foreach($credDefs[$gw] as $field)
                                 @php
                                     $isConfigured = !empty($gwCreds[$gw][$field['key']] ?? null);
@@ -210,44 +226,6 @@
             </div>
             @endif
             @endif {{-- showGateways + compact --}}
-
-            {{-- Payment Method Display Names --}}
-            @if($compact && $showGateways)
-            @php
-                $activeGatewaysForNames = array_map('strtolower', $client->allowed_payment_gateways ?? []);
-                $displayNames           = (array) ($client->gateway_display_names ?? []);
-            @endphp
-            @if(count($activeGatewaysForNames))
-            <div class="cc-card">
-                <div style="display:flex;align-items:center;margin-bottom:6px;">
-                    <div class="cc-card-title">Payment Method Names</div>
-                    <span class="csc-tip-wrap" style="margin-left:6px;">
-                        <span class="csc-tip-icon">i</span>
-                        <span class="csc-tip-box">Rename how each gateway appears to the customer on the payment page (e.g. "Credit Card" for FluidPay, "Bank Transfer" for Paya). Leave blank to show the gateway name.</span>
-                    </span>
-                </div>
-                <div class="cc-card-desc">This name replaces the gateway name shown to customers on the invoice payment page.</div>
-
-                <form method="POST" action="{{ route('inbound.clients.update-gateway-display-names', $client->pms_client_id) }}">
-                    @csrf
-                    <div style="display:grid;gap:10px;">
-                        @foreach($activeGatewaysForNames as $gw)
-                        <div class="cc-field" style="margin:0;">
-                            <label>{{ strtoupper($gw) }}</label>
-                            <input type="text"
-                                   name="gateway_display_names[{{ $gw }}]"
-                                   value="{{ $displayNames[$gw] ?? '' }}"
-                                   placeholder="{{ strtoupper($gw) }}"
-                                   maxlength="60"
-                                   style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
-                        </div>
-                        @endforeach
-                    </div>
-                    <button type="submit" class="button primary" style="font-size:12px;padding:7px 16px;margin-top:14px;">Save names</button>
-                </form>
-            </div>
-            @endif
-            @endif {{-- showGateways + compact: display names --}}
 
             {{-- Company Logo --}}
             @if($showLogo)
