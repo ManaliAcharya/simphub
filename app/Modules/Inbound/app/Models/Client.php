@@ -24,6 +24,7 @@ class Client extends Model
             'allowed_payment_gateways' => 'array',
             'paused_payment_gateways'  => 'array',
             'gateway_credentials'      => 'encrypted:array',
+            'gateway_display_names'    => 'array',
             'allowed_terminals'        => 'array',
             'fee_surcharge_enabled'       => 'boolean',
             'cash_discount_details'       => 'array',
@@ -42,6 +43,14 @@ class Client extends Model
     public function usesTerminal(): bool
     {
         return ! empty($this->allowed_terminals);
+    }
+
+    public function gatewayDisplayName(string $gateway): string
+    {
+        $names = (array) ($this->gateway_display_names ?? []);
+        $name  = trim((string) ($names[strtolower($gateway)] ?? ''));
+
+        return $name !== '' ? $name : strtoupper($gateway);
     }
 
     public function account(): HasOne

@@ -342,7 +342,7 @@
             const rows = [
                 ['Invoice',        invoiceRef],
                 config.client_name ? ['Paid to', config.client_name] : null,
-                ['Payment via',    (option.gateway || '--').toUpperCase() + ' · ' + (isAch ? 'ACH' : 'Card')],
+                ['Payment via',    (option.display_name || option.gateway || '--').toString().toUpperCase() + ' · ' + (isAch ? 'ACH' : 'Card')],
                 ['Transaction ID', payload.gateway_txn_id || '--'],
             ].filter(Boolean);
 
@@ -451,7 +451,7 @@
                     if (pct > 0) {
                         const saving = Math.round(baseCents * pct / 100);
                         rows.push('<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">'
-                            + '<span>' + o.gateway.toUpperCase() + ' (' + pct + '%)</span>'
+                            + '<span>' + (o.display_name || o.gateway.toUpperCase()) + ' (' + pct + '%)</span>'
                             + '<span style="font-weight:600;">' + fmt(saving) + '</span></div>');
                     }
                 });
@@ -570,7 +570,7 @@
 
                 tile.innerHTML = [
                     '<div>',
-                    `  <p style="margin:0;font-size:14px;font-weight:600;color:#10213a;">${option.gateway.toUpperCase()} <span style="font-size:12px;font-weight:500;color:#60708a;">(${isAch ? 'ACH' : 'CC'})</span></p>`,
+                    `  <p style="margin:0;font-size:14px;font-weight:600;color:#10213a;">${(option.display_name || option.gateway.toUpperCase())} <span style="font-size:12px;font-weight:500;color:#60708a;">(${isAch ? 'ACH' : 'CC'})</span></p>`,
                     available
                         ? (feeEnabled && feePercent > 0
                             ? `  <p style="margin:3px 0 0;font-size:12px;color:#6b7c93;">Includes ${feePercent}% processing fee</p>`
@@ -744,15 +744,17 @@
                 return 'FluidPay secure tokenizer fields are ready. Card data stays inside FluidPay and only a short-lived token returns to us.';
             }
 
+            const label = option.display_name || option.gateway.toUpperCase();
+
             if (mode === 'collectjs') {
-                return `Gateway-hosted Collect.js fields are ready for ${option.gateway.toUpperCase()}.`;
+                return `Gateway-hosted Collect.js fields are ready for ${label}.`;
             }
 
             if (mode === 'direct') {
-                return `${option.gateway.toUpperCase()} will run a direct sandbox charge for the invoice amount when you confirm.`;
+                return `${label} will run a direct sandbox charge for the invoice amount when you confirm.`;
             }
 
-            return `${option.gateway.toUpperCase()} is in test mode, so a gateway token can be entered directly.`;
+            return `${label} is in test mode, so a gateway token can be entered directly.`;
         }
 
         function hideAllEntryModes() {

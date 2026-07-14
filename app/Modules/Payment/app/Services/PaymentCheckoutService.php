@@ -107,6 +107,9 @@ class PaymentCheckoutService
                 return [
                     'routing_rule_id' => $decision->routingRuleId,
                     'gateway' => $decision->gateway,
+                    'display_name' => $feeClient
+                        ? $feeClient->gatewayDisplayName($decision->gateway)
+                        : strtoupper($decision->gateway),
                     'mid' => $decision->mid,
                     'payment_method' => $decision->ruleMatches['payment_method'] ?? 'CARD',
                     'rule_matches' => $decision->ruleMatches,

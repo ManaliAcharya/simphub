@@ -277,6 +277,27 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
         return redirect()->back()->with('success', 'Gateway credentials saved.');
     }
 
+    public function updateGatewayDisplayNames(Request $request, string $pmsClientId): RedirectResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        $validated = $request->validate([
+            'gateway_display_names'              => ['nullable', 'array'],
+            'gateway_display_names.*'            => ['nullable', 'string', 'max:60'],
+        ]);
+
+        $names = collect((array) ($validated['gateway_display_names'] ?? []))
+            ->mapWithKeys(fn ($name, $gateway) => [strtolower((string) $gateway) => trim((string) $name)])
+            ->filter(fn ($name) => $name !== '')
+            ->all();
+
+        $client->update([
+            'gateway_display_names' => ! empty($names) ? $names : null,
+        ]);
+
+        return redirect()->back()->with('success', 'Payment method names saved.');
+    }
+
     public function updateGateways(Request $request, string $pmsClientId): RedirectResponse
     {
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
