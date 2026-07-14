@@ -245,6 +245,17 @@ class PaymentCheckoutService
             'routing_rule_id' => $decision->routingRuleId,
         ]);
 
+        // Payer's first/last name is required to fully process a sale on every gateway
+        // (card or ACH); billing address is optional. Captured on the checkout page and
+        // persisted onto the transaction/sale record below.
+        $cardholderFirstName = trim((string) ($extraBilling['first_name'] ?? '')) ?: null;
+        $cardholderLastName  = trim((string) ($extraBilling['last_name'] ?? '')) ?: null;
+        $billingAddress      = ! empty($extraBilling['billing_address']) ? $extraBilling['billing_address'] : null;
+
+        if (! $cardholderFirstName || ! $cardholderLastName) {
+            throw new RuntimeException('Payer first and last name are required to process this payment.');
+        }
+
         $billing = [];
         if (strtolower((string) $decision->gateway) === 'paya') {
             if (! empty($extraBilling) && isset($extraBilling['paya_bank_token'])) {
@@ -321,6 +332,14 @@ class PaymentCheckoutService
                     ];
                 }
             }
+        } elseif ($cardholderFirstName && $cardholderLastName) {
+            // Card gateways (FluidPay/NMI): pass the cardholder name (+ optional billing
+            // address) through to the processor so the sale is fully processed.
+            $billing = array_filter([
+                'first_name' => $cardholderFirstName,
+                'last_name'  => $cardholderLastName,
+                'address'    => $billingAddress,
+            ]);
         }
 
         // ── QB Multi-MID override ──────────────────────────────────────────
@@ -425,22 +444,28 @@ class PaymentCheckoutService
             throw new RuntimeException($response->message ?? 'Payment was declined.');
         }
 
-        $transaction = DB::transaction(function () use ($session, $invoice, $decision, $response, $feeCents, $totalAmountCents) {
+        $transaction = DB::transaction(function () use (
+            $session, $invoice, $decision, $response, $feeCents, $totalAmountCents,
+            $cardholderFirstName, $cardholderLastName, $billingAddress,
+        ) {
             $transaction = Transaction::query()->create([
-                'payment_session_id' => $session->id,
-                'invoice_id'         => $invoice->id,
-                'routing_rule_id'    => $decision->routingRuleId,
-                'gateway'            => $decision->gateway,
-                'mid'                => $decision->mid,
-                'gateway_txn_id'     => $response->transactionReference,
-                'gateway_token'      => (string) $response->gatewayToken,
-                'status'             => 'CAPTURED',
-                'transaction_type'   => 'debit',
-                'fund_type'          => $session->fund_type,
-                'amount_cents'       => $totalAmountCents,
-                'fee_cents'          => $feeCents,
-                'currency'           => $invoice->currency,
-                'gateway_response'   => $response->raw,
+                'payment_session_id'    => $session->id,
+                'invoice_id'            => $invoice->id,
+                'routing_rule_id'       => $decision->routingRuleId,
+                'gateway'               => $decision->gateway,
+                'mid'                   => $decision->mid,
+                'gateway_txn_id'        => $response->transactionReference,
+                'gateway_token'         => (string) $response->gatewayToken,
+                'status'                => 'CAPTURED',
+                'transaction_type'      => 'debit',
+                'fund_type'             => $session->fund_type,
+                'amount_cents'          => $totalAmountCents,
+                'fee_cents'             => $feeCents,
+                'currency'              => $invoice->currency,
+                'gateway_response'      => $response->raw,
+                'cardholder_first_name' => $cardholderFirstName,
+                'cardholder_last_name'  => $cardholderLastName,
+                'billing_address'       => $billingAddress,
             ]);
 
             $this->stateMachine->transition($session, 'COMPLETED');

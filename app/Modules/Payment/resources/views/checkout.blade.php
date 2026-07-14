@@ -35,6 +35,40 @@
                 <!-- <h3>Enter card details in the secure gateway fields</h3> -->
                 <!-- <p id="gateway-mode" class="muted"></p> -->
 
+                <div id="cardholder-fields" class="hidden" style="margin-bottom:14px;">
+                    <div class="field-row">
+                        <div class="field-plain">
+                            <label>First name</label>
+                            <input id="cardholder-first-name" type="text" autocomplete="given-name" />
+                        </div>
+                        <div class="field-plain">
+                            <label>Last name</label>
+                            <input id="cardholder-last-name" type="text" autocomplete="family-name" />
+                        </div>
+                    </div>
+                    <details style="margin-top:8px;">
+                        <summary class="muted" style="cursor:pointer;font-size:12px;">Add billing address (optional)</summary>
+                        <div class="field-plain" style="margin-top:8px;">
+                            <label>Address</label>
+                            <input id="cardholder-address1" type="text" autocomplete="billing address-line1" />
+                        </div>
+                        <div class="field-row" style="margin-top:8px;">
+                            <div class="field-plain">
+                                <label>City</label>
+                                <input id="cardholder-city" type="text" autocomplete="billing address-level2" />
+                            </div>
+                            <div class="field-plain">
+                                <label>State</label>
+                                <input id="cardholder-state" type="text" maxlength="2" autocomplete="billing address-level1" />
+                            </div>
+                        </div>
+                        <div class="field-plain" style="margin-top:8px;">
+                            <label>ZIP</label>
+                            <input id="cardholder-zip" type="text" autocomplete="billing postal-code" />
+                        </div>
+                    </details>
+                </div>
+
                 <div id="hosted-fields" class="hosted-fields hidden">
                     <div class="field">
                         <label>Card number</label>
@@ -224,6 +258,13 @@
             status: document.getElementById('session-status'),
             gatewayOptions: document.getElementById('gateway-options'),
             cardPanel: document.getElementById('card-panel'),
+            cardholderFields: document.getElementById('cardholder-fields'),
+            cardholderFirstName: document.getElementById('cardholder-first-name'),
+            cardholderLastName: document.getElementById('cardholder-last-name'),
+            cardholderAddress1: document.getElementById('cardholder-address1'),
+            cardholderCity: document.getElementById('cardholder-city'),
+            cardholderState: document.getElementById('cardholder-state'),
+            cardholderZip: document.getElementById('cardholder-zip'),
             cashDetailsPanel: document.getElementById('cash-details-panel'),
             cashDetailsContent: document.getElementById('cash-details-content'),
             hostedFields: document.getElementById('hosted-fields'),
@@ -861,6 +902,10 @@
             hideAllEntryModes();
             //els.gatewayMode.textContent = describeMode(option);
 
+            if (els.cardholderFields) {
+                els.cardholderFields.classList.remove('hidden');
+            }
+
             if (mode === 'tokenizer') {
                 await initializeFluidPay(option);
                 return;
@@ -928,6 +973,7 @@
                     routing_rule_id: state.selectedOption.routing_rule_id,
                     payment_method: state.selectedOption.payment_method || state.selectedOption.hosted_fields.metadata.payment_method || 'CARD',
                     ...(state.payaBankToken ? { paya_bank_token: state.payaBankToken } : {}),
+                    ...(state.cardholder ? state.cardholder : {}),
                 }),
             });
 
@@ -952,6 +998,25 @@
             if (!state.selectedOption) return;
 
             const mode = state.selectedOption.hosted_fields.metadata.mode;
+
+            {
+                const firstName = els.cardholderFirstName ? els.cardholderFirstName.value.trim() : '';
+                const lastName  = els.cardholderLastName  ? els.cardholderLastName.value.trim()  : '';
+                if (!firstName || !lastName) {
+                    els.submitStatus.textContent = "Please enter the payer's first and last name.";
+                    return;
+                }
+                state.cardholder = {
+                    first_name: firstName,
+                    last_name: lastName,
+                    billing_address: {
+                        address1: els.cardholderAddress1 ? els.cardholderAddress1.value.trim() : '',
+                        city:     els.cardholderCity      ? els.cardholderCity.value.trim()      : '',
+                        state:    els.cardholderState     ? els.cardholderState.value.trim()     : '',
+                        zip:      els.cardholderZip       ? els.cardholderZip.value.trim()       : '',
+                    },
+                };
+            }
 
             // Paya ACH: token from iframe postMessage OR tokenise custom form inputs
             if (mode === 'paya_ach') {

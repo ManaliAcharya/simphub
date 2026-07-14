@@ -110,15 +110,31 @@ class PaymentSessionController extends Controller
             ->firstOrFail();
 
         $request->validate([
-            'token'           => ['required', 'string'],
-            'payment_method'  => ['nullable', 'string'],
-            'routing_rule_id' => ['required', 'string'],
-            'paya_bank_token' => ['nullable', 'string'],
+            'token'                  => ['required', 'string'],
+            'payment_method'         => ['nullable', 'string'],
+            'routing_rule_id'        => ['required', 'string'],
+            'paya_bank_token'        => ['nullable', 'string'],
+            'first_name'             => ['required', 'string', 'max:100'],
+            'last_name'              => ['required', 'string', 'max:100'],
+            'billing_address'        => ['nullable', 'array'],
+            'billing_address.address1' => ['nullable', 'string', 'max:255'],
+            'billing_address.city'     => ['nullable', 'string', 'max:100'],
+            'billing_address.state'    => ['nullable', 'string', 'max:2'],
+            'billing_address.zip'      => ['nullable', 'string', 'max:10'],
         ]);
 
         $extraBilling = [];
         if ($request->filled('paya_bank_token')) {
             $extraBilling = ['paya_bank_token' => (string) $request->input('paya_bank_token')];
+        }
+
+        if ($request->filled('first_name') || $request->filled('last_name')) {
+            $extraBilling['first_name'] = (string) $request->input('first_name', '');
+            $extraBilling['last_name']  = (string) $request->input('last_name', '');
+            $extraBilling['billing_address'] = array_filter(
+                (array) $request->input('billing_address', []),
+                fn ($v) => $v !== null && trim((string) $v) !== ''
+            );
         }
 
         try {

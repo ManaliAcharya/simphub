@@ -151,6 +151,13 @@
             gap: 12px;
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
+        .field-plain {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .field-plain label { font-size: 0.85rem; }
+        .field-plain input { margin-top: 0; }
         .actions {
             margin-top: 18px;
             display: flex;
