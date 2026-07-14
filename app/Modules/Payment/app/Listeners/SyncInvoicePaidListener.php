@@ -543,18 +543,28 @@ class SyncInvoicePaidListener
                 throw new \RuntimeException('Zero patient balance.');
             }
 
-            // TODO: profileId, respPartyId, zipCode, appointmentId/unappliedVisitId, and the
-            // charges[] allocation are still placeholder values copied from a one-off manual
-            // test (tests/Feature/RecordPaymentTest.php) against a single known patient/charge.
-            // These need to be looked up per patient/charge (likely via getChargeDetail()) before
-            // this can reliably post payments for an arbitrary invoice — confirm the correct
-            // AMD REST field names/shape before relying on this in production.
+            // Look up the real per-patient/per-visit/per-charge billing IDs from AMD instead
+            // of the hardcoded test constants this used to ship with (see getChargeBillingContext
+            // docblock). zipCode still isn't sourced from anywhere confirmed — flagged below.
+            $billing = $this->advancedMdApi->getChargeBillingContext(
+                $connection,
+                (string) $invoice->external_invoice_id,
+            );
+
+            // TODO: zipCode has no confirmed source yet (not present in getChargeDetail's
+            // response) — check the patient search/demographics payload already stored in
+            // $invoice->raw_payload['patient'] for an address/zip field before relying on this.
             $paymentPayload =
             [
                 "allowTransactionDuplicates" => false,
-                "appointmentId" => $invoice->visit_id,
+                "appointmentId" => $billing['visit_id'],
                 "carrierId" => null,
-                "charges" => [],
+                "charges" => [
+                    [
+                        "chargeId" => $billing['charge_id'],
+                        "amount"   => $totalCents,
+                    ],
+                ],
                 "checkId" => null,
                 "checkNumber" => "",
                 "creditCardAuthorizationResponse" => null,
@@ -566,17 +576,17 @@ class SyncInvoicePaidListener
                 "creditCardToken" => null,
                 "cvnFilled" => false,
                 "depositDate" => now()->format('Y-m-d'),
-                "patientId" => $invoice->external_client_id,
+                "patientId" => $billing['patient_id'] ?: $invoice->external_client_id,
                 "paySource" => 2,
                 "paymentAmount" => $totalCents,
                 "paymentCode" => "PP",
                 "paymentMethodId" => 1,
                 "postingMethod" => "Trans Entry",
-                "profileId" => "prof5",
-                "respPartyId" => "resp6984505",
+                "profileId" => $billing['profile_id'],
+                "respPartyId" => $billing['resp_party_id'],
                 "transactionId" => null,
                 "unappliedPaymentAmount" => $totalCents,
-                "unappliedVisitId" => $invoice->visit_id,
+                "unappliedVisitId" => $billing['visit_id'],
                 "zipCode" => "15136",
             ];
 

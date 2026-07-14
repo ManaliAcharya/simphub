@@ -48,6 +48,34 @@ class AdvancedMdApiClient
     }
 
     /**
+     * Resolve the profile / responsible-party / visit IDs needed to post a payment
+     * against a specific charge. These are per-patient/per-visit AMD values (not
+     * fixed constants) — required before recordPayment() can post a valid payload.
+     *
+     * @return array{patient_id: string, visit_id: string, profile_id: string, resp_party_id: string, charge_id: string}
+     */
+    public function getChargeBillingContext(AdvancedMdPractice $practice, string $chargeId): array
+    {
+        $data = $this->getChargeDetail($practice, $chargeId);
+
+        $patient = $this->asNodeList($data['Results']['patientlist']['patient'] ?? [])[0] ?? [];
+        $visit   = $this->asNodeList($patient['visitlist']['visit'] ?? [])[0] ?? [];
+        $charges = $this->asNodeList($visit['chargelist']['charge'] ?? []);
+
+        $charge = collect($charges)->first(
+            fn ($c) => (string) ($c['@id'] ?? '') === $chargeId
+        ) ?? ($charges[0] ?? []);
+
+        return [
+            'patient_id'    => (string) ($patient['@id'] ?? ''),
+            'visit_id'      => (string) ($visit['@id'] ?? ''),
+            'profile_id'    => (string) ($visit['@profile'] ?? ''),
+            'resp_party_id' => (string) ($charge['@respparty'] ?? ''),
+            'charge_id'     => (string) ($charge['@id'] ?? $chargeId),
+        ];
+    }
+
+    /**
      * Return new charges (updatestatus="N") created since $datechanged, along
      * with the charge details needed to build an Invoice — the field-selector
      * blocks below request everything AdvancedMdChargeIngestionService needs,
