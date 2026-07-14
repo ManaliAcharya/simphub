@@ -2,6 +2,7 @@
 
 namespace Modules\Inbound\Services;
 
+use Exception;
 use Illuminate\Support\Facades\Http;
 use Modules\Inbound\Models\AdvancedMdPractice;
 use RuntimeException;
