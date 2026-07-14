@@ -564,6 +564,10 @@ class SyncInvoicePaidListener
                 ($transaction->cardholder_first_name ?? '') . ' ' . ($transaction->cardholder_last_name ?? '')
             ) ?: null;
 
+            // TEMP DIAGNOSTIC — force a non-null value to test whether AMD rejects a null
+            // creditCardName. Remove this line once we know either way.
+            $cardholderName = $cardholderName ?: 'Test Patient';
+
             // TODO: zipCode has no confirmed source yet (not present in getChargeDetail's
             // response) — check the patient search/demographics payload already stored in
             // $invoice->raw_payload['patient'] for an address/zip field before relying on this.
