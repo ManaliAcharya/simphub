@@ -551,9 +551,24 @@ class SyncInvoicePaidListener
                 (string) $invoice->external_invoice_id,
             );
 
+            // Pull real card details off the FluidPay response instead of sending an all-null
+            // card block for what is actually a card transaction — AMD's REST endpoint may well
+            // reject a card payment (paymentMethodId=1) that carries no card evidence at all.
+            $cardInfo = (array) data_get($transaction->gateway_response, 'data.response_body.card', []);
+            [$cardExpMonth, $cardExpYear] = array_pad(
+                explode('/', (string) ($cardInfo['expiration_date'] ?? '')),
+                2,
+                null
+            );
+            $cardholderName = trim(
+                ($transaction->cardholder_first_name ?? '') . ' ' . ($transaction->cardholder_last_name ?? '')
+            ) ?: null;
+
             // TODO: zipCode has no confirmed source yet (not present in getChargeDetail's
             // response) — check the patient search/demographics payload already stored in
             // $invoice->raw_payload['patient'] for an address/zip field before relying on this.
+            // TODO: paymentMethodId is still a guess (1) — confirm AMD's enum for "credit card"
+            // vs ACH/check before relying on this for non-card gateways (e.g. Paya).
             $paymentPayload =
             [
                 "allowTransactionDuplicates" => false,
@@ -567,11 +582,11 @@ class SyncInvoicePaidListener
                 ],
                 "checkId" => null,
                 "checkNumber" => "",
-                "creditCardAuthorizationResponse" => null,
-                "creditCardExpirationMonth" => null,
-                "creditCardExpirationYear" => null,
-                "creditCardLastFourDigits" => null,
-                "creditCardName" => null,
+                "creditCardAuthorizationResponse" => $cardInfo['auth_code'] ?? null,
+                "creditCardExpirationMonth" => $cardExpMonth,
+                "creditCardExpirationYear" => $cardExpYear,
+                "creditCardLastFourDigits" => $cardInfo['last_four'] ?? null,
+                "creditCardName" => $cardholderName,
                 "creditCardOnFileId" => null,
                 "creditCardToken" => null,
                 "cvnFilled" => false,
