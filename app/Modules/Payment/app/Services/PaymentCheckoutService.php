@@ -379,6 +379,10 @@ class PaymentCheckoutService
 
         \Log::debug('PaymentCheckoutService: dispatching charge', [
             'gateway'      => $decision->gateway,
+            'mid'          => $decision->mid,
+            'environment'  => $decision->midCredentials['environment'] ?? 'sandbox',
+            'routing_rule_id' => $decision->routingRuleId,
+            'payment_session_id' => $session->id,
             'invoice_id'   => $invoice->id,
             'pms_source'   => $invoice->pms_source,
             'amount'       => $invoice->amount_cents,
@@ -408,14 +412,22 @@ class PaymentCheckoutService
             $invoice->forceFill(['status' => 'FAILED', 'pms_sync_status' => 'FAILED'])->save();
             $this->idempotency->fail((string) $session->idempotency_key);
             \Log::error('PaymentCheckoutService: charge threw exception', [
-                'gateway'    => $decision->gateway,
-                'invoice_id' => $invoice->id,
-                'error'      => $e->getMessage(),
+                'gateway'      => $decision->gateway,
+                'mid'          => $decision->mid,
+                'environment'  => $decision->midCredentials['environment'] ?? 'sandbox',
+                'routing_rule_id' => $decision->routingRuleId,
+                'payment_session_id' => $session->id,
+                'invoice_id'   => $invoice->id,
+                'exception'    => get_class($e),
+                'error'        => $e->getMessage(),
             ]);
             throw new RuntimeException('Payment could not be processed: '.$e->getMessage(), 0, $e);
         }
 
         \Log::debug('PaymentCheckoutService: charge response', [
+            'gateway'      => $decision->gateway,
+            'mid'          => $decision->mid,
+            'payment_session_id' => $session->id,
             'approved' => $response->approved,
             'message'  => $response->message,
             'txn_ref'  => $response->transactionReference,
@@ -430,8 +442,10 @@ class PaymentCheckoutService
             ])->save();
             $this->idempotency->fail((string) $session->idempotency_key);
             AuditLogger::log('PAYMENT_DECLINED', 'payment_session', $session->id, [
-                'message' => $response->message,
-                'gateway' => $decision->gateway,
+                'message'     => $response->message,
+                'gateway'     => $decision->gateway,
+                'mid'         => $decision->mid,
+                'environment' => $decision->midCredentials['environment'] ?? 'sandbox',
             ]);
 
             if ((string) $invoice->pms_source === 'custom') {
@@ -820,6 +834,10 @@ class PaymentCheckoutService
 
         if ($gateway === 'fluidpay') {
             if (trim((string) ($midCredentials['api_key'] ?? '')) === '') {
+                \Log::error('PaymentCheckoutService: FluidPay credential validation failed', [
+                    'environment' => $midCredentials['environment'] ?? 'sandbox',
+                    'credential_keys' => array_keys($midCredentials),
+                ]);
                 throw new RuntimeException(
                     'FluidPay API key is not configured. Please set it in the Gateway Credentials or the routing rule.'
                 );

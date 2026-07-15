@@ -56,9 +56,25 @@ class RoutingEngine
 
         try {
             $midCredentials = (array) ($rule->mid_credentials ?? []);
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            \Log::error('RoutingRule: mid_credentials decrypt failed', [
+                'routing_rule_id' => $rule->id,
+                'gateway'         => $rule->gateway,
+                'mid'             => $rule->mid,
+                'error'           => $e->getMessage(),
+            ]);
             $midCredentials = [];
         }
+
+        \Log::debug('RoutingEngine: rule resolved to decision', [
+            'routing_rule_id'    => $rule->id,
+            'gateway'            => $rule->gateway,
+            'mid'                => $rule->mid,
+            'environment'        => $midCredentials['environment'] ?? 'sandbox',
+            'has_credential_override' => ! empty($midCredentials),
+            'priority'           => $rule->priority,
+            'is_fallback'        => $rule->is_fallback,
+        ]);
 
         return new RoutingDecision(
             gateway: (string) $rule->gateway,

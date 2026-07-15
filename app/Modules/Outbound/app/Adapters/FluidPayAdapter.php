@@ -22,36 +22,101 @@ class FluidPayAdapter implements GatewayAdapterInterface
             return GatewayResponse::declined('Missing payment token.');
         }
 
-        ['api_key' => $apiKey, 'base_url' => $baseUrl] = $this->resolveCredentials($request->midCredentials);
+        $resolved = $this->resolveCredentials($request->midCredentials);
+        ['api_key' => $apiKey, 'base_url' => $baseUrl, 'is_production' => $isProduction, 'source' => $credSource] = $resolved;
 
         if ($apiKey === '') {
+            \Log::error('FluidPay charge aborted: API key not configured', [
+                'environment'      => $isProduction ? 'production' : 'sandbox',
+                'base_url'         => $baseUrl,
+                'credential_source' => $credSource,
+                'invoice_id'        => $request->metadata['invoice_id'] ?? null,
+                'payment_session_id' => $request->metadata['payment_session_id'] ?? null,
+                'routing_rule_id'   => $request->metadata['routing_rule_id'] ?? null,
+            ]);
             return GatewayResponse::declined('FluidPay API key is not configured.');
         }
 
+        $startedAt = microtime(true);
+
         \Log::debug('FluidPay charge attempt', [
-            'base_url'    => $baseUrl,
-            'api_key_prefix' => substr($apiKey, 0, 10).'...',
+            'environment'        => $isProduction ? 'production' : 'sandbox',
+            'base_url'           => $baseUrl,
+            'api_key_prefix'     => substr($apiKey, 0, 10).'...',
+            'api_key_length'     => strlen($apiKey),
+            'credential_source'  => $credSource,
+            'amount_cents'       => $request->amountInCents,
+            'currency'           => $request->currency ?: 'USD',
+            'transaction_type'   => $request->transactionType,
+            'idempotency_key'    => $request->idempotencyKey,
+            'invoice_id'         => $request->metadata['invoice_id'] ?? null,
+            'payment_session_id' => $request->metadata['payment_session_id'] ?? null,
+            'routing_rule_id'    => $request->metadata['routing_rule_id'] ?? null,
         ]);
 
-        $httpResponse = Http::withHeaders(['Authorization' => $apiKey])
-            ->timeout(45)
-            ->post("{$baseUrl}/api/transaction", [
-                'type'           => 'sale',
-                'amount'         => $request->amountInCents,
-                'currency'       => $request->currency ?: 'USD',
-                'payment_method' => [
-                    'token' => $request->token,
-                ],
-            ]);
+        $payload = [
+            'type'           => 'sale',
+            'amount'         => $request->amountInCents,
+            'currency'       => $request->currency ?: 'USD',
+            'payment_method' => [
+                'token' => $request->token,
+            ],
+        ];
 
+        // Cardholder name is required for FluidPay to fully process the sale.
+        // Billing address is optional and only included when the customer supplied one.
+        $firstName = trim((string) ($request->billing['first_name'] ?? ''));
+        $lastName  = trim((string) ($request->billing['last_name'] ?? ''));
+        if ($firstName !== '' || $lastName !== '') {
+            $payload['first_name'] = $firstName;
+            $payload['last_name']  = $lastName;
+        }
+
+        $address = array_filter((array) ($request->billing['address'] ?? []));
+        if (! empty($address)) {
+            $payload['billing_address'] = array_filter([
+                'address_line_1' => $address['address1'] ?? null,
+                'city'           => $address['city'] ?? null,
+                'state'          => $address['state'] ?? null,
+                'zip'            => $address['zip'] ?? null,
+            ]);
+        }
+
+        try {
+            $httpResponse = Http::withHeaders(['Authorization' => $apiKey])
+                ->timeout(45)
+                ->post("{$baseUrl}/api/transaction", $payload);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            \Log::error('FluidPay charge connection error', [
+                'environment' => $isProduction ? 'production' : 'sandbox',
+                'base_url'    => $baseUrl,
+                'elapsed_ms'  => (int) ((microtime(true) - $startedAt) * 1000),
+                'error'       => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+
+        $elapsedMs = (int) ((microtime(true) - $startedAt) * 1000);
         $raw = $httpResponse->json() ?? [];
 
         if (! $httpResponse->successful()) {
             $msg = (string) ($raw['msg'] ?? $raw['message'] ?? "FluidPay API error (HTTP {$httpResponse->status()})");
             \Log::error('FluidPay charge HTTP error', [
-                'status'  => $httpResponse->status(),
-                'base_url' => $baseUrl,
-                'msg'     => $msg,
+                'status'      => $httpResponse->status(),
+                'environment' => $isProduction ? 'production' : 'sandbox',
+                'base_url'    => $baseUrl,
+                'credential_source' => $credSource,
+                'api_key_prefix'    => substr($apiKey, 0, 10).'...',
+                'msg'         => $msg,
+                'body'        => $raw ?: $httpResponse->body(),
+                'response_headers' => [
+                    'request-id' => $httpResponse->header('X-Request-Id') ?: $httpResponse->header('Request-Id'),
+                    'content-type' => $httpResponse->header('Content-Type'),
+                ],
+                'elapsed_ms'  => $elapsedMs,
+                'invoice_id'         => $request->metadata['invoice_id'] ?? null,
+                'payment_session_id' => $request->metadata['payment_session_id'] ?? null,
+                'routing_rule_id'    => $request->metadata['routing_rule_id'] ?? null,
             ]);
             return GatewayResponse::declined($msg, null, $raw);
         }
@@ -61,6 +126,14 @@ class FluidPayAdapter implements GatewayAdapterInterface
         $transactionId = (string) ($data['id'] ?? '');
         $responseCode  = (int)    ($data['response_code'] ?? 0);
         $responseText  = (string) ($data['response'] ?? $raw['msg'] ?? 'Unknown error');
+
+        \Log::debug('FluidPay charge HTTP response', [
+            'status'         => $httpResponse->status(),
+            'response_code'  => $responseCode,
+            'response_text'  => $responseText,
+            'transaction_id' => $transactionId,
+            'elapsed_ms'     => $elapsedMs,
+        ]);
 
         // response_code 100–199 are approvals per FluidPay docs
         if ($responseCode >= 100 && $responseCode <= 199) {
@@ -206,10 +279,13 @@ class FluidPayAdapter implements GatewayAdapterInterface
             ? config('services.fluidpay.api_key_production', '')
             : config('services.fluidpay.api_key', '');
 
+        $hasOverride = trim((string) ($midCredentials['api_key'] ?? '')) !== '';
+
         return [
             'api_key'      => (string) ($midCredentials['api_key'] ?? $apiKeyFallback),
             'base_url'     => $baseUrl,
             'is_production' => $isProduction,
+            'source'       => $hasOverride ? 'mid_credentials_override' : 'env_config_fallback',
         ];
     }
 
