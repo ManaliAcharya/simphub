@@ -16,6 +16,7 @@ class Transaction extends Model
     {
         return [
             'gateway_response' => 'array',
+            'billing_address'  => 'array',
         ];
     }
 

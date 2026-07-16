@@ -22,6 +22,13 @@ class PollAdvancedMdChargesJob implements ShouldQueue
 
     public int $tries = 1;
 
+    /**
+     * After this many consecutive failures, stop retrying a practice every 5 minutes
+     * and wait for someone to reconnect it — avoids hammering AMD's login endpoint
+     * (and worsening rate limiting) for a practice with broken credentials.
+     */
+    private const MAX_CONSECUTIVE_FAILURES = 5;
+
     public function handle(
         AdvancedMdSessionService $sessionService,
         AdvancedMdApiClient $api,
@@ -46,6 +53,17 @@ class PollAdvancedMdChargesJob implements ShouldQueue
         AdvancedMdApiClient $api,
         AdvancedMdChargeIngestionService $ingestion,
     ): void {
+        if ($practice->consecutive_poll_failures >= self::MAX_CONSECUTIVE_FAILURES) {
+            Log::warning('AdvancedMD practice poll skipped — too many consecutive failures', [
+                'practice_id'                => $practice->id,
+                'office_key'                 => $practice->office_key,
+                'consecutive_poll_failures'  => $practice->consecutive_poll_failures,
+                'last_error'                 => $practice->last_error,
+            ]);
+
+            return;
+        }
+
         try {
             $practice = $sessionService->ensureValidSession($practice);
 
@@ -104,16 +122,21 @@ class PollAdvancedMdChargesJob implements ShouldQueue
             }
 
             $practice->forceFill([
-                'last_polled_at'      => now(),
-                'last_sync_servertime'=> $result['servertime'],
-                'last_error'          => null,
+                'last_polled_at'             => now(),
+                'last_sync_servertime'       => $result['servertime'],
+                'last_error'                 => null,
+                'consecutive_poll_failures'  => 0,
             ])->save();
         } catch (\Throwable $e) {
-            $practice->forceFill(['last_error' => $e->getMessage()])->save();
+            $practice->forceFill([
+                'last_error'                => $e->getMessage(),
+                'consecutive_poll_failures' => $practice->consecutive_poll_failures + 1,
+            ])->save();
 
             Log::error('AdvancedMD practice poll failed', [
-                'practice_id' => $practice->id,
-                'error'       => $e->getMessage(),
+                'practice_id'               => $practice->id,
+                'error'                     => $e->getMessage(),
+                'consecutive_poll_failures' => $practice->consecutive_poll_failures,
             ]);
         }
     }

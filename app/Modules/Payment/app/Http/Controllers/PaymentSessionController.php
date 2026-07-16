@@ -35,7 +35,7 @@ class PaymentSessionController extends Controller
             ->where('hosted_url_token', $session)
             ->firstOrFail();
 
-        if (! in_array($paymentSession->status, ['PENDING', 'AWAITING_PAYMENT'], true)) {
+        if (! in_array($paymentSession->status, ['PENDING', 'AWAITING_PAYMENT', 'FAILED'], true)) {
             return response()->json(['message' => 'Payment session is not in a payable state.'], 422);
         }
 
@@ -77,7 +77,7 @@ class PaymentSessionController extends Controller
             ->where('hosted_url_token', $session)
             ->firstOrFail();
 
-        if (! in_array($paymentSession->status, ['PENDING', 'AWAITING_PAYMENT'], true)) {
+        if (! in_array($paymentSession->status, ['PENDING', 'AWAITING_PAYMENT', 'FAILED'], true)) {
             return response()->json(['message' => 'Payment session is not in a payable state.'], 422);
         }
 
@@ -108,6 +108,12 @@ class PaymentSessionController extends Controller
         $paymentSession = PaymentSession::query()
             ->where('hosted_url_token', $session)
             ->firstOrFail();
+
+        // Reset a previously failed session so the state machine stays consistent:
+        // FAILED → AWAITING_PAYMENT → PROCESSING (set by PaymentCheckoutService)
+        if ($paymentSession->status === 'FAILED') {
+            $paymentSession->forceFill(['status' => 'AWAITING_PAYMENT'])->save();
+        }
 
         $request->validate([
             'token'                  => ['required', 'string'],

@@ -28,6 +28,7 @@ class AdvancedMdPractice extends Model
             'session_expires_at' => 'datetime',
             'last_polled_at'     => 'datetime',
             'is_active'          => 'boolean',
+            'consecutive_poll_failures' => 'integer',
         ];
     }
 

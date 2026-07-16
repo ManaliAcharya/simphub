@@ -59,12 +59,12 @@ class NmiAdapter implements GatewayAdapterInterface
 
     public function hostedFieldsConfig(string $mid, array $midCredentials = []): HostedFieldsConfig
     {
-        $publicKey = (string) ($midCredentials['public_key'] ?? env('NMI_COLLECTJS_PUBLIC_KEY'));
+        $publicKey = (string) (($midCredentials['public_key'] ?? null) ?: config('services.nmi.collectjs_public_key', ''));
 
         return new HostedFieldsConfig(
             gateway: 'nmi',
             fields: [
-                'script_url' => env('NMI_COLLECTJS_URL', 'https://secure.networkmerchants.com/token/Collect.js'),
+                'script_url' => config('services.nmi.collectjs_url', 'https://secure.networkmerchants.com/token/Collect.js'),
                 'variant' => 'inline',
                 'placeholders' => [
                     'ccnumber' => 'Card number',

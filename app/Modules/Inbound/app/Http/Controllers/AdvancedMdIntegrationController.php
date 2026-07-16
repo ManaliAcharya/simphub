@@ -59,12 +59,13 @@ class AdvancedMdIntegrationController extends Controller
             ->first();
 
         $updateData = [
-            'app_name'           => strtoupper($validated['app_name']),
-            'username_encrypted' => $validated['username'],
-            'session_token'      => null,
-            'session_expires_at' => null,
-            'is_active'          => true,
-            'last_error'         => null,
+            'app_name'                   => strtoupper($validated['app_name']),
+            'username_encrypted'         => $validated['username'],
+            'session_token'              => null,
+            'session_expires_at'         => null,
+            'is_active'                  => true,
+            'last_error'                 => null,
+            'consecutive_poll_failures'  => 0,
         ];
 
         if (filled($validated['password'])) {

@@ -3,6 +3,7 @@
 namespace Modules\Inbound\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Modules\Inbound\Models\AdvancedMdPractice;
 use RuntimeException;
 use SimpleXMLElement;
@@ -29,7 +30,15 @@ class AdvancedMdSessionService
         $webserver = (string) ($step1Xml->Results->usercontext['webserver'] ?? '');
 
         if ($webserver === '') {
-            throw new RuntimeException('AdvancedMD partner login did not return a webserver URL.');
+            $reason = $this->extractAmdErrorMessage($step1Xml);
+            Log::warning('AdvancedMD partner login did not return a webserver URL', [
+                'practice_id'  => $practice->id,
+                'office_key'   => $practice->office_key,
+                'amd_reason'   => $reason,
+                'raw_response' => $step1Xml->asXML(),
+            ]);
+
+            throw new RuntimeException($reason ?? 'Unable to connect to AdvancedMD. Please double-check your Office Key, App Name, Username, and Password and try again.');
         }
 
         $urls = $this->parseWebserverUrl($webserver);
@@ -39,7 +48,16 @@ class AdvancedMdSessionService
         $token = (string) ($step2Xml->Results->usercontext ?? '');
 
         if ($token === '') {
-            throw new RuntimeException('AdvancedMD redirect login did not return a session token.');
+            $reason = $this->extractAmdErrorMessage($step2Xml);
+            Log::warning('AdvancedMD redirect login did not return a session token', [
+                'practice_id'  => $practice->id,
+                'office_key'   => $practice->office_key,
+                'xmlrpc_url'   => $urls['xmlrpc'],
+                'amd_reason'   => $reason,
+                'raw_response' => $step2Xml->asXML(),
+            ]);
+
+            throw new RuntimeException($reason ?? 'Unable to connect to AdvancedMD. Please double-check your Office Key, App Name, Username, and Password and try again.');
         }
 
         $practice->forceFill([
@@ -51,6 +69,30 @@ class AdvancedMdSessionService
         ])->save();
 
         return $practice->fresh();
+    }
+
+    /**
+     * AMD returns an <EXCEPTION>/<ERROR> style node with a human-readable reason when
+     * login fails (e.g. bad credentials, wrong office code) instead of a session token.
+     * Surface that instead of our own generic message whenever AMD actually tells us why.
+     */
+    private function extractAmdErrorMessage(SimpleXMLElement $xml): ?string
+    {
+        $candidates = [
+            (string) ($xml->Results->EXCEPTION->MESSAGE ?? ''),
+            (string) ($xml->Results->EXCEPTION->ERROR_MESSAGE ?? ''),
+            (string) ($xml->EXCEPTION->MESSAGE ?? ''),
+            (string) ($xml->Results->ERROR ?? ''),
+            (string) ($xml->ERROR ?? ''),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (trim($candidate) !== '') {
+                return trim($candidate);
+            }
+        }
+
+        return null;
     }
 
     private function buildLoginBody(AdvancedMdPractice $practice): array
