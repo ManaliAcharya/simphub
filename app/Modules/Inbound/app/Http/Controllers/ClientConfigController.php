@@ -19,6 +19,8 @@ use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Services\ZohoRegionResolver;
 use Modules\Routing\Models\RoutingRule;
 use Modules\Routing\Models\TerminalConfiguration;
+use Modules\Auth\Models\ClientAccount;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ClientConfigController extends Controller
 {
@@ -31,9 +33,9 @@ class ClientConfigController extends Controller
 
     public function index(): View
     {
-        $clients = Client::query()
-            ->orderBy('client_name')
-            ->get();
+        $clients = Client::with('account')
+        ->orderBy('client_name')
+        ->get();
 
         return view('inbound::clients.index', compact('clients'));
     }
@@ -581,4 +583,34 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
 
         return redirect()->back()->with('success', 'Email settings saved.');
     }
-}
+
+    public function updateStatus($clientId): RedirectResponse
+    {
+        $clientAccount = ClientAccount::where('client_id', $clientId)
+            ->firstOrFail();
+
+        $clientAccount->is_active = !$clientAccount->is_active;
+
+        $clientAccount->save();
+
+        return redirect()
+            ->route('inbound.clients.index')
+            ->with(
+                'success',
+                $clientAccount->is_active
+                    ? 'Client activated successfully.'
+                    : 'Client inactivated successfully.'
+            );
+    }
+
+    public function destroy($clientId)
+    {
+        $client = Client::where('id', $clientId)->firstOrFail();
+
+        $client->delete();
+
+        return redirect()
+            ->route('inbound.clients.index')
+            ->with('success', 'Client deleted successfully.');
+        }
+    }

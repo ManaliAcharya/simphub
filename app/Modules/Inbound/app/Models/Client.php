@@ -6,10 +6,15 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Modules\Auth\Models\ClientAccount;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Client extends Model
 {
     use HasUuids;
+
+    use SoftDeletes;
+
+    protected $dates = ['deleted_at'];
 
     protected $guarded = [];
 
@@ -39,7 +44,7 @@ class Client extends Model
     {
         return $this->hasOne(EmailConfiguration::class, 'client_id');
     }
-    
+
     public function usesTerminal(): bool
     {
         return ! empty($this->allowed_terminals);
