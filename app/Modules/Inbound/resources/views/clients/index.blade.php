@@ -489,6 +489,7 @@
                                 data-pms="{{ $pms }}">
                                 <td>
                                     <div class="client-name">{{ $client->client_name }}</div>
+                                    <div class="client-email">{{ $client->account?->email }}</div>
                                     <div style="font-size:11px;color:#9ca3af;margin-top:2px;">
                                         {{ $client->pms_client_id }}</div>
                                 </td>
