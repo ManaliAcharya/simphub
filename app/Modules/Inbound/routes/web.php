@@ -30,6 +30,11 @@ Route::middleware('web')->group(function (): void {
         Route::get('/create', [ClientConfigController::class, 'create'])->name('create');
         Route::post('/', [ClientConfigController::class, 'store'])->name('store');
         Route::get('/created', [ClientConfigController::class, 'created'])->name('created');
+
+        //New routes for delete &  inactivate client
+        Route::patch('/{client_id}',[ClientConfigController::class,'updateStatus'])->name('update-status');
+        Route::delete('/{client_id}',[ClientConfigController::class,'destroy'])->name('destroy');
+
         Route::middleware(['merchant.auth', 'no-cache'])->group(function (): void {
 
             Route::post('/{pms_client_id}/gateways', [ClientConfigController::class, 'updateGateways'])->name('update-gateways');
