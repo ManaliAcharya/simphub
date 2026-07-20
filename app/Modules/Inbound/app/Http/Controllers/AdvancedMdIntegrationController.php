@@ -63,7 +63,8 @@ class AdvancedMdIntegrationController extends Controller
             'username_encrypted'         => $validated['username'],
             'session_token'              => null,
             'session_expires_at'         => null,
-            'is_active'                  => true,
+            // Not confirmed connected until login() below actually succeeds.
+            'is_active'                  => false,
             'last_error'                 => null,
             'consecutive_poll_failures'  => 0,
         ];
@@ -88,11 +89,18 @@ class AdvancedMdIntegrationController extends Controller
         try {
             $this->session->login($practice);
 
+            $practice->forceFill(['is_active' => true])->save();
+
             return redirect()->route('inbound.advancedmd.page', [
                 'pms_client_id' => $client->pms_client_id,
                 'success'       => 'AdvancedMD connected successfully.',
             ]);
         } catch (\Throwable $e) {
+            $practice->forceFill([
+                'is_active'  => false,
+                'last_error' => $e->getMessage(),
+            ])->save();
+
             return redirect()->route('inbound.advancedmd.page', [
                 'pms_client_id' => $client->pms_client_id,
                 'error'         => 'Connection failed: ' . $e->getMessage(),

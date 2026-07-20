@@ -109,9 +109,11 @@
         </div>
         @endif
 
-        {{-- Connect / Update Credentials --}}
+        {{-- Connect AdvancedMD — only shown until a connection is verified. Once connected,
+             credentials can only be changed by disconnecting first (see Connection Status above). --}}
+        @if(! $isConnected)
         <div class="cc-card">
-            <div class="cc-card-title">{{ $isConnected ? 'Update Credentials' : 'Connect AdvancedMD' }}</div>
+            <div class="cc-card-title">Connect AdvancedMD</div>
             <div class="cc-card-desc">
                 Provide your AdvancedMD office key, partner app name, and API login credentials.
                 Credentials are stored encrypted. A session token is issued automatically and refreshed every 24 hours.
@@ -136,21 +138,22 @@
                         <label>API Username</label>
                         <input type="text" name="username"
                                value="{{ old('username') }}"
-                               placeholder="{{ $isConnected ? 'Enter new username (required)' : 'API username' }}"
+                               placeholder="API username"
                                autocomplete="off" required>
                     </div>
                     <div class="cc-field">
                         <label>API Password</label>
                         <input type="password" name="password"
-                               placeholder="{{ $isConnected ? 'Leave blank to keep current' : 'API password' }}"
+                               placeholder="API password"
                                autocomplete="new-password">
                     </div>
                 </div>
                 <button type="submit" class="button primary" style="font-size:13px;margin-top:4px;">
-                    {{ $isConnected ? 'Update & Reconnect' : 'Connect AdvancedMD' }}
+                    Connect AdvancedMD
                 </button>
             </form>
         </div>
+        @endif
 
         <x-inbound::notification-settings-form
             :client="$client"
