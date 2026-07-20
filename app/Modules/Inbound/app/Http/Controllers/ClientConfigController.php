@@ -440,10 +440,56 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
             'routes.*.environment'          => ['nullable', 'string', Rule::in(['sandbox', 'production'])],
             'routes.*.credentials'          => ['nullable', 'array'],
             'routes.*.credentials.*'        => ['nullable', 'string', 'max:1000'],
+            'routes.*.remove'               => ['nullable', 'boolean'],
         ]);
 
         // Use $request->input() for routes to ensure nested credential keys are not stripped
         $routes = $request->input('routes', []);
+
+        // Rows checked "Remove this configuration" are deleted outright and excluded from
+        // the save/validation below — the client is explicitly clearing them, so whatever
+        // else is (or isn't) filled in for that row no longer matters.
+        foreach ($routes as $route) {
+            if (empty($route['remove'])) {
+                continue;
+            }
+
+            ClientMidRoute::query()
+                ->where('client_id',  $client->id)
+                ->where('route_type', $route['route_type'] ?? null)
+                ->where('gateway',    strtolower((string) ($route['gateway'] ?? '')))
+                ->delete();
+        }
+
+        $routes = array_filter($routes, fn ($route) => empty($route['remove']));
+
+        // A row with no MID Identifier is silently skipped below (it's an unused gateway/route
+        // slot). But if the client filled in other fields for that row and just missed the MID
+        // Identifier, skipping it silently produces a false "saved successfully" message while
+        // nothing persists — surface it instead so they know exactly what's missing.
+        $incomplete = [];
+
+        foreach ($routes as $route) {
+            if (! empty($route['mid_identifier'])) {
+                continue;
+            }
+
+            $hasOtherData = ! empty($route['mid_label'])
+                || (($route['rate_percent'] ?? '') !== '')
+                || collect($route['credentials'] ?? [])->filter(fn ($v) => trim((string) $v) !== '')->isNotEmpty();
+
+            if ($hasOtherData) {
+                $gatewayLabel   = strtoupper((string) ($route['gateway'] ?? ''));
+                $routeTypeLabel = ($route['route_type'] ?? '') === 'fees_on' ? 'Fees On' : 'Fees Off';
+                $incomplete[]   = "{$gatewayLabel} ({$routeTypeLabel})";
+            }
+        }
+
+        if (! empty($incomplete)) {
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'MID Identifier is required to save: '.implode(', ', $incomplete).'. Enter a MID Identifier for that row, or clear its other fields.');
+        }
 
         foreach ($routes as $route) {
             // Skip routes with no MID identifier filled in yet

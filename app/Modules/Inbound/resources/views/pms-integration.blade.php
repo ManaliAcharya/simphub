@@ -598,11 +598,21 @@
                                 $idx = $routeType.'_'.$gw;
                             @endphp
                             <div style="background:#f9fafb;border:1px solid var(--cc-border);border-radius:var(--cc-r-md);padding:14px;margin-bottom:10px;">
-                                <div style="font-size:13px;font-weight:700;color:var(--cc-text);margin-bottom:12px;">{{ $gwUp }}</div>
+                                <div style="font-size:13px;font-weight:700;color:var(--cc-text);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
+                                    <span>{{ $gwUp }}</span>
+                                    @if($existing)
+                                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:#dc2626;cursor:pointer;">
+                                        <input type="checkbox" name="routes[{{ $idx }}][remove]" value="1"
+                                               onchange="var f=document.getElementById('mid-fields-{{ $idx }}'); f.style.opacity=this.checked?'0.4':'1'; f.querySelectorAll('input').forEach(function(el){ el.disabled=this.checked; }, this);">
+                                        Remove this configuration
+                                    </label>
+                                    @endif
+                                </div>
 
                                 <input type="hidden" name="routes[{{ $idx }}][route_type]" value="{{ $routeType }}">
                                 <input type="hidden" name="routes[{{ $idx }}][gateway]" value="{{ $gw }}">
 
+                                <div id="mid-fields-{{ $idx }}">
                                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
                                     <div class="cc-field" style="margin:0;">
                                         <label>MID Identifier</label>
@@ -668,6 +678,7 @@
                                         @endforeach
                                     </div>
                                 </div>
+                                </div>{{-- end mid-fields-{{ $idx }} --}}
                             </div>
                             @endforeach
                             @else
