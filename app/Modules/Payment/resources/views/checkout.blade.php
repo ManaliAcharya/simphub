@@ -1,4 +1,4 @@
-<x-payment::layouts.master>
+<x-payment::layouts.master :title="!empty($clientName) ? $clientName . ' - Secure Payment' : null">
     @if(!empty($logoUrl))
     <div style="background:#ffffff;border-bottom:1px solid #e5e7eb;padding:14px 24px;text-align:center;">
         <img src="{{ $logoUrl }}" alt="Company Logo"

@@ -13,8 +13,9 @@ class PaymentPageController extends Controller
 {
     public function show(string $session): View
     {
-        $logoUrl   = null;
-        $feeConfig = null;
+        $logoUrl    = null;
+        $feeConfig  = null;
+        $clientName = null;
 
         $paymentSession = PaymentSession::query()
             ->where('hosted_url_token', $session)
@@ -28,8 +29,9 @@ class PaymentPageController extends Controller
                     ->first();
 
                 if ($client) {
-                    $logoUrl   = $client->logo_path ? '/storage/' . $client->logo_path : null;
-                    $feeConfig = $this->buildFeeConfig($client, $invoice);
+                    $logoUrl    = $client->logo_path ? '/storage/' . $client->logo_path : null;
+                    $clientName = $client->client_name;
+                    $feeConfig  = $this->buildFeeConfig($client, $invoice);
 
                     // Pass only public/non-sensitive credential fields to the frontend tokenizer.
                     // Private keys (api_key, password, security_key) must NEVER reach the browser.
@@ -44,6 +46,7 @@ class PaymentPageController extends Controller
             'sessionToken' => $session,
             'logoUrl'      => $logoUrl,
             'feeConfig'    => $feeConfig,
+            'clientName'   => $clientName,
         ]);
     }
 
