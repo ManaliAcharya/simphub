@@ -15,6 +15,7 @@ use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Services\QuickBooksApiClient;
+use Modules\Inbound\Services\QuickBooksEmailResolver;
 use Modules\Payment\Services\PaymentLinkService;
 
 class ProcessQBInvoiceLinkJob implements ShouldQueue
@@ -36,7 +37,7 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         public readonly string $pmClientId,
     ) {}
 
-    public function handle(QuickBooksApiClient $qbApi, PaymentLinkService $linkService): void
+    public function handle(QuickBooksApiClient $qbApi, PaymentLinkService $linkService, QuickBooksEmailResolver $emailResolver): void
     {
         $connection = QuickBooksConnection::query()
             ->where('provider', 'quickbooks')
@@ -52,7 +53,7 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         }
 
         match ($this->entityName) {
-            'invoice' => $this->handleInvoice($connection, $qbApi, $linkService),
+            'invoice' => $this->handleInvoice($connection, $qbApi, $linkService, $emailResolver),
             'payment' => $this->handlePayment($connection, $qbApi),
             default   => null,
         };
@@ -62,10 +63,12 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         QuickBooksConnection $connection,
         QuickBooksApiClient $qbApi,
         PaymentLinkService $linkService,
+        QuickBooksEmailResolver $emailResolver,
     ): void {
         $invoice = Invoice::query()
             ->where('external_invoice_id', $this->entityId)
             ->where('pms_source', 'quickbooks')
+            ->where('pms_client_id', $this->pmClientId)
             ->first();
 
         if (! $invoice) {
@@ -90,7 +93,7 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
 
         // Update — compare amounts
         if ($this->operation === 'update' && $session) {
-            $this->handleInvoiceUpdate($connection, $qbApi, $linkService, $invoice, $session);
+            $this->handleInvoiceUpdate($connection, $qbApi, $linkService, $emailResolver, $invoice, $session);
         }
     }
 
@@ -98,6 +101,7 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         QuickBooksConnection $connection,
         QuickBooksApiClient $qbApi,
         PaymentLinkService $linkService,
+        QuickBooksEmailResolver $emailResolver,
         Invoice $invoice,
         PaymentSession $session,
     ): void {
@@ -152,7 +156,12 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
             $session->forceFill(['original_amount' => $originalDollars])->save();
         }
 
-        $linkService->resendPaymentLink($invoice, $session, $pdf);
+        // Resolve the recipient from the live invoice/customer data just fetched above —
+        // never from invoice.recipient_emails, which reflects the pre-update customer and
+        // can point at a different client if the invoice was reassigned.
+        $recipientEmails = $emailResolver->resolve($connection, $liveData)['emails'];
+
+        $linkService->resendPaymentLink($invoice, $session, $recipientEmails, $pdf);
 
         AuditLogger::log(
             'payment_link.resent_on_invoice_update',
@@ -216,6 +225,7 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         $invoice = Invoice::query()
             ->where('external_invoice_id', $qbInvoiceId)
             ->where('pms_source', 'quickbooks')
+            ->where('pms_client_id', $this->pmClientId)
             ->first();
 
         if (! $invoice) {

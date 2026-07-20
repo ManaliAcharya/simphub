@@ -19,6 +19,7 @@ class QuickBooksInvoiceIngestionService
         private readonly QuickBooksOAuthService $oauth,
         private readonly PaymentSessionService $paymentSessions,
         private readonly PaymentLinkService $paymentLinks,
+        private readonly QuickBooksEmailResolver $emailResolver,
     ) {}
 
     public function ingest(string $externalInvoiceId, array $triggerPayload = []): array
@@ -28,8 +29,9 @@ class QuickBooksInvoiceIngestionService
 
         $invoicePayload  = $this->client->fetchInvoice($connection, $externalInvoiceId);
         $normalized      = $this->normalizeInvoice($invoicePayload, $triggerPayload);
-        $customerPayload = $this->fetchCustomerPayload($connection, (string) $normalized['external_client_id']);
-        $recipientEmails = $this->extractEmails($invoicePayload, $customerPayload);
+        $resolvedEmails  = $this->emailResolver->resolve($connection, $invoicePayload);
+        $customerPayload = $resolvedEmails['customer_payload'];
+        $recipientEmails = $resolvedEmails['emails'];
 
         $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $pmsClientId) {
             $invoice = Invoice::query()->updateOrCreate(
@@ -109,19 +111,6 @@ class QuickBooksInvoiceIngestionService
         return $result;
     }
 
-    private function fetchCustomerPayload(QuickBooksConnection $connection, string $customerId): array
-    {
-        if (trim($customerId) === '') {
-            return [];
-        }
-
-        try {
-            return $this->client->fetchCustomer($connection, $customerId);
-        } catch (\Throwable) {
-            return [];
-        }
-    }
-
     private function normalizeInvoice(array $invoicePayload, array $triggerPayload): array
     {
         // QB wraps the invoice under the key "Invoice"
@@ -162,23 +151,6 @@ class QuickBooksInvoiceIngestionService
             'amount_cents'        => (int) round($amount * 100),
             'currency'            => strtoupper((string) (Arr::get($data, 'CurrencyRef.value') ?? 'USD')),
         ];
-    }
-
-    private function extractEmails(array $invoicePayload, array $customerPayload): array
-    {
-        $invoiceData  = Arr::get($invoicePayload, 'Invoice', $invoicePayload);
-        $customerData = Arr::get($customerPayload, 'Customer', $customerPayload);
-
-        $emails = [
-            Arr::get($invoiceData, 'BillEmail.Address'),
-            Arr::get($invoiceData, 'ShipEmail.Address'),
-            Arr::get($customerData, 'PrimaryEmailAddr.Address'),
-        ];
-
-        return array_values(array_unique(array_filter(array_map(
-            static fn ($e) => is_string($e) ? trim($e) : null,
-            $emails
-        ))));
     }
 
     private function resolvePmsClientId(array $triggerPayload): string

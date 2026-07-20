@@ -94,7 +94,7 @@ class PaymentLinkService
         return $sent;
     }
 
-    public function resendPaymentLink(Invoice $invoice, PaymentSession $session, ?string $pdfContent = null): int
+    public function resendPaymentLink(Invoice $invoice, PaymentSession $session, array $emails, ?string $pdfContent = null): int
     {
         $client = $invoice->pms_client_id
             ? Client::query()->where('pms_client_id', $invoice->pms_client_id)->first()
@@ -106,9 +106,11 @@ class PaymentLinkService
             ? trim(strtolower((string) $client->payment_link_admin_email))
             : null;
 
+        // Emails are passed in fresh from the caller (live QuickBooks data) rather than
+        // read from invoice.recipient_emails, which can lag behind the current update.
         $customerEmails = array_values(array_unique(array_filter(array_map(
             static fn ($e) => is_string($e) ? trim(strtolower($e)) : null,
-            (array) ($invoice->recipient_emails ?? [])
+            $emails
         ))));
 
         $toCustomer = in_array($recipient, ['customer', 'both'], true) ? $customerEmails : [];
