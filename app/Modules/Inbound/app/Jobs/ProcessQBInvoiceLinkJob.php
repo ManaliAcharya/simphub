@@ -161,6 +161,13 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         // can point at a different client if the invoice was reassigned.
         $recipientEmails = $emailResolver->resolve($connection, $liveData)['emails'];
 
+        // $invoice was loaded before this job ran and may predate the synchronous QB
+        // ingestion that refreshes amount_cents in the DB — reflect the live balance we
+        // just fetched in-memory so the resend email shows the new amount, not the old
+        // one. Not persisted here; QuickBooksInvoiceIngestionService::ingest() remains
+        // the sole writer of the invoice's stored amount_cents.
+        $invoice->amount_cents = (int) round($liveBalance * 100);
+
         $linkService->resendPaymentLink($invoice, $session, $recipientEmails, $pdf);
 
         AuditLogger::log(
