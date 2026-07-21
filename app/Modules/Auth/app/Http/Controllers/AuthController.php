@@ -41,11 +41,11 @@ class AuthController extends Controller
             ]);
 
             $account = $result['account'];
-            $client = $account->client;
+            $owner = $account->owner;
 
             $redirectUrl = session()->pull(
                 'url.intended',
-                clientConfigUrl($client)
+                clientConfigUrl($owner)
             );
 
             return response()

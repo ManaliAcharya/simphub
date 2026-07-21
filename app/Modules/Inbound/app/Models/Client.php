@@ -5,6 +5,7 @@ namespace Modules\Inbound\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Modules\Auth\Models\ClientAccount;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -58,12 +59,8 @@ class Client extends Model
         return $name !== '' ? $name : strtoupper($gateway);
     }
 
-    public function account(): HasOne
+    public function account(): MorphOne
     {
-        return $this->hasOne(
-            ClientAccount::class,
-            'client_id',
-            'id'
-        );
+        return $this->morphOne(ClientAccount::class, 'owner');
     }
 }
