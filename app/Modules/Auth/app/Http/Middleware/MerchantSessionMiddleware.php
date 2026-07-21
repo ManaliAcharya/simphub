@@ -36,14 +36,14 @@ class MerchantSessionMiddleware
             return $this->unauthenticated($request);
         }
 
-        $client = $session?->clientAccount?->client;
+        $owner = $session?->clientAccount?->owner;
         $clientAccount = $session->clientAccount;
 
         // Check query string
         if ($request->filled('pms_client_id')) {
 
             abort_if(
-                $request->pms_client_id != $client->pms_client_id,
+                $request->pms_client_id != $owner->pms_client_id,
                 403,
                 'Unauthorized client access'
             );
@@ -53,7 +53,7 @@ class MerchantSessionMiddleware
         if ($request->route('pms_client_id')) {
 
             abort_if(
-                $request->route('pms_client_id') != $client->pms_client_id,
+                $request->route('pms_client_id') != $owner->pms_client_id,
                 403,
                 'Unauthorized client access'
             );
