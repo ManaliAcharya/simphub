@@ -18,6 +18,12 @@ $activeTab — default active tab id (first tab if not set)
     $defaultTab = $activeTab ?? ($tabs[0]['id'] ?? 'tab0');
     $clientAccount = $client->account;
 
+    // Normalized display fields — Inbound\Client uses client_name/pms_client_id/client_pms,
+    // Boarding\BoardingClient uses name/client_id and has no PMS. Falls back so this shell
+    // renders correctly for either owner type without the caller needing to know which.
+    $displayName = $client->client_name ?? $client->name ?? '';
+    $displayId   = $client->pms_client_id ?? $client->client_id ?? '';
+    $displayPms  = $client->client_pms ?? null;
 
     $breadcrumbs = !empty($breadcrumbs)
         ? $breadcrumbs
@@ -26,7 +32,7 @@ $activeTab — default active tab id (first tab if not set)
                 'label' => 'Clients',
             ],
             [
-                'label' => $client->client_name,
+                'label' => $displayName,
             ],
             [
                 'label' => 'Configuration',
@@ -625,17 +631,17 @@ $activeTab — default active tab id (first tab if not set)
         <div class="cc-user-menu" id="ccUserMenu">
 
             <button class="cc-avatar-btn" type="button" onclick="toggleUserMenu()">
-                {{ strtoupper(substr($client->client_name, 0, 1)) }}
+                {{ strtoupper(substr($displayName, 0, 1)) }}
             </button>
 
             <div class="cc-user-dropdown" id="ccUserDropdown">
 
                 <div class="cc-user-header">
                     <div class="cc-avatar-small">
-                        {{ strtoupper(substr($client->client_name, 0, 1)) }}
+                        {{ strtoupper(substr($displayName, 0, 1)) }}
                     </div>
                     <div class="cc-user-info">
-                        <div class="cc-user-name">{{ $client->client_name ?? '' }}</div>
+                        <div class="cc-user-name">{{ $displayName }}</div>
                         <div class="cc-user-email">{{ $clientAccount->email ?? '' }}</div>
                     </div>
                     <span class="cc-status"><span class="cc-status-dot"></span>Active</span>
@@ -676,10 +682,12 @@ $activeTab — default active tab id (first tab if not set)
             {{-- ── Client header card ── --}}
             <div class="cc-client-header">
                 <div>
-                    <h1 class="cc-client-name">{{ $client->client_name }}</h1>
-                    <div class="cc-client-id">pms_client_id: {{ $client->pms_client_id }}</div>
+                    <h1 class="cc-client-name">{{ $displayName }}</h1>
+                    <div class="cc-client-id">{{ $displayPms ? 'pms_client_id' : 'client_id' }}: {{ $displayId }}</div>
                     <div class="cc-client-meta">
-                        <span class="cc-pms-badge">{{ $client->client_pms }}</span>
+                        @if($displayPms)
+                            <span class="cc-pms-badge">{{ $displayPms }}</span>
+                        @endif
                         <span class="cc-pms-badge">{{ $providerLabel }}</span>
                     </div>
                 </div>

@@ -35,10 +35,9 @@ class CreateClientAccounts extends Command
 
                 DB::beginTransaction();
 
-                $exists = ClientAccount::where(
-                    'client_id',
-                    $client->id
-                )->exists();
+                $exists = ClientAccount::where('owner_type', Client::class)
+                    ->where('owner_id', $client->id)
+                    ->exists();
 
 
                 /*
@@ -68,7 +67,8 @@ class CreateClientAccounts extends Command
                  */
 
                 ClientAccount::create([
-                    'client_id' => $client->id,
+                    'owner_type' => Client::class,
+                    'owner_id' => $client->id,
                     'email' => "client_{$client->id}@example.com",
                     'email_lower' => "client_{$client->id}@example.com",
                     'password' => null,

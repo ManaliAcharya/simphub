@@ -312,7 +312,7 @@ class AuthService
 
                     SendAccountSuspendedEmailJob::dispatch(
                         email: $account->email,
-                        clientName: $account->client?->client_name ?? 'Merchant',
+                        clientName: $account->owner?->client_name ?? 'Merchant',
                         suspendedAt: $suspendedAt->toDateTimeString(),
                     )->afterCommit();
                 }

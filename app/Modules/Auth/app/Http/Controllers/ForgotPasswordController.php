@@ -95,7 +95,7 @@ class ForgotPasswordController extends Controller
                     'confirmed',
                     new SecurePassword(
                         email: $clientAccount['email'],
-                        companyName: $clientAccount?->client?->client_name ?? null
+                        companyName: $clientAccount?->owner?->client_name ?? null
                     ),
                 ],
             ]);

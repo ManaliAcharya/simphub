@@ -24,8 +24,11 @@ class ClientAccountService
 
     protected function prepareclientAccount(array $data): array
     {
+        $owner = $data['owner'];
+
         return [
-            'client_id' => $data['client_id'],
+            'owner_type' => $owner::class,
+            'owner_id' => $owner->getKey(),
             'email' => $data['email'],
             'email_lower' => strtolower($data['email']),
             'password_hash' => null,
@@ -66,8 +69,8 @@ class ClientAccountService
         ]);
     }
 
-    public function findByClientId(string $clientId): ClientAccount|null
+    public function findByOwner(object $owner): ClientAccount|null
     {
-        return $this->clientAccountRepository->findByClientId($clientId);
+        return $this->clientAccountRepository->findByOwner($owner::class, $owner->getKey());
     }
 }

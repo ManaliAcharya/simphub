@@ -51,10 +51,11 @@ class ClientAccountRepository extends BaseRepository
             ->first();
     }
 
-    public function findByClientId(string $clientId): ?ClientAccount
+    public function findByOwner(string $ownerType, string $ownerId): ?ClientAccount
     {
         return $this->model::query()
-            ->where('client_id', $clientId)
+            ->where('owner_type', $ownerType)
+            ->where('owner_id', $ownerId)
             ->first();
     }
 }

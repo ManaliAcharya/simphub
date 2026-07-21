@@ -32,10 +32,10 @@ class RedirectIfMerchantAuthenticated
         if (
             $session &&
             $session->clientAccount &&
-            $session->clientAccount->client
+            $session->clientAccount->owner
         ) {
             return redirect(
-                clientConfigUrl($session->clientAccount->client)
+                clientConfigUrl($session->clientAccount->owner)
             );
         }
 

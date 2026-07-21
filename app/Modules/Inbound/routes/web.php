@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Boarding\Http\Controllers\Admin\ClientController as BoardingAdminClientController;
+use Modules\Boarding\Http\Controllers\Portal\ClientPortalController as BoardingClientPortalController;
 use Modules\Inbound\Http\Controllers\AdvancedMdIntegrationController;
 use Modules\Inbound\Http\Controllers\ClientConfigController;
 use Modules\Inbound\Http\Controllers\MindbodyController;
@@ -34,6 +36,14 @@ Route::middleware('web')->group(function (): void {
         //New routes for delete &  inactivate client
         Route::patch('/{client_id}',[ClientConfigController::class,'updateStatus'])->name('update-status');
         Route::delete('/{client_id}',[ClientConfigController::class,'destroy'])->name('destroy');
+
+        // ── Boarding (ISO) client admin pages — additional to the shared flow above ──
+        Route::prefix('boarding')->name('boarding.')->group(function (): void {
+            Route::get('/{clientId}', [BoardingAdminClientController::class, 'show'])->name('show');
+            Route::get('/{clientId}/api-docs', [BoardingAdminClientController::class, 'apiDocs'])->name('api-docs');
+            Route::post('/{clientId}/toggle-status', [BoardingAdminClientController::class, 'toggleStatus'])->name('toggle-status');
+            Route::post('/{clientId}/resend-invitation', [BoardingAdminClientController::class, 'resendInvitation'])->name('resend-invitation');
+        });
 
         Route::middleware(['merchant.auth', 'no-cache'])->group(function (): void {
 
@@ -125,6 +135,12 @@ Route::middleware('web')->group(function (): void {
         Route::get('/', [AdvancedMdIntegrationController::class, 'show'])->name('page');
         Route::post('/connect', [AdvancedMdIntegrationController::class, 'connect'])->name('connect');
         Route::post('/disconnect', [AdvancedMdIntegrationController::class, 'disconnect'])->name('disconnect');
+    });
+
+    // ── Boarding (ISO) clients — same URL space/shell as PMS clients, separate DB ──
+    Route::prefix('inbound/boarding')->name('inbound.boarding.')->middleware(['merchant.auth', 'no-cache'])->group(function (): void {
+        Route::get('/', [BoardingClientPortalController::class, 'show'])->name('page');
+        Route::post('/master-links', [BoardingClientPortalController::class, 'updateMasterLinks'])->name('master-links');
     });
 
 

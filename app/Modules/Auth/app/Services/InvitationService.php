@@ -8,6 +8,7 @@ use Illuminate\Validation\ValidationException;
 use Modules\Auth\Enums\AuditEventType;
 use Modules\Auth\Enums\OperationOutcome;
 use Modules\Auth\Jobs\SendInvitationEmailJob;
+use Modules\Auth\Models\ClientAccount;
 use Modules\Auth\Repositories\InvitationRepository;
 
 class InvitationService
@@ -93,9 +94,9 @@ class InvitationService
         }
 
         return [
-            'token'  => $token,
-            'email'  => $invitation->clientAccount->email,
-            'client' => $invitation->clientAccount->client,
+            'token' => $token,
+            'email' => $invitation->clientAccount->email,
+            'owner' => $invitation->clientAccount->owner,
         ];
     }
 
@@ -172,11 +173,11 @@ class InvitationService
     public function sendInvitationForExistingAccount(array $data): ?string
     {
         $email = strtolower(trim($data['email']));
-        $clientAccount = $this->clientAccountService->findByClientId($data['client_id']);
+        $clientAccount = ClientAccount::find($data['client_account_id']);
 
         if (!$clientAccount) {
             Log::warning('Client account not found while sending invitation.', [
-                'client_id' => $data['client_id'],
+                'client_account_id' => $data['client_account_id'],
                 'email' => $email,
             ]);
 

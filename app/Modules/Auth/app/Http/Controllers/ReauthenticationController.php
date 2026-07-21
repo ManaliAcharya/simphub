@@ -47,7 +47,7 @@ class ReauthenticationController extends Controller
         }
 
         return redirect(
-            clientConfigUrl($session->clientAccount->client)
+            clientConfigUrl($session->clientAccount->owner)
         );
     }
 }

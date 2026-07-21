@@ -12,6 +12,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Modules\Auth\Services\InvitationService;
+use Modules\Boarding\Models\BoardingClient;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClientMidRoute;
 use Modules\Inbound\Models\EmailConfiguration;
@@ -33,9 +34,10 @@ class ClientConfigController extends Controller
 
     public function index(): View
     {
-        $clients = Client::with('account')
-        ->orderBy('client_name')
-        ->get();
+        $clients = Client::with('account')->get()
+            ->concat(BoardingClient::with('account')->get())
+            ->sortBy(fn ($client) => $client->client_name ?? $client->name)
+            ->values();
 
         return view('inbound::clients.index', compact('clients'));
     }
@@ -72,6 +74,10 @@ class ClientConfigController extends Controller
 
     public function store(Request $request, ZohoRegionResolver $zohoRegions): RedirectResponse
     {
+        if ($request->input('integration_type') === 'boarding') {
+            return $this->storeBoardingClient($request);
+        }
+
         $availableGateways = RoutingRule::query()
             ->where('is_active', true)
             ->distinct()
@@ -146,7 +152,7 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
 
         // Create a client account and send invitation email
         $this->invitationService->createInvitation([
-            'client_id' => $client->id,
+            'owner' => $client,
             'email' => $validated['client_email'],
             'admin_id' => 0
         ]);
@@ -174,8 +180,54 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
         ]);
     }
 
+    private function storeBoardingClient(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'client_name'          => ['required', 'string', 'max:255'],
+            'client_email'         => ['required', 'email', 'max:255', 'unique:client_accounts,email_lower'],
+            'allowed_processors'   => ['required', 'array', 'min:1'],
+            'allowed_processors.*' => ['string', Rule::in(['square'])],
+        ]);
+
+        $client = BoardingClient::create([
+            'name'               => $validated['client_name'],
+            'contact_email'      => $validated['client_email'],
+            'client_id'          => 'iso_' . Str::uuid()->toString(),
+            'client_api_key'     => 'sbk_' . Str::random(48),
+            'webhook_secret'     => Str::random(48),
+            'status'             => 'active',
+            'allowed_processors' => collect($validated['allowed_processors'])
+                ->map(fn ($p) => strtolower($p))
+                ->unique()->values()->all(),
+        ]);
+
+        $this->invitationService->createInvitation([
+            'owner' => $client,
+            'email' => $validated['client_email'],
+            'admin_id' => 0,
+        ]);
+
+        return redirect()->route('inbound.clients.created', [
+            'client_id' => $client->client_id,
+            'type'      => 'boarding',
+        ]);
+    }
+
     public function created(Request $request): View
     {
+        if ($request->query('type') === 'boarding') {
+            $client = BoardingClient::query()
+                ->where('client_id', $request->query('client_id'))
+                ->firstOrFail();
+
+            return view('inbound::clients.created', [
+                'client'   => $client,
+                'shareUrl' => null,
+                'provider' => 'boarding',
+                'apiKey'   => $client->client_api_key,
+            ]);
+        }
+
         $client = Client::query()
             ->where('pms_client_id', $request->query('pms_client_id'))
             ->firstOrFail();
@@ -632,7 +684,10 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
 
     public function updateStatus($clientId): RedirectResponse
     {
-        $clientAccount = ClientAccount::where('client_id', $clientId)
+        $ownerType = Client::where('id', $clientId)->exists() ? Client::class : BoardingClient::class;
+
+        $clientAccount = ClientAccount::where('owner_type', $ownerType)
+            ->where('owner_id', $clientId)
             ->firstOrFail();
 
         $clientAccount->is_active = !$clientAccount->is_active;
@@ -651,9 +706,19 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
 
     public function destroy($clientId)
     {
-        $client = Client::where('id', $clientId)->firstOrFail();
+        $client = Client::where('id', $clientId)->first();
 
-        $client->delete();
+        if ($client) {
+            $client->delete();
+        } else {
+            // BoardingClient has no soft-delete/restore concept, so unlike Inbound's
+            // Client (soft-deleted, account left intact for a possible restore), we
+            // must also remove its ClientAccount here or the row is orphaned and its
+            // email is permanently blocked from reuse.
+            $client = BoardingClient::where('id', $clientId)->firstOrFail();
+            $client->account?->delete();
+            $client->delete();
+        }
 
         return redirect()
             ->route('inbound.clients.index')

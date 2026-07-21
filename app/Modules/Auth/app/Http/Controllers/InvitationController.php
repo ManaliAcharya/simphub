@@ -29,7 +29,7 @@ class InvitationController extends Controller
                 'confirmed',
                 new SecurePassword(
                     email: $invitationData['email'],
-                    companyName: $invitationData['client_name'] ?? null
+                    companyName: $invitationData['owner']->client_name ?? $invitationData['owner']->name ?? null
                 ),
             ],
         ]);
@@ -40,7 +40,7 @@ class InvitationController extends Controller
             'user_agent' => $request->userAgent(),
         ]);
 
-        $client = $invitationData['client'];
+        $owner = $invitationData['owner'];
 
         $cookie = cookie(
             name: 'merchant_session',
@@ -58,11 +58,11 @@ class InvitationController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Password created successfully.',
-                'redirect_url' => clientConfigUrl($client),
+                'redirect_url' => clientConfigUrl($owner),
             ])->withCookie($cookie);
         }
 
-        return redirect(clientConfigUrl($client))
+        return redirect(clientConfigUrl($owner))
             ->withCookie($cookie);
     }
 }

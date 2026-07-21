@@ -6,6 +6,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Modules\Auth\Support\RateLimiting\AuthRateLimiters;
 use Modules\Auth\Console\SendClientInvitations;
 use Modules\Auth\Console\CreateClientAccounts;
+use Modules\Auth\Console\CreateBoardingClientAccounts;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class AuthServiceProvider extends ModuleServiceProvider
@@ -38,6 +39,7 @@ class AuthServiceProvider extends ModuleServiceProvider
         $this->commands([
             CreateClientAccounts::class,
             SendClientInvitations::class,
+            CreateBoardingClientAccounts::class,
         ]);
     }
 
