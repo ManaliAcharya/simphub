@@ -57,7 +57,7 @@
             @endif
 
             @if(!empty($merchantName))
-            <p style="margin-top: 24px; color: #6b7280; font-size: 13px;">Thank you,<br><strong>{{ $merchantName }}</strong></p>
+            {{-- <p style="margin-top: 24px; color: #6b7280; font-size: 13px;">Thank you,<br><strong>{{ $merchantName }}</strong></p> --}}
             @endif
 
         </div>
