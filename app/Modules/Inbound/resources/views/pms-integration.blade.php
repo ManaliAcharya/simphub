@@ -1736,6 +1736,7 @@
                         </div>
                     </div>
                 @endif
+                @endif{{-- /QB-specific configuration ($provider === 'quickbooks') --}}
 
                 <form method="POST"
                     action="{{ route('inbound.clients.update-email-config', $client->pms_client_id) }}">
