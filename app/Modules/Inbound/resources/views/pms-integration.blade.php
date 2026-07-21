@@ -1246,7 +1246,7 @@
                         </div>
                         <div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">
                             @if (!empty($company_name))
-                                <input type="text" value="{{ $company_name }}" disabled
+                                <input type="text" name ="company_name" value="{{ $company_name }}" disabled
                                     style="flex:1;max-width:320px;background:var(--cc-bg,#fff);color:var(--cc-text-2,#6b7280);cursor:not-allowed;opacity:.85;">
                                 <span style="font-size:12px;color:var(--cc-text-3,#9ca3af);">Not editable — synced from
                                     QuickBooks</span>
@@ -1486,6 +1486,10 @@
 
                         <div style="background:#fff;padding:35px;border-radius:8px;">
 
+                            <div id="previewCompanyName"
+                                style="font-size:18px;font-weight:600;margin-bottom:15px;color:#333;">
+                            </div>
+
                             <h2 id="previewSubject"></h2>
 
                             <p id="previewHeader"></p>
@@ -1608,6 +1612,10 @@
                         const replyEmail = document.querySelector('[name="reply_to_email"]').value;
 
                         const brandColor = document.querySelector('[name="primary_color"]').value;
+
+                        const companyName = @json($company_name ?? '');
+
+                        document.getElementById("previewCompanyName").textContent = companyName;
 
                         document.getElementById("previewSubject").textContent = subject;
 
