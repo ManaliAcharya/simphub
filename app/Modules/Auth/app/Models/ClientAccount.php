@@ -4,7 +4,6 @@ namespace Modules\Auth\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Str;
-use Modules\Inbound\Models\Client;
 
 class ClientAccount extends Model
 {
@@ -15,7 +14,8 @@ class ClientAccount extends Model
     protected $keyType = 'string';
 
     protected $fillable = [
-        'client_id',
+        'owner_type',
+        'owner_id',
         'email',
         'email_lower',
         'password_hash',
@@ -46,12 +46,8 @@ class ClientAccount extends Model
         });
     }
 
-    public function client()
+    public function owner()
     {
-        return $this->belongsTo(
-            Client::class,
-            'client_id',
-            'id'
-        );
+        return $this->morphTo();
     }
 }
