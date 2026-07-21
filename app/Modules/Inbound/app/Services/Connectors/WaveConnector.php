@@ -9,6 +9,7 @@ use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Models\WaveConnection;
 use Modules\Inbound\Services\WaveApiClient;
 use Modules\Inbound\Services\WaveOAuthService;
+use RuntimeException;
 
 class WaveConnector implements PmsConnectorInterface
 {
@@ -34,10 +35,34 @@ class WaveConnector implements PmsConnectorInterface
 
     public function completeAuthorization(string $code, string $pmsClientId): PmsCallbackResult
     {
+        $existedBefore = WaveConnection::query()
+            ->where('provider', 'wave')
+            ->where('pms_client_id', $pmsClientId)
+            ->exists();
+
         $connection = $this->oauth->exchangeCode($code, $pmsClientId);
 
         // Fetch and store business_id immediately so incoming webhooks can be routed to the right client
-        $this->api->fetchBusinessId($connection);
+        $businessId = $this->api->fetchBusinessId($connection);
+
+        $connectedToAnotherClient = WaveConnection::query()
+            ->where('provider', 'wave')
+            ->where('pms_client_id', '!=', $pmsClientId)
+            ->whereJsonContains('meta->business_id', $businessId)
+            ->exists();
+
+        if ($connectedToAnotherClient) {
+            // Only a brand-new connection is safe to delete outright — if this client already had
+            // a (different) Wave connection before this attempt, leave the row as-is rather than
+            // risk destroying prior state we didn't snapshot.
+            if (! $existedBefore) {
+                $connection->delete();
+            }
+
+            throw new RuntimeException(
+                'This Wave account is already connected to a different client. Each Wave account can only be connected to one client — disconnect it there first, or connect a different Wave login.'
+            );
+        }
 
         return new PmsCallbackResult(
             connection: $connection,
@@ -83,6 +108,7 @@ class WaveConnector implements PmsConnectorInterface
             'webhook_instructions'        => [],
             'wave_payment_accounts'       => $paymentAccounts,
             'wave_account_load_error'     => $accountLoadError,
+            'wave_webhook_url'            => config('services.wave.webhook_callback_url', url('/api/v1/inbound/webhooks/wave')),
         ];
     }
 }
