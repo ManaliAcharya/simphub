@@ -26,6 +26,9 @@ use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Payment\Services\PaymentLinkService;
 use Modules\Inbound\Services\PmsConnectorRegistry;
+use Modules\Audit\Services\AuditLogger;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class ClientConfigController extends Controller
 {
@@ -735,33 +738,55 @@ class ClientConfigController extends Controller
         Invoice $invoice,
         PmsConnectorRegistry $registry
     ) {
+        try {
+            $provider = request('provider');
 
-        $provider = request('provider');
+            $connector = $registry->for($provider);
+            $connection = $connector->connection($pms_client_id);
 
-        $connector = $registry->for($provider);
-        $connection = $connector->connection($pms_client_id);
+            $paymentSession = PaymentSession::query()
+                ->where('invoice_id', $invoice->id)
+                ->latest('created_at')
+                ->firstOrFail();
 
-        $paymentSession = PaymentSession::query()
-            ->where('invoice_id', $invoice->id)
-            ->latest('created_at')
-            ->firstOrFail();
+            $pdf = null;
 
-        $pdf = null;
+            if (method_exists($connector, 'fetchInvoicePdf')) {
+                $pdf = $connector->fetchInvoicePdf(
+                    $connection,
+                    $invoice->external_invoice_id
+                );
+            }
 
-        if (method_exists($connector, 'fetchInvoicePdf')) {
-            $pdf = $connector->fetchInvoicePdf(
-                $connection,
-                $invoice->external_invoice_id
+            $emailsSent = $this->paymentLinks->sendInvoiceLinkOnce(
+                $invoice,
+                $paymentSession,
+                $invoice->recipient_emails ?? [],
+                $pdf
             );
+
+            if ($emailsSent > 0) {
+                AuditLogger::log('PAYMENT_LINK_RESENT', 'payment_session', $paymentSession->id, [
+                    'invoice_id'       => $invoice->id,
+                    'pms_client_id'    => $pms_client_id,
+                    'emails_sent'      => $emailsSent,
+                    'recipient_emails' => $invoice->recipient_emails,
+                ]);
+            }
+
+            return back()->with('success', 'Invoice email resent successfully.');
+        } catch (Throwable $e) {
+            Log::error('Failed to resend invoice email.', [
+                'invoice_id'    => $invoice->id,
+                'pms_client_id' => $pms_client_id,
+                'provider'      => request('provider'),
+                'error'         => $e->getMessage(),
+                'trace'         => $e->getTraceAsString(),
+            ]);
+
+            report($e);
+
+            return back()->with('error', 'Failed to resend invoice email. Please try again.');
         }
-
-        $this->paymentLinks->sendInvoiceLinkOnce(
-            $invoice,
-            $paymentSession,
-            $invoice->recipient_emails ?? [],
-            $pdf
-        );
-
-        return back()->with('success', 'Invoice email resent successfully.');
     }
 }
