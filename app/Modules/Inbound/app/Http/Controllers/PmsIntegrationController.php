@@ -26,6 +26,7 @@ use Modules\Inbound\Services\WaveApiClient;
 use Modules\Inbound\Services\WaveOAuthService;
 use Modules\Inbound\Services\ZohoApiClient;
 use Modules\Inbound\Services\ZohoOAuthService;
+use Modules\Billing\Models\Invoice;
 
 class PmsIntegrationController extends Controller
 {
@@ -438,6 +439,25 @@ class PmsIntegrationController extends Controller
             ->values()
             ->all();
 
+     $invoices = Invoice::query()
+                ->select([
+                    'id',
+                    'invoice_number',
+                    'recipient_emails',
+                    'currency',
+                    'amount_cents',
+                    'status',
+                    'created_at',
+                ])
+                ->where('pms_client_id', $pmsClientId)
+                ->latest('created_at')
+                ->get()
+                ->map(function ($invoice) {
+                    $invoice->recipient_email_list = implode(', ', $invoice->recipient_emails ?? []);
+
+                    return $invoice;
+                });
+
         return view('inbound::pms-integration', [
             'provider' => $provider,
             'providerLabel' => $connector->label(),
@@ -461,8 +481,10 @@ class PmsIntegrationController extends Controller
             // Hide the permanent setup link card from clients who arrived via shortlink (persists through OAuth)
             'isClientSession'    => session('client_session_id') === ($client?->pms_client_id ?? null),
             'callbackUrl' => route("inbound.{$provider}.callback"),
+            'invoices' => $invoices ?? [],
             'features'    => PmsFeatures::for($provider),
             ...$data,
         ]);
     }
+
 }

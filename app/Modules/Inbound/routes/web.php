@@ -63,6 +63,8 @@ Route::middleware('web')->group(function (): void {
             Route::get('/{pms_client_id}/{action}', [ClientConfigController::class, 'redirectAction'])
                 ->where('action', 'email-config|fees|gateways|gateway-credentials|webhook-url|notification-settings|qb-settings|mid-routes|logo')
                 ->name('redirect-action');
+            Route::post('/{pms_client_id}/invoices/{invoice}/resend', [ClientConfigController::class, 'resendInvoice'])->name('resend-invoice');
+
         });
     });
 
