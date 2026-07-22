@@ -9,5 +9,6 @@
     "Audit": true,
     "BookSync": true,
     "Auth": true,
-    "Dashboard": true
+    "Dashboard": true,
+    "Boarding": true
 }

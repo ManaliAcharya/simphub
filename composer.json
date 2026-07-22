@@ -38,7 +38,8 @@
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/",
             "Modules\\Auth\\": "app/Modules/Auth/app/",
-            "Modules\\Dashboard\\": "app/Modules/Dashboard/app/"
+            "Modules\\Dashboard\\": "app/Modules/Dashboard/app/",
+            "Modules\\Boarding\\": "app/Modules/Boarding/app/"
         },
         "files": [
             "app/Helpers/helpers.php"
