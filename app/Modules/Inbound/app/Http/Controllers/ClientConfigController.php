@@ -22,21 +22,26 @@ use Modules\Routing\Models\RoutingRule;
 use Modules\Routing\Models\TerminalConfiguration;
 use Modules\Auth\Models\ClientAccount;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Modules\Billing\Models\Invoice;
+use Modules\Billing\Models\PaymentSession;
+use Modules\Payment\Services\PaymentLinkService;
+use Modules\Inbound\Services\PmsConnectorRegistry;
 
 class ClientConfigController extends Controller
 {
     protected InvitationService $invitationService;
-    public function __construct(InvitationService $invitationService)
+    protected PaymentLinkService $paymentLinks;
+    public function __construct(InvitationService $invitationService, PaymentLinkService $paymentLinks)
     {
         $this->invitationService = $invitationService;
-
+        $this->paymentLinks = $paymentLinks;
     }
 
     public function index(): View
     {
         $clients = Client::with('account')->get()
             ->concat(BoardingClient::with('account')->get())
-            ->sortBy(fn ($client) => $client->client_name ?? $client->name)
+            ->sortBy(fn($client) => $client->client_name ?? $client->name)
             ->values();
 
         return view('inbound::clients.index', compact('clients'));
@@ -50,7 +55,7 @@ class ClientConfigController extends Controller
             ->orderBy('gateway')
             ->pluck('gateway')
             ->filter()
-            ->map(fn ($gateway) => strtoupper((string) $gateway))
+            ->map(fn($gateway) => strtoupper((string) $gateway))
             ->values()
             ->all();
 
@@ -60,7 +65,7 @@ class ClientConfigController extends Controller
             ->orderBy('terminal')
             ->pluck('terminal')
             ->filter()
-            ->map(fn ($terminal) => strtoupper((string) $terminal))
+            ->map(fn($terminal) => strtoupper((string) $terminal))
             ->values()
             ->all();
 
@@ -83,7 +88,7 @@ class ClientConfigController extends Controller
             ->distinct()
             ->pluck('gateway')
             ->filter()
-            ->map(fn ($gateway) => strtoupper((string) $gateway))
+            ->map(fn($gateway) => strtoupper((string) $gateway))
             ->values()
             ->all();
 
@@ -92,7 +97,7 @@ class ClientConfigController extends Controller
             ->distinct()
             ->pluck('terminal')
             ->filter()
-            ->map(fn ($terminal) => strtoupper((string) $terminal))
+            ->map(fn($terminal) => strtoupper((string) $terminal))
             ->values()
             ->all();
 
@@ -124,7 +129,7 @@ class ClientConfigController extends Controller
                 ->withInput();
         }
 
-$isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
+        $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
 
         $client = Client::query()->create([
             'pms_client_id'            => (string) Str::uuid(),
@@ -137,12 +142,12 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
                 ? $zohoRegions->normalize($validated['zoho_region'] ?? 'US')
                 : null,
             'allowed_payment_gateways' => $isTerminal ? [] : collect($validated['allowed_payment_gateways'] ?? [])
-                ->map(fn ($g) => strtoupper((string) $g))
+                ->map(fn($g) => strtoupper((string) $g))
                 ->unique()->values()->all(),
             'allowed_terminals'        => $isTerminal
                 ? collect($validated['allowed_terminals'])
-                    ->map(fn ($t) => strtolower((string) $t))
-                    ->unique()->values()->all()
+                ->map(fn($t) => strtolower((string) $t))
+                ->unique()->values()->all()
                 : [],
             'webhook_flow_enabled'  => ($isTerminal || strtoupper($validated['client_pms']) === 'CUSTOM') ? false : (bool) ($validated['webhook_flow_enabled'] ?? false),
             'call_api_to_pms'      => ($isTerminal || strtoupper($validated['client_pms']) === 'CUSTOM') ? false : (bool) ($validated['call_api_to_pms'] ?? false),
@@ -197,7 +202,7 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
             'webhook_secret'     => Str::random(48),
             'status'             => 'active',
             'allowed_processors' => collect($validated['allowed_processors'])
-                ->map(fn ($p) => strtolower($p))
+                ->map(fn($p) => strtolower($p))
                 ->unique()->values()->all(),
         ]);
 
@@ -327,8 +332,8 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
         }
 
         $displayNames = collect((array) ($request->input('gateway_display_names') ?? []))
-            ->mapWithKeys(fn ($name, $gateway) => [strtolower((string) $gateway) => trim((string) $name)])
-            ->filter(fn ($name) => $name !== '')
+            ->mapWithKeys(fn($name, $gateway) => [strtolower((string) $gateway) => trim((string) $name)])
+            ->filter(fn($name) => $name !== '')
             ->all();
 
         $client->update([
@@ -348,7 +353,7 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
             ->distinct()
             ->pluck('gateway')
             ->filter()
-            ->map(fn ($g) => strtoupper((string) $g))
+            ->map(fn($g) => strtoupper((string) $g))
             ->values()
             ->all();
 
@@ -361,7 +366,7 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
 
         $client->update([
             'allowed_payment_gateways' => collect($validated['allowed_payment_gateways'] ?? [])
-                ->map(fn ($g) => strtoupper((string) $g))
+                ->map(fn($g) => strtoupper((string) $g))
                 ->unique()->values()->all(),
         ]);
 
@@ -379,12 +384,12 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
 
         $gateway = strtoupper((string) $validated['gateway']);
         $paused  = collect($client->paused_payment_gateways ?? [])
-            ->map(fn ($g) => strtoupper((string) $g));
+            ->map(fn($g) => strtoupper((string) $g));
 
         if ($validated['paused']) {
             $paused = $paused->push($gateway)->unique()->values();
         } else {
-            $paused = $paused->reject(fn ($g) => $g === $gateway)->values();
+            $paused = $paused->reject(fn($g) => $g === $gateway)->values();
         }
 
         $client->update(['paused_payment_gateways' => $paused->all()]);
@@ -513,7 +518,7 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
                 ->delete();
         }
 
-        $routes = array_filter($routes, fn ($route) => empty($route['remove']));
+        $routes = array_filter($routes, fn($route) => empty($route['remove']));
 
         // A row with no MID Identifier is silently skipped below (it's an unused gateway/route
         // slot). But if the client filled in other fields for that row and just missed the MID
@@ -528,7 +533,7 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
 
             $hasOtherData = ! empty($route['mid_label'])
                 || (($route['rate_percent'] ?? '') !== '')
-                || collect($route['credentials'] ?? [])->filter(fn ($v) => trim((string) $v) !== '')->isNotEmpty();
+                || collect($route['credentials'] ?? [])->filter(fn($v) => trim((string) $v) !== '')->isNotEmpty();
 
             if ($hasOtherData) {
                 $gatewayLabel   = strtoupper((string) ($route['gateway'] ?? ''));
@@ -540,7 +545,7 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
         if (! empty($incomplete)) {
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'MID Identifier is required to save: '.implode(', ', $incomplete).'. Enter a MID Identifier for that row, or clear its other fields.');
+                ->with('error', 'MID Identifier is required to save: ' . implode(', ', $incomplete) . '. Enter a MID Identifier for that row, or clear its other fields.');
         }
 
         foreach ($routes as $route) {
@@ -723,5 +728,40 @@ $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
         return redirect()
             ->route('inbound.clients.index')
             ->with('success', 'Client deleted successfully.');
-        }
     }
+
+    public function resendInvoice(
+        string $pms_client_id,
+        Invoice $invoice,
+        PmsConnectorRegistry $registry
+    ) {
+
+        $provider = request('provider');
+
+        $connector = $registry->for($provider);
+        $connection = $connector->connection($pms_client_id);
+
+        $paymentSession = PaymentSession::query()
+            ->where('invoice_id', $invoice->id)
+            ->latest('created_at')
+            ->firstOrFail();
+
+        $pdf = null;
+
+        if (method_exists($connector, 'fetchInvoicePdf')) {
+            $pdf = $connector->fetchInvoicePdf(
+                $connection,
+                $invoice->external_invoice_id
+            );
+        }
+
+        $this->paymentLinks->sendInvoiceLinkOnce(
+            $invoice,
+            $paymentSession,
+            $invoice->recipient_emails ?? [],
+            $pdf
+        );
+
+        return back()->with('success', 'Invoice email resent successfully.');
+    }
+}

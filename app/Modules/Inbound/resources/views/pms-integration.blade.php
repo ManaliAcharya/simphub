@@ -5,6 +5,7 @@
         ['id' => 'fees', 'label' => 'Fee Configuration'],
         ['id' => 'webhooks', 'label' => 'Webhooks'],
         ['id' => 'email', 'label' => 'Email Settings'],
+        ['id' => 'invoices', 'label' => 'Invoice List'],
     ];
 @endphp
 
@@ -157,6 +158,22 @@
 
         border-radius: 30px;
 
+    }
+
+    .cc-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .cc-table th,
+    .cc-table td {
+        padding: 10px;
+        border: 1px solid #e5e7eb;
+    }
+
+    .cc-table th {
+        background: #f9fafb;
+        text-align: left;
     }
 </style>
 
@@ -742,15 +759,24 @@
                                     </div>
 
                                     {{-- How to set up the custom field in QuickBooks --}}
-                                    <div style="padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--cc-r-md);font-size:13px;color:#1e40af;margin-bottom:14px;line-height:1.6;">
-                                        <strong>This only works if the custom field is set up exactly this way in QuickBooks</strong>
-                                        (Settings &rarr; Custom fields &rarr; Add field) &mdash; otherwise the invoice payload comes back with an empty
-                                        <code style="background:rgba(255,255,255,.6);padding:1px 5px;border-radius:4px;">CustomField</code> array and the override is silently ignored:
+                                    <div
+                                        style="padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--cc-r-md);font-size:13px;color:#1e40af;margin-bottom:14px;line-height:1.6;">
+                                        <strong>This only works if the custom field is set up exactly this way in
+                                            QuickBooks</strong>
+                                        (Settings &rarr; Custom fields &rarr; Add field) &mdash; otherwise the invoice
+                                        payload comes back with an empty
+                                        <code
+                                            style="background:rgba(255,255,255,.6);padding:1px 5px;border-radius:4px;">CustomField</code>
+                                        array and the override is silently ignored:
                                         <ul style="margin:8px 0 0;padding-left:18px;">
-                                            <li><strong>Name</strong> &mdash; must exactly match what you typed above (case-insensitive)</li>
-                                            <li><strong>Data type</strong> &mdash; <em>Text and number</em> (not Dropdown/List)</li>
-                                            <li><strong>Category</strong> &mdash; <em>Transaction</em> (not Customer)</li>
-                                            <li><strong>Select forms</strong> &mdash; <em>Invoice</em> must be checked</li>
+                                            <li><strong>Name</strong> &mdash; must exactly match what you typed above
+                                                (case-insensitive)</li>
+                                            <li><strong>Data type</strong> &mdash; <em>Text and number</em> (not
+                                                Dropdown/List)</li>
+                                            <li><strong>Category</strong> &mdash; <em>Transaction</em> (not Customer)
+                                            </li>
+                                            <li><strong>Select forms</strong> &mdash; <em>Invoice</em> must be checked
+                                            </li>
                                         </ul>
                                     </div>
 
@@ -1557,6 +1583,85 @@
             </div>
 
 
+            {{-- ── Invoices tab ── --}}
+            <div id="cc-panel-invoices" class="cc-tab-panel">
+
+                <div class="cc-card">
+
+                    <div class="cc-card-title">
+                        Invoice List
+                    </div>
+
+                    <div class="cc-card-desc">
+                        All invoices for this account.
+                    </div>
+
+                    @if ($invoices->count())
+
+                        <table class="cc-table">
+                            <thead>
+                                <tr>
+                                    <th>Invoice No.</th>
+                                    <th>Recipient Email</th>
+                                    <th>Amount</th>
+                                    <th>Invoice Created Date</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                @forelse ($invoices as $invoice)
+                                    <tr>
+
+                                        <td>{{ $invoice->invoice_number ? '#' . $invoice->invoice_number : '-' }}</td>
+                                        <td>{{ $invoice->recipient_email_list ?: '-' }}</td>
+
+                                        <td>
+                                            {{ !is_null($invoice->amount_cents) ? number_format($invoice->amount_cents / 100, 2) : '-' }}
+                                        </td>
+
+                                        <td>
+                                            {{ optional($invoice->created_at)->format('Y-m-d') ?? '-' }}
+                                        </td>
+
+                                        <td>{{ ucfirst($invoice->status ?? 'Unknown') }}</td>
+                                        <td>
+                                            @if (!empty($invoice->recipient_emails))
+                                                <form action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id,'invoice' => $invoice->id,]) }}" method="POST">
+                                                         @csrf
+
+                                                        <input type="hidden" name="provider" value="{{ $provider }}">
+
+                                                        <button type="submit" class="button primary">
+                                                            Resend
+                                                        </button>
+                                                </form>
+                                            @else
+                                                -
+                                            @endif
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="6" class="text-center">
+                                            No invoices found.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+
+                        </table>
+                    @else
+                        <div class="alert alert-info">
+                            No invoices found.
+                        </div>
+
+                    @endif
+
+                </div>
+
+            </div>
 
             <script>
                 document.addEventListener("DOMContentLoaded", function() {
