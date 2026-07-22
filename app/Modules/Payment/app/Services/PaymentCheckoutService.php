@@ -147,22 +147,24 @@ class PaymentCheckoutService
 
         $isQuickBooksInvoice = (string) $invoice->pms_source === 'quickbooks';
 
-        if ($feeClient && $isQuickBooksInvoice && ! $feeClient->qb_fee_override_enabled) {
-            // Per-Invoice Fee Override is off → never charge a fee on QuickBooks invoices,
-            // on any gateway/payment method, regardless of Processing Fee Configuration
-            // or Multi-MID Routing (which itself requires this to be on — see below).
-            $applyFee = false;
-        } elseif ($feeClient && $feeClient->qb_multi_mid_enabled && $isQuickBooksInvoice) {
-            // QB Multi-MID ON + field set → route rate overrides Processing fees.
-            // QB Multi-MID ON + field NOT set → use Processing fees (cc/ach rate).
-            $fieldName  = (string) ($feeClient->qb_fee_override_field ?? 'Cash Discount');
-            $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
-
-            if ($fieldValue !== null) {
-                // Field is explicitly set → route rate will override below, suppress cc/ach fee
+        if ($feeClient && $isQuickBooksInvoice) {
+            if (! $feeClient->qb_fee_override_enabled) {
+                // Per-Invoice Fee Override is off → never charge a fee on QuickBooks invoices,
+                // on any gateway/payment method, regardless of Processing Fee Configuration.
                 $applyFee = false;
+            } else {
+                // Override is ON → the per-invoice field (Yes/No) decides directly, via the
+                // standard cc/ach percentages below. Not set → falls back to the client-level
+                // Processing Fee Configuration. Multi-MID Routing (if also enabled) can still
+                // replace this with a per-gateway rate further down — see resolveQbMidRoute().
+                $fieldName  = (string) ($feeClient->qb_fee_override_field ?? 'Cash Discount');
+                $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
+
+                if ($fieldValue !== null) {
+                    $applyFee = strtolower($fieldValue) === 'yes';
+                }
+                // null (not set) → $applyFee stays at fee_surcharge_enabled (client-level default)
             }
-            // null (not set) → $applyFee stays at fee_surcharge_enabled → Processing fees apply
         }
 
         if ($applyFee) {

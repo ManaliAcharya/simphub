@@ -59,25 +59,25 @@ class PaymentPageController extends Controller
 
         $isQuickBooksInvoice = (string) $invoice->pms_source === 'quickbooks';
 
-        if ($isQuickBooksInvoice && ! $client->qb_fee_override_enabled) {
-            // Per-Invoice Fee Override is off → never show/apply a fee for QuickBooks
-            // invoices, on any gateway/payment method, regardless of Processing Fee
-            // Configuration or Multi-MID Routing (which itself requires this to be on).
-            $feeEnabled = false;
-        } elseif ($client->qb_multi_mid_enabled && $isQuickBooksInvoice) {
-            // ── QB Multi-MID: when ON, Cash Discount field drives fees + MID routing ────
-            $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
-            $fieldValue = $this->extractQbField($invoice, $fieldName);
-
-            if ($fieldValue === null) {
-                // Field not set → use Processing fees (cc/ach), no MID route override
-                $routeType = null;
-            } elseif (strtolower($fieldValue) === 'yes') {
-                $routeType = 'fees_on';
+        if ($isQuickBooksInvoice) {
+            if (! $client->qb_fee_override_enabled) {
+                // Per-Invoice Fee Override is off → never show/apply a fee for QuickBooks
+                // invoices, on any gateway/payment method, regardless of Processing Fee
+                // Configuration.
+                $feeEnabled = false;
             } else {
-                $routeType = 'fees_off';
+                // Override is ON → the per-invoice field (Yes/No) decides directly. Not set →
+                // falls back to the client-level Processing Fee Configuration. $routeType is
+                // only used below to further refine per-gateway rates when Multi-MID is ALSO on.
+                $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
+                $fieldValue = $this->extractQbField($invoice, $fieldName);
+
+                if ($fieldValue !== null) {
+                    $feeEnabled = strtolower($fieldValue) === 'yes';
+                    $routeType  = $feeEnabled ? 'fees_on' : 'fees_off';
+                }
+                // field not set → feeEnabled stays at fee_surcharge_enabled, routeType stays null
             }
-            // feeEnabled unchanged when null (stays at fee_surcharge_enabled)
         }
 
         // ── Load per-gateway rates from MID routes ────────────────────────────────

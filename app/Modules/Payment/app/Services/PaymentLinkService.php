@@ -5,6 +5,7 @@ namespace Modules\Payment\Services;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\Client;
@@ -122,27 +123,69 @@ class PaymentLinkService
             return 0;
         }
 
-        DB::table('payment_sessions')
-            ->where('id', $session->id)
-            ->update([
-                'last_email_sent_at'        => now(),
-                'payment_link_last_sent_to' => json_encode($allRecipients, JSON_THROW_ON_ERROR),
-                'updated_at'                => now(),
-            ]);
-
         $paymentUrl  = $this->urlForSession($session);
         $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
         $fromName    = $this->resolveFromName($invoice, $client);
         $sent        = 0;
+        $sentTo      = [];
+        $failures    = [];
 
         foreach ($toCustomer as $email) {
-            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent, true, $emailConfig, $fromName));
-            $sent++;
+            try {
+                Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent, true, $emailConfig, $fromName));
+                $sent++;
+                $sentTo[] = $email;
+            } catch (\Throwable $e) {
+                $failures[$email] = $e->getMessage();
+                Log::error('resendPaymentLink: failed to send customer email', [
+                    'invoice_id' => $invoice->id,
+                    'session_id' => $session->id,
+                    'email'      => $email,
+                    'error'      => $e->getMessage(),
+                ]);
+            }
         }
 
         if ($toAdmin !== []) {
-            Mail::to($toAdmin[0])->send(new PaymentLinkAdminMail($invoice, $session, $paymentUrl));
-            $sent++;
+            try {
+                Mail::to($toAdmin[0])->send(new PaymentLinkAdminMail($invoice, $session, $paymentUrl));
+                $sent++;
+                $sentTo[] = $toAdmin[0];
+            } catch (\Throwable $e) {
+                $failures[$toAdmin[0]] = $e->getMessage();
+                Log::error('resendPaymentLink: failed to send admin email', [
+                    'invoice_id' => $invoice->id,
+                    'session_id' => $session->id,
+                    'email'      => $toAdmin[0],
+                    'error'      => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // Only record the sent timestamp/recipients for the ones that actually went out —
+        // a partial or total failure here must not look identical to a real send in the DB.
+        if ($sentTo !== []) {
+            DB::table('payment_sessions')
+                ->where('id', $session->id)
+                ->update([
+                    'last_email_sent_at'        => now(),
+                    'payment_link_last_sent_to' => json_encode($sentTo, JSON_THROW_ON_ERROR),
+                    'updated_at'                => now(),
+                ]);
+        }
+
+        if ($failures !== []) {
+            AuditLogger::log(
+                'payment_link.resend_failed',
+                'payment_session',
+                $session->id,
+                [
+                    'invoice_id'         => $invoice->id,
+                    'attempted_emails'   => $allRecipients,
+                    'failed_emails'      => array_keys($failures),
+                    'failure_reasons'    => $failures,
+                ]
+            );
         }
 
         return $sent;
