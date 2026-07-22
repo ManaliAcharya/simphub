@@ -150,11 +150,41 @@
                             <div class="card-sub">API only — no PMS</div>
                         </div>
                     </label>
+                    <label class="int-type-card {{ old('integration_type') === 'boarding' ? 'active' : '' }}" id="card-boarding">
+                        <input type="radio" name="integration_type" value="boarding"
+                               {{ old('integration_type') === 'boarding' ? 'checked' : '' }}
+                               onchange="setIntegrationType('boarding')">
+                        <div>
+                            <div class="card-title">Boarding (ISO)</div>
+                            <div class="card-sub">ISO/agent merchant boarding links</div>
+                        </div>
+                    </label>
                 </div>
 
                 <hr class="int-divider">
 
-                {{-- PMS row (hidden when Custom is selected) --}}
+                {{-- Boarding note (shown only when Boarding is selected) --}}
+                <div class="tile-row" id="boarding-note" style="display:none;">
+                    <p style="font-size:13px;color:#6b7280;margin:0 0 20px;line-height:1.6;">
+                        This creates an ISO client for merchant boarding — no PMS config needed here.
+                        They'll get an invitation email to set up their portal login, where they can add their webhook URL
+                        and configure their master links per tier.
+                    </p>
+
+                    <span class="field-label" style="color:#059669;">Processor</span>
+                    <div class="tile-grid">
+                        @php $processorChecked = in_array('square', old('allowed_processors', ['square'])); @endphp
+                        <div class="tile gw {{ $processorChecked ? 'selected' : '' }}" onclick="toggleTile(this)">
+                            <input type="checkbox" name="allowed_processors[]" value="square" style="display:none;" @checked($processorChecked)>
+                            <div class="logo-box">
+                                <div style="width:40px;height:40px;border-radius:8px;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#059669;">SQ</div>
+                            </div>
+                            <div class="tile-name">Square</div>
+                        </div>
+                    </div>
+                </div>
+
+                {{-- PMS row (hidden when Custom or Boarding is selected) --}}
                 <div class="tile-row" id="pms-row">
                     <span class="field-label" style="color:#2563eb;">Practice Management System</span>
                     <input type="hidden" name="client_pms" id="client_pms_input" value="{{ old('client_pms', 'CLIO') }}">
@@ -212,7 +242,7 @@
                 </div>
 
                 {{-- Gateways --}}
-                <div class="tile-row">
+                <div class="tile-row" id="gateways-row">
                     <span class="field-label" style="color:#059669;">Payment Gateways</span>
                     <div class="tile-grid">
                         @forelse ($availableGateways as $gateway)
@@ -289,11 +319,26 @@
     const zohoRegionField = document.getElementById('zoho-region-field');
     const zohoRegionInput = document.getElementById('zoho_region_input');
     const pmsRow          = document.getElementById('pms-row');
+    const gatewaysRow     = document.getElementById('gateways-row');
+    const boardingNote    = document.getElementById('boarding-note');
 
     // ── Integration type ────────────────────────────────────
     window.setIntegrationType = function (type) {
         document.getElementById('card-pms').classList.toggle('active', type === 'pms');
         document.getElementById('card-custom').classList.toggle('active', type === 'custom');
+        document.getElementById('card-boarding').classList.toggle('active', type === 'boarding');
+
+        if (type === 'boarding') {
+            pmsRow.style.display = 'none';
+            zohoRegionField.style.display = 'none';
+            gatewaysRow.style.display = 'none';
+            boardingNote.style.display = '';
+            document.querySelectorAll('.tile.pms').forEach(t => t.classList.remove('selected'));
+            return;
+        }
+
+        boardingNote.style.display = 'none';
+        gatewaysRow.style.display = '';
 
         if (type === 'custom') {
             pmsRow.style.display = 'none';
@@ -345,7 +390,7 @@
     // Init on page load
     (function () {
         const intType = '{{ old('integration_type', 'pms') }}';
-        if (intType === 'custom') setIntegrationType('custom');
+        if (intType === 'custom' || intType === 'boarding') setIntegrationType(intType);
         else toggleZohoRegion();
     }());
 </script>

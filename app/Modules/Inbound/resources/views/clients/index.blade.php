@@ -464,41 +464,30 @@
                     <tbody>
                         @foreach ($clients as $client)
                             @php
-                                $pms = strtolower($client->client_pms ?? 'custom');
-                                $allowed = array_map('strtolower', $client->allowed_payment_gateways ?? []);
-                                $paused = array_map('strtolower', $client->paused_payment_gateways ?? []);
-                                $configUrl = match (strtoupper($client->client_pms ?? '')) {
-                                    'ZOHO' => route('inbound.zoho.page', ['pms_client_id' => $client->pms_client_id]),
-                                    'QUICKBOOKS' => route('inbound.quickbooks.page', [
-                                        'pms_client_id' => $client->pms_client_id,
-                                    ]),
-                                    'WAVE' => route('inbound.wave.page', ['pms_client_id' => $client->pms_client_id]),
-                                    'LAWCUS' => route('inbound.lawcus.page', [
-                                        'pms_client_id' => $client->pms_client_id,
-                                    ]),
-                                    'MINDBODY' => route('inbound.mindbody.page', [
-                                        'pms_client_id' => $client->pms_client_id,
-                                    ]),
-                                    'CUSTOM' => route('inbound.clients.api-docs', [
-                                        'pms_client_id' => $client->pms_client_id,
-                                    ]),
-                                    default => route('inbound.clio.page', ['pms_client_id' => $client->pms_client_id]),
-                                };
+                                $isBoarding = $client instanceof \Modules\Boarding\Models\BoardingClient;
+                                $displayName = $isBoarding ? $client->name : $client->client_name;
+                                $displayId = $isBoarding ? $client->client_id : $client->pms_client_id;
+                                $pms = $isBoarding ? 'boarding' : strtolower($client->client_pms ?? 'custom');
+                                $allowed = $isBoarding ? [] : array_map('strtolower', $client->allowed_payment_gateways ?? []);
+                                $paused = $isBoarding ? [] : array_map('strtolower', $client->paused_payment_gateways ?? []);
+                                $configUrl = clientConfigUrl($client);
                             @endphp
-                            <tr class="client-row" data-name="{{ strtolower($client->client_name) }}"
+                            <tr class="client-row" data-name="{{ strtolower($displayName) }}"
                                 data-pms="{{ $pms }}">
                                 <td>
-                                    <div class="client-name">{{ $client->client_name }}</div>
+                                    <div class="client-name">{{ $displayName }}</div>
                                     <div class="client-email">{{ $client->account?->email }}</div>
                                     <div style="font-size:11px;color:#9ca3af;margin-top:2px;">
-                                        {{ $client->pms_client_id }}</div>
+                                        {{ $displayId }}</div>
                                 </td>
                                 <td>
                                     <span
-                                        class="pms-badge pms-{{ $pms }}">{{ strtoupper($client->client_pms ?? 'Custom') }}</span>
+                                        class="pms-badge pms-{{ $pms }}">{{ $isBoarding ? 'BOARDING' : strtoupper($client->client_pms ?? 'Custom') }}</span>
                                 </td>
                                 <td>
-                                    @if (count($allowed))
+                                    @if ($isBoarding)
+                                        <span style="color:#9ca3af;font-size:12px;">N/A</span>
+                                    @elseif (count($allowed))
                                         <div class="gateway-tags">
                                             @foreach ($allowed as $gw)
                                                 <span class="gateway-tag {{ in_array($gw, $paused) ? 'paused' : '' }}">
@@ -511,20 +500,28 @@
                                     @endif
                                 </td>
                                 <td>
-                                    <span
-                                        class="status-dot {{ $client->fee_surcharge_enabled ? 'status-on' : 'status-off' }}"></span>
-                                    {{ $client->fee_surcharge_enabled ? 'On' : 'Off' }}
-                                    @if ($client->fee_surcharge_enabled && ($client->cc_fee_percent || $client->ach_fee_percent))
-                                        <div style="font-size:11px;color:#6b7280;margin-top:1px;">
-                                            CC {{ number_format($client->cc_fee_percent ?? 0, 2) }}% &nbsp; ACH
-                                            {{ number_format($client->ach_fee_percent ?? 0, 2) }}%
-                                        </div>
+                                    @if ($isBoarding)
+                                        <span style="color:#9ca3af;font-size:12px;">N/A</span>
+                                    @else
+                                        <span
+                                            class="status-dot {{ $client->fee_surcharge_enabled ? 'status-on' : 'status-off' }}"></span>
+                                        {{ $client->fee_surcharge_enabled ? 'On' : 'Off' }}
+                                        @if ($client->fee_surcharge_enabled && ($client->cc_fee_percent || $client->ach_fee_percent))
+                                            <div style="font-size:11px;color:#6b7280;margin-top:1px;">
+                                                CC {{ number_format($client->cc_fee_percent ?? 0, 2) }}% &nbsp; ACH
+                                                {{ number_format($client->ach_fee_percent ?? 0, 2) }}%
+                                            </div>
+                                        @endif
                                     @endif
                                 </td>
                                 <td>
-                                    <span
-                                        class="status-dot {{ $client->call_api_to_pms ? 'status-on' : 'status-off' }}"></span>
-                                    {{ $client->call_api_to_pms ? 'Yes' : 'No' }}
+                                    @if ($isBoarding)
+                                        <span style="color:#9ca3af;font-size:12px;">N/A</span>
+                                    @else
+                                        <span
+                                            class="status-dot {{ $client->call_api_to_pms ? 'status-on' : 'status-off' }}"></span>
+                                        {{ $client->call_api_to_pms ? 'Yes' : 'No' }}
+                                    @endif
                                 </td>
                                 {{-- <td>
                         <a href="{{ route('inbound.clients.update-status', ['client_id' => $client->id]) }}" class="action-btn">Inactivate</a>
@@ -557,7 +554,7 @@
                                     <!-- Status -->
                                     <a href="javascript:void(0)" class="action-btn btn-status"
                                         data-url="{{ route('inbound.clients.update-status', ['client_id' => $client->id]) }}"
-                                        data-client="{{ $client->client_name }}"
+                                        data-client="{{ $displayName }}"
                                         data-action="{{ $isActive == 1 ? 'Inactivate' : 'Activate' }}">
 
                                         {{ $isActive == 1 ? 'Inactivate' : 'Activate' }}
@@ -566,12 +563,15 @@
                                     <!-- Delete -->
                                     <button type="button" class="action-btn btn-delete"
                                         data-url="{{ route('inbound.clients.destroy', ['client_id' => $client->id]) }}"
-                                        data-client="{{ $client->client_name }}">
+                                        data-client="{{ $displayName }}">
                                         Delete
                                     </button>
                                 </td>
                                 <td style="text-align:right;">
                                     <a href="{{ $configUrl }}" class="action-btn">View config →</a>
+                                    @if ($isBoarding)
+                                        <a href="{{ route('inbound.clients.boarding.api-docs', $client->client_id) }}" class="action-btn">API Docs →</a>
+                                    @endif
                                 </td>
                             </tr>
                         @endforeach

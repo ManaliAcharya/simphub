@@ -61,12 +61,20 @@
             </svg>
         </div>
 
+        @php $displayName = $client->client_name ?? $client->name ?? ''; @endphp
+
         <h1>Client created successfully</h1>
         <p class="subtitle">
-            <span class="client-name">{{ $client->client_name }}</span> has been set up.
-            Share the link below so they can connect their
-            {{ ucfirst($provider === 'quickbooks' ? 'QuickBooks' : ucwords(str_replace('_', ' ', $provider))) }}
-            account and complete onboarding.
+            @if($provider === 'boarding')
+                <span class="client-name">{{ $displayName }}</span> has been set up as an ISO boarding client.
+                An invitation email has been sent so they can set their portal password and sign in at
+                <code>{{ url('/login') }}</code>.
+            @else
+                <span class="client-name">{{ $displayName }}</span> has been set up.
+                Share the link below so they can connect their
+                {{ ucfirst($provider === 'quickbooks' ? 'QuickBooks' : ucwords(str_replace('_', ' ', $provider))) }}
+                account and complete onboarding.
+            @endif
         </p>
 
         @if($shareUrl)
@@ -80,19 +88,36 @@
         </div>
         @endif
 
+        @if($provider === 'boarding')
+        <div class="link-box">
+            <div class="link-label">API Key — save it now, it won't be shown in full again</div>
+            <div class="link-row">
+                <input id="api-key" class="link-input" type="text" value="{{ $apiKey }}" readonly>
+                <button class="copy-btn" id="copy-key-btn" onclick="copyValue('api-key','copy-key-btn')">Copy</button>
+            </div>
+            <p class="hint">Authenticates calls to <code>POST /api/v1/boarding/boarding-links</code>.</p>
+        </div>
+        @endif
+
         <div class="actions">
             @php
-                $configUrl = match($provider) {
-                    'custom'      => route('inbound.clients.api-docs',  ['pms_client_id' => $client->pms_client_id]),
-                    'quickbooks'  => route('inbound.quickbooks.page',   ['pms_client_id' => $client->pms_client_id]),
-                    'zoho'        => route('inbound.zoho.page',         ['pms_client_id' => $client->pms_client_id]),
-                    'wave'        => route('inbound.wave.page',         ['pms_client_id' => $client->pms_client_id]),
-                    'lawcus'      => route('inbound.lawcus.page',       ['pms_client_id' => $client->pms_client_id]),
-                    'mindbody'    => route('inbound.mindbody.page',     ['pms_client_id' => $client->pms_client_id]),
-                    default       => route('inbound.clio.page',         ['pms_client_id' => $client->pms_client_id]),
-                };
+                $configUrl = $provider === 'boarding'
+                    ? route('inbound.boarding.page')
+                    : match($provider) {
+                        'custom'      => route('inbound.clients.api-docs',  ['pms_client_id' => $client->pms_client_id]),
+                        'quickbooks'  => route('inbound.quickbooks.page',   ['pms_client_id' => $client->pms_client_id]),
+                        'zoho'        => route('inbound.zoho.page',         ['pms_client_id' => $client->pms_client_id]),
+                        'wave'        => route('inbound.wave.page',         ['pms_client_id' => $client->pms_client_id]),
+                        'lawcus'      => route('inbound.lawcus.page',       ['pms_client_id' => $client->pms_client_id]),
+                        'mindbody'    => route('inbound.mindbody.page',     ['pms_client_id' => $client->pms_client_id]),
+                        default       => route('inbound.clio.page',         ['pms_client_id' => $client->pms_client_id]),
+                    };
             @endphp
-            <a href="{{ $configUrl }}" class="btn-primary">Go to client config</a>
+            @if($provider === 'boarding')
+                <a href="{{ route('inbound.clients.boarding.api-docs', $client->client_id) }}" class="btn-primary">Go to API docs</a>
+            @else
+                <a href="{{ $configUrl }}" class="btn-primary">Go to client config</a>
+            @endif
             <a href="{{ route('inbound.clients.create') }}" class="btn-secondary">Create another client</a>
         </div>
     </div>
@@ -112,6 +137,16 @@ function copyLink() {
     }).catch(function() {
         input.select();
         document.execCommand('copy');
+    });
+}
+function copyValue(inputId, btnId) {
+    const input = document.getElementById(inputId);
+    const btn   = document.getElementById(btnId);
+    navigator.clipboard.writeText(input.value).then(function() {
+        const original = btn.textContent;
+        btn.textContent = 'Copied!';
+        btn.classList.add('copied');
+        setTimeout(function() { btn.textContent = original; btn.classList.remove('copied'); }, 2000);
     });
 }
 </script>

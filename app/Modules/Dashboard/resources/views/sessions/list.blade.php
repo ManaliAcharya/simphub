@@ -1,13 +1,13 @@
 <x-inbound::layouts.master title="Active Sessions">
 
-    <x-inbound::client-config-layout :client="$clientAccount->client" :provider-label="$providerLabel ?? ''" :tabs="[]"
+    <x-inbound::client-config-layout :client="$clientAccount->owner" :provider-label="$providerLabel ?? ''" :tabs="[]"
         :show-client-header="false" :breadcrumbs="[
         [
             'label' => 'Clients',
         ],
         [
-            'label' => $clientAccount->client->client_name,
-            'url' => clientConfigUrl($clientAccount->client)
+            'label' => $clientAccount->owner->client_name,
+            'url' => clientConfigUrl($clientAccount->owner)
         ],
         [
             'label' => 'Active Sessions'

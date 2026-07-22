@@ -107,7 +107,7 @@ class AccountSettingsController extends Controller
                 'confirmed',
                 new SecurePassword(
                     email: $account?->email ?? '',
-                    companyName: $account?->client?->client_name ?? null
+                    companyName: $account?->owner?->client_name ?? null
                 ),
             ],
         ]);

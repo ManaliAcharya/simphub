@@ -1,8 +1,14 @@
 <?php
 
 if (! function_exists('clientConfigUrl')) {
-    function clientConfigUrl($client): string
+    function clientConfigUrl($owner): string
     {
+        if ($owner instanceof \Modules\Boarding\Models\BoardingClient) {
+            return route('inbound.boarding.page');
+        }
+
+        $client = $owner;
+
         return match (strtolower($client->client_pms)) {
             'custom' => route('inbound.clients.api-docs', [
                 'pms_client_id' => $client->pms_client_id,
@@ -32,7 +38,9 @@ if (! function_exists('clientConfigUrl')) {
                 'pms_client_id' => $client->pms_client_id,
             ]),
 
-            'mindbody' => route('inbound.mindbody.page'),
+            'mindbody' => route('inbound.mindbody.page', [
+                'pms_client_id' => $client->pms_client_id,
+            ]),
 
             default => "",
         };

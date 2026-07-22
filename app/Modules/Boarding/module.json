@@ -1,0 +1,11 @@
+{
+    "name": "Boarding",
+    "alias": "boarding",
+    "description": "ISO merchant boarding links (SimpleHub) — attribution, click tracking, and processor redirect",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Boarding\\Providers\\BoardingServiceProvider"
+    ],
+    "files": []
+}
