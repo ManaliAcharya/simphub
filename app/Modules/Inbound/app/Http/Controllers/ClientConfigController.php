@@ -755,13 +755,17 @@ class ClientConfigController extends Controller
             );
         }
 
-        $this->paymentLinks->sendInvoiceLinkOnce(
+        $sent = $this->paymentLinks->resendPaymentLink(
             $invoice,
             $paymentSession,
             $invoice->recipient_emails ?? [],
             $pdf
         );
 
-        return back()->with('success', 'Invoice email resent successfully.');
+        if ($sent > 0) {
+            return back()->with('success', 'Invoice email resent successfully.');
+        }
+
+        return back()->with('error', 'Failed to resend invoice email. Check the audit log for details.');
     }
 }
