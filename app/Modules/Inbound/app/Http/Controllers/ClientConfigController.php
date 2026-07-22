@@ -758,7 +758,7 @@ class ClientConfigController extends Controller
                 );
             }
 
-            $emailsSent = $this->paymentLinks->sendInvoiceLinkOnce(
+            $emailsSent = $this->paymentLinks->resendPaymentLink(
                 $invoice,
                 $paymentSession,
                 $invoice->recipient_emails ?? [],
@@ -772,9 +772,13 @@ class ClientConfigController extends Controller
                     'emails_sent'      => $emailsSent,
                     'recipient_emails' => $invoice->recipient_emails,
                 ]);
+
+                return back()->with('success', 'Invoice email resent successfully.');
             }
 
-            return back()->with('success', 'Invoice email resent successfully.');
+            // resendPaymentLink() itself logs a payment_link.resend_failed audit entry
+            // with the specific per-recipient reason when a send fails.
+            return back()->with('error', 'Failed to resend invoice email. Check the audit log for details.');
         } catch (Throwable $e) {
             Log::error('Failed to resend invoice email.', [
                 'invoice_id'    => $invoice->id,
@@ -788,20 +792,5 @@ class ClientConfigController extends Controller
 
             return back()->with('error', 'Failed to resend invoice email. Please try again.');
         }
-
-
-        $sent = $this->paymentLinks->resendPaymentLink(
-            $invoice,
-            $paymentSession,
-            $invoice->recipient_emails ?? [],
-            $pdf
-        );
-
-        if ($sent > 0) {
-            return back()->with('success', 'Invoice email resent successfully.');
-        }
-
-        return back()->with('error', 'Failed to resend invoice email. Check the audit log for details.');
-
     }
 }
