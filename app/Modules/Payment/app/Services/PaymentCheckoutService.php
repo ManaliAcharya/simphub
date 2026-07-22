@@ -145,11 +145,16 @@ class PaymentCheckoutService
 
         $applyFee = $feeClient && $feeClient->fee_surcharge_enabled;
 
-        // QB Multi-MID ON + field set → route rate overrides Processing fees.
-        // QB Multi-MID ON + field NOT set → use Processing fees (cc/ach rate).
-        // QB Multi-MID OFF → use Processing fees always.
-        if ($feeClient && $feeClient->qb_multi_mid_enabled
-            && (string) $invoice->pms_source === 'quickbooks') {
+        $isQuickBooksInvoice = (string) $invoice->pms_source === 'quickbooks';
+
+        if ($feeClient && $isQuickBooksInvoice && ! $feeClient->qb_fee_override_enabled) {
+            // Per-Invoice Fee Override is off → never charge a fee on QuickBooks invoices,
+            // on any gateway/payment method, regardless of Processing Fee Configuration
+            // or Multi-MID Routing (which itself requires this to be on — see below).
+            $applyFee = false;
+        } elseif ($feeClient && $feeClient->qb_multi_mid_enabled && $isQuickBooksInvoice) {
+            // QB Multi-MID ON + field set → route rate overrides Processing fees.
+            // QB Multi-MID ON + field NOT set → use Processing fees (cc/ach rate).
             $fieldName  = (string) ($feeClient->qb_fee_override_field ?? 'Cash Discount');
             $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
 
@@ -529,7 +534,7 @@ class PaymentCheckoutService
         ?Client $client,
         string  $gateway
     ): ?ClientMidRoute {
-        if (! $client || ! $client->qb_multi_mid_enabled) {
+        if (! $client || ! $client->qb_fee_override_enabled || ! $client->qb_multi_mid_enabled) {
             return null;
         }
 

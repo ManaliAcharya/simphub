@@ -57,9 +57,15 @@ class PaymentPageController extends Controller
         $gatewayRates = null;   // null = use cc/ach fallback
         $routeType   = null;
 
-        // ── QB Multi-MID: when ON, Cash Discount field drives fees + MID routing ────
-        // When OFF, fee_surcharge_enabled default applies (no field reading).
-        if ($client->qb_multi_mid_enabled && (string) $invoice->pms_source === 'quickbooks') {
+        $isQuickBooksInvoice = (string) $invoice->pms_source === 'quickbooks';
+
+        if ($isQuickBooksInvoice && ! $client->qb_fee_override_enabled) {
+            // Per-Invoice Fee Override is off → never show/apply a fee for QuickBooks
+            // invoices, on any gateway/payment method, regardless of Processing Fee
+            // Configuration or Multi-MID Routing (which itself requires this to be on).
+            $feeEnabled = false;
+        } elseif ($client->qb_multi_mid_enabled && $isQuickBooksInvoice) {
+            // ── QB Multi-MID: when ON, Cash Discount field drives fees + MID routing ────
             $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
             $fieldValue = $this->extractQbField($invoice, $fieldName);
 
@@ -72,11 +78,10 @@ class PaymentPageController extends Controller
                 $routeType = 'fees_off';
             }
             // feeEnabled unchanged when null (stays at fee_surcharge_enabled)
-
         }
 
         // ── Load per-gateway rates from MID routes ────────────────────────────────
-        if ($client->qb_multi_mid_enabled && (string) $invoice->pms_source === 'quickbooks'
+        if ($client->qb_fee_override_enabled && $client->qb_multi_mid_enabled && $isQuickBooksInvoice
             && $routeType !== null) {
 
             $midRoutes = ClientMidRoute::query()
