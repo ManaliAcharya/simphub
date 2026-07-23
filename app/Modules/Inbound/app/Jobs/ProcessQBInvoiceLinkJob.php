@@ -72,6 +72,11 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
             ->first();
 
         if (! $invoice) {
+            Log::info('ProcessQBInvoiceLinkJob: no matching invoice found yet, skipping', [
+                'qb_invoice_id' => $this->entityId,
+                'operation'     => $this->operation,
+                'pms_client_id' => $this->pmClientId,
+            ]);
             return;
         }
 
@@ -92,7 +97,15 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         }
 
         // Update — compare amounts
-        if ($this->operation === 'update' && $session) {
+        if ($this->operation === 'update') {
+            if (! $session) {
+                Log::info('ProcessQBInvoiceLinkJob: invoice update received but no active payment session, skipping resend', [
+                    'invoice_id'    => $invoice->id,
+                    'qb_invoice_id' => $this->entityId,
+                ]);
+                return;
+            }
+
             $this->handleInvoiceUpdate($connection, $qbApi, $linkService, $emailResolver, $invoice, $session);
         }
     }
@@ -108,18 +121,25 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         $client = Client::query()->where('pms_client_id', $invoice->pms_client_id)->first();
 
         if (! ($client?->auto_resend_on_change)) {
-            return;
-        }
-
-        // Enforce 15-minute cooldown
-        $lastSent = $session->last_email_sent_at ?? $session->payment_link_sent_at;
-        if ($lastSent && $lastSent->diffInMinutes(now()) < 15) {
-            Log::info('ProcessQBInvoiceLinkJob: invoice update within cooldown, skipping resend', [
-                'session_id' => $session->id,
-                'last_sent'  => (string) $lastSent,
+            Log::info('ProcessQBInvoiceLinkJob: auto-resend-on-change disabled for client, skipping resend', [
+                'invoice_id'    => $invoice->id,
+                'qb_invoice_id' => $this->entityId,
+                'pms_client_id' => $invoice->pms_client_id,
             ]);
             return;
         }
+
+        // TEMPORARILY DISABLED for testing — every invoice update should fire a resend
+        // regardless of how recently the last one went out. Re-enable before shipping.
+        // // Enforce 15-minute cooldown
+        // $lastSent = $session->last_email_sent_at ?? $session->payment_link_sent_at;
+        // if ($lastSent && $lastSent->diffInMinutes(now()) < 15) {
+        //     Log::info('ProcessQBInvoiceLinkJob: invoice update within cooldown, skipping resend', [
+        //         'session_id' => $session->id,
+        //         'last_sent'  => (string) $lastSent,
+        //     ]);
+        //     return;
+        // }
 
         // Fetch live invoice and compare amount
         try {
@@ -143,9 +163,19 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         $absoluteDiff = abs($liveBalance - $originalDollars);
         $relativeDiff = $originalDollars > 0 ? ($absoluteDiff / $originalDollars) : 0;
 
-        if ($absoluteDiff < 1.00 && $relativeDiff < 0.01) {
-            return;
-        }
+        // TEMPORARILY DISABLED for testing — any amount change (however small) should
+        // fire a resend. Re-enable before shipping.
+        // if ($absoluteDiff < 1.00 && $relativeDiff < 0.01) {
+        //     Log::info('ProcessQBInvoiceLinkJob: amount change below resend threshold, skipping resend', [
+        //         'invoice_id'    => $invoice->id,
+        //         'qb_invoice_id' => $this->entityId,
+        //         'old_amount'    => $originalDollars,
+        //         'new_amount'    => $liveBalance,
+        //         'absolute_diff' => $absoluteDiff,
+        //         'relative_diff' => $relativeDiff,
+        //     ]);
+        //     return;
+        // }
 
         // Clear stale PDF cache and fetch fresh PDF
         $qbApi->clearPdfCache($connection, $this->entityId);

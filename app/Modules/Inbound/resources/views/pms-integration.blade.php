@@ -761,13 +761,31 @@
                                     {{-- How to set up the custom field in QuickBooks --}}
                                     <div
                                         style="padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--cc-r-md);margin-bottom:14px;">
-                                        <div style="font-size:13px;color:#1e40af;margin-bottom:10px;line-height:1.6;">
+                                        <div style="font-size:13px;color:#1e40af;line-height:1.6;">
                                             <strong>This only works if the custom field is set up exactly this way in QuickBooks</strong>
-                                            (Settings &rarr; Custom fields &rarr; Add field) &mdash; otherwise the override is silently ignored:
+                                            (Settings &rarr; Custom fields &rarr; Add field) &mdash; otherwise the override is silently ignored.
+                                            <a href="javascript:void(0)"
+                                                onclick="document.getElementById('qbCustomFieldSetupModal').style.display='flex'"
+                                                style="color:#1e40af;font-weight:700;text-decoration:underline;white-space:nowrap;">View
+                                                setup screenshot &rarr;</a>
                                         </div>
-                                        <img src="{{ asset('images/qb-custom-field-setup.png') }}"
-                                            alt="QuickBooks Add custom field dialog: Name matching the field above, Data type = Text and number, Category = Transaction, Invoice checked under Select forms"
-                                            style="max-width:100%;height:auto;border:1px solid #bfdbfe;border-radius:6px;display:block;">
+                                    </div>
+
+                                    {{-- QB Custom Field Setup Screenshot Modal --}}
+                                    <div id="qbCustomFieldSetupModal" class="cc-preview-overlay"
+                                        onclick="if(event.target === this) this.style.display='none';">
+                                        <div class="cc-preview-modal">
+                                            <div class="cc-preview-header">
+                                                <div class="cc-preview-title">QuickBooks Custom Field Setup</div>
+                                                <button type="button" class="cc-preview-close"
+                                                    onclick="document.getElementById('qbCustomFieldSetupModal').style.display='none'">✕</button>
+                                            </div>
+                                            <div class="cc-preview-body">
+                                                <img src="{{ asset('images/qb-custom-field-setup.png') }}"
+                                                    alt="QuickBooks Add custom field dialog: Name matching the field above, Data type = Text and number, Category = Transaction, Invoice checked under Select forms"
+                                                    style="max-width:100%;height:auto;border-radius:6px;display:block;">
+                                            </div>
+                                        </div>
                                     </div>
 
                                     {{-- Field mapping table --}}
