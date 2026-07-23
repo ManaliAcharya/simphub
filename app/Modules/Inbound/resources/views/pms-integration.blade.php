@@ -760,24 +760,14 @@
 
                                     {{-- How to set up the custom field in QuickBooks --}}
                                     <div
-                                        style="padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--cc-r-md);font-size:13px;color:#1e40af;margin-bottom:14px;line-height:1.6;">
-                                        <strong>This only works if the custom field is set up exactly this way in
-                                            QuickBooks</strong>
-                                        (Settings &rarr; Custom fields &rarr; Add field) &mdash; otherwise the invoice
-                                        payload comes back with an empty
-                                        <code
-                                            style="background:rgba(255,255,255,.6);padding:1px 5px;border-radius:4px;">CustomField</code>
-                                        array and the override is silently ignored:
-                                        <ul style="margin:8px 0 0;padding-left:18px;">
-                                            <li><strong>Name</strong> &mdash; must exactly match what you typed above
-                                                (case-insensitive)</li>
-                                            <li><strong>Data type</strong> &mdash; <em>Text and number</em> (not
-                                                Dropdown/List)</li>
-                                            <li><strong>Category</strong> &mdash; <em>Transaction</em> (not Customer)
-                                            </li>
-                                            <li><strong>Select forms</strong> &mdash; <em>Invoice</em> must be checked
-                                            </li>
-                                        </ul>
+                                        style="padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--cc-r-md);margin-bottom:14px;">
+                                        <div style="font-size:13px;color:#1e40af;margin-bottom:10px;line-height:1.6;">
+                                            <strong>This only works if the custom field is set up exactly this way in QuickBooks</strong>
+                                            (Settings &rarr; Custom fields &rarr; Add field) &mdash; otherwise the override is silently ignored:
+                                        </div>
+                                        <img src="{{ asset('images/qb-custom-field-setup.png') }}"
+                                            alt="QuickBooks Add custom field dialog: Name matching the field above, Data type = Text and number, Category = Transaction, Invoice checked under Select forms"
+                                            style="max-width:100%;height:auto;border:1px solid #bfdbfe;border-radius:6px;display:block;">
                                     </div>
 
                                     {{-- Field mapping table --}}
