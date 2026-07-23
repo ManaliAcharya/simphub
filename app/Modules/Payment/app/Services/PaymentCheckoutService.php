@@ -371,9 +371,13 @@ class PaymentCheckoutService
                 ruleMatches:    $decision->ruleMatches,
             );
 
-            // Apply route's rate_percent for BOTH routes.
-            // rate > 0 → customer pays fee. rate = 0 or null → flat amount.
-            if ($qbMidRoute->rate_percent !== null && (float) $qbMidRoute->rate_percent > 0) {
+            // Only the fees_on route can ever add a fee. fees_off means the custom field
+            // said "No" — the merchant absorbs it, full stop — so the customer is never
+            // charged from that route, even if rate_percent happens to be set on that row
+            // (a misconfiguration we must not let leak through as a real charge).
+            if ($qbMidRoute->route_type === 'fees_on'
+                && $qbMidRoute->rate_percent !== null
+                && (float) $qbMidRoute->rate_percent > 0) {
                 $overridePercent  = (float) $qbMidRoute->rate_percent;
                 $feeCents         = (int) round($invoice->amount_cents * $overridePercent / 100);
                 $totalAmountCents = (int) $invoice->amount_cents + $feeCents;

@@ -90,7 +90,17 @@ class PaymentPageController extends Controller
                 ->where('is_active',  true)
                 ->get();
 
-            if ($midRoutes->isNotEmpty()) {
+            if ($routeType === 'fees_off') {
+                // "No" means the merchant absorbs it, full stop — never show/apply a rate
+                // here, even if a fees_off route mistakenly has rate_percent set on it.
+                $feeEnabled = false;
+                if ($midRoutes->isNotEmpty()) {
+                    $gatewayRates = [];
+                    foreach ($midRoutes as $route) {
+                        $gatewayRates[strtolower($route->gateway)] = 0.0;
+                    }
+                }
+            } elseif ($midRoutes->isNotEmpty()) {
                 $gatewayRates = [];
                 foreach ($midRoutes as $route) {
                     $gatewayRates[strtolower($route->gateway)] = (float) ($route->rate_percent ?? 0);
