@@ -35,7 +35,10 @@ class PayaSandboxChargeService
 
         $paymentInfo->RequestID    = 'R'.now()->format('ymdHis').random_int(111, 999);
         $paymentInfo->TransactionID = 'T'.now()->format('ymdHis').random_int(111, 999);
-        $sign   = strtolower($request->transactionType) === 'credit' ? '' : '-';
+        // Paya's CHECK_AMOUNT convention: a positive amount is processed as a debit
+        // (payment taken from the customer); a negative amount is a credit (paid back
+        // to the customer, i.e. a refund).
+        $sign   = strtolower($request->transactionType) === 'credit' ? '-' : '';
         $amount = $sign . number_format($request->amountInCents / 100, 2, '.', '');
 
         $client = $this->makeSoapClient($config);
@@ -67,7 +70,10 @@ class PayaSandboxChargeService
         );
         $paymentInfo->RequestID    = 'R'.now()->format('ymdHis').random_int(111, 999);
         $paymentInfo->TransactionID = 'T'.now()->format('ymdHis').random_int(111, 999);
-        $sign   = strtolower($request->transactionType) === 'credit' ? '' : '-';
+        // Paya's CHECK_AMOUNT convention: a positive amount is processed as a debit
+        // (payment taken from the customer); a negative amount is a credit (paid back
+        // to the customer, i.e. a refund).
+        $sign   = strtolower($request->transactionType) === 'credit' ? '-' : '';
         $amount = $sign . number_format($request->amountInCents / 100, 2, '.', '');
 
         $client = $this->makeSoapClient($config);
