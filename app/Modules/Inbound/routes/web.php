@@ -180,4 +180,10 @@ Route::middleware('web')->group(function (): void {
             Route::get('/callback', [QuickBooksAuthController::class, 'callback'])
                 ->name('callback');
         });
+
+    // Separate Wave routes
+    Route::prefix('inbound/wave')->name('inbound.wave.')->middleware(['merchant.auth', 'no-cache'])->group(function (): void {
+
+        Route::post('/disconnect', [PmsAuthController::class, 'disconnect'])->name('disconnect');
+    });
 });

@@ -9,6 +9,7 @@ use Modules\Inbound\Models\Client;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Modules\Inbound\Services\PmsOAuthStateService;
 use Throwable;
+use Modules\Inbound\Models\WaveConnection;
 
 class PmsAuthController extends Controller
 {
@@ -65,5 +66,27 @@ class PmsAuthController extends Controller
                 'pms_client_id' => $pmsClientId,
             ]);
         }
+    }
+
+    public function disconnect(Request $request): RedirectResponse
+    {
+        $pmsClientId = $request->validate([
+            'pms_client_id' => ['required', 'string'],
+        ])['pms_client_id'];
+
+
+        $connection = WaveConnection::query()
+            ->where('provider', 'wave')
+            ->where('pms_client_id', $pmsClientId)
+            ->first();
+
+        if ($connection) {
+            $connection->delete();
+        }
+
+        return redirect()->route('inbound.wave.page', [
+            'success'       => 'Wave disconnected. Click "Connect Wave" to reconnect.',
+            'pms_client_id' => $pmsClientId,
+        ]);
     }
 }
