@@ -263,6 +263,57 @@ Content-Type: application/json
             </div>
         </div>
 
+        {{-- GET /merchants/{merchant_ref} --}}
+        <div class="endpoint-card" id="ep-merchant-lookup">
+            <div class="ep-header" onclick="toggleEp('ep-merchant-lookup')">
+                <span class="method-badge method-get">GET</span>
+                <span class="ep-url">/api/v1/boarding/merchants/{merchant_ref}</span>
+                <span class="ep-desc">Look up a merchant's full boarding status by your merchant_ref</span>
+                <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+            <div class="ep-body">
+                <p class="ep-desc-text">
+                    Returns everything SimpleHub knows about a merchant you've boarded — agent attribution, processor, tier, current status, the live boarding link,
+                    and click/revoke timestamps. Scoped to your account only; a <code>merchant_ref</code> belonging to another client returns <code>404</code>, same as an unknown one.
+                </p>
+
+                <p class="code-label label-req">Example Request</p>
+                <div class="code-block">
+                    <button class="copy-code" onclick="copyCode(this)">Copy</button>
+                    <pre>GET {{ $baseUrl }}/api/v1/boarding/merchants/MER-10552
+Authorization: Bearer {{ $client->client_api_key }}</pre>
+                </div>
+
+                <p class="code-label label-ok">200 — Found</p>
+                <div class="code-block">
+                    <button class="copy-code" onclick="copyCode(this)">Copy</button>
+                    <pre>{
+  "merchant_ref": "MER-10552",
+  "merchant_name": "Acme Coffee LLC",
+  "merchant_zip": "75201",
+  "agent_ref": "AGT-2291",
+  "processor": "square",
+  "scope": "merchant",
+  "tier": "rack_rate",
+  "status": "clicked",
+  "boarding_link": "{{ $baseUrl }}/sq/8f3a1c9d2e...",
+  "created_by": "agent:AGT-2291",
+  "created_at": "2026-07-17T14:20:00+00:00",
+  "clicked_at": "2026-07-17T14:32:10+00:00",
+  "revoked_at": null
+}</pre>
+                </div>
+
+                <p class="code-label label-err">404 — Not Found</p>
+                <div class="code-block">
+                    <button class="copy-code" onclick="copyCode(this)">Copy</button>
+                    <pre>{
+  "error": "No merchant found for merchant_ref [MER-10552]."
+}</pre>
+                </div>
+            </div>
+        </div>
+
         {{-- GET /sq/{token} --}}
         <div class="endpoint-card" id="ep-sq-redirect">
             <div class="ep-header" onclick="toggleEp('ep-sq-redirect')">

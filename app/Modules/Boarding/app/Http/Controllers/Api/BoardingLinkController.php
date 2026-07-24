@@ -112,6 +112,39 @@ class BoardingLinkController extends Controller
         });
     }
 
+    /** GET /api/v1/boarding/merchants/{merchant_ref} */
+    public function show(Request $request, string $merchant_ref): JsonResponse
+    {
+        /** @var BoardingClient $client */
+        $client = $request->attributes->get('boarding_client');
+
+        $merchant = BoardingMerchant::where('client_id', $client->id)
+            ->where('merchant_ref', $merchant_ref)
+            ->first();
+
+        if (! $merchant) {
+            return response()->json([
+                'error' => "No merchant found for merchant_ref [{$merchant_ref}].",
+            ], 404);
+        }
+
+        return response()->json([
+            'merchant_ref'  => $merchant->merchant_ref,
+            'merchant_name' => $merchant->merchant_name,
+            'merchant_zip'  => $merchant->merchant_zip,
+            'agent_ref'     => $merchant->agent_ref,
+            'processor'     => $merchant->processor,
+            'scope'         => $merchant->scope,
+            'tier'          => $merchant->tier,
+            'status'        => $merchant->status,
+            'boarding_link' => $merchant->boardingLink(),
+            'created_by'    => $merchant->created_by,
+            'created_at'    => $merchant->created_at?->toIso8601String(),
+            'clicked_at'    => $merchant->clicked_at?->toIso8601String(),
+            'revoked_at'    => $merchant->revoked_at?->toIso8601String(),
+        ]);
+    }
+
     /** POST /api/v1/boarding/boarding-links/revoke?agent_ref=... */
     public function revoke(Request $request): JsonResponse
     {

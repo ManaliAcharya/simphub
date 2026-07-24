@@ -10,4 +10,5 @@ Route::middleware(['api', AuthenticateBoardingClientApiKey::class])
     ->group(function (): void {
         Route::post('boarding-links', [BoardingLinkController::class, 'store']);
         Route::post('boarding-links/revoke', [BoardingLinkController::class, 'revoke']);
+        Route::get('merchants/{merchant_ref}', [BoardingLinkController::class, 'show']);
     });
