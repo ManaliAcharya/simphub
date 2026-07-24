@@ -10,7 +10,10 @@
 
         {{-- API Credentials --}}
         <div class="cc-card">
-            <h3 class="cc-card-title">API Credentials</h3>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+                <h3 class="cc-card-title" style="margin:0;">API Credentials</h3>
+                <a href="{{ route('inbound.clients.boarding.api-docs', $client->client_id) }}" class="cc-copy-btn" style="text-decoration:none;display:inline-block;">API Docs →</a>
+            </div>
             <p class="cc-card-desc">Used to authenticate calls to <code>POST /api/v1/boarding/boarding-links</code>.</p>
 
             <div class="cc-field">
