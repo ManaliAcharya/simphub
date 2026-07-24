@@ -140,7 +140,7 @@
             @if($client->webhook_url)
                 <code id="webhook-url-val" style="display:block;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:5px 10px;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;">{{ $client->webhook_url }}</code>
             @else
-                <span style="font-size:13px;color:#9ca3af;">Not set — configure it on the client detail page.</span>
+                <span style="font-size:13px;color:#9ca3af;">Not set — the client configures it from their portal.</span>
             @endif
         </div>
     </div>

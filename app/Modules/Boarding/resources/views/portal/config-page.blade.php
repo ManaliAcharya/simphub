@@ -46,6 +46,43 @@
             </form>
         </div>
 
+        {{-- Webhooks --}}
+        <div class="cc-card">
+            <h3 class="cc-card-title">Webhooks</h3>
+            <p class="cc-card-desc">We POST a <code>link.clicked</code> event to this URL the moment a merchant clicks their boarding link, before they're redirected to Square. See the <a href="{{ route('inbound.clients.boarding.api-docs', $client->client_id) }}">API docs</a> for the payload shape and signature verification.</p>
+
+            <div class="cc-field">
+                <label>Webhook Callback URL</label>
+                <div id="wh-url-display" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                    @if($client->webhook_url)
+                        <span class="cc-copy-val" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ $client->webhook_url }}</span>
+                    @else
+                        <span style="font-size:13px;color:var(--cc-text-3);flex:1;">Not set — link.clicked events won't be delivered.</span>
+                    @endif
+                    <button type="button" class="cc-copy-btn" style="background:#f3f4f6;color:#374151;" onclick="toggleWhUrlEdit(true)">Edit</button>
+                </div>
+                <form id="wh-url-form" method="POST" action="{{ route('inbound.boarding.webhook-url') }}" style="display:none;margin-top:8px;">
+                    @csrf
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <input type="url" name="webhook_url" value="{{ old('webhook_url', $client->webhook_url) }}"
+                               placeholder="https://your-server.com/webhooks/isohub"
+                               style="flex:1;padding:8px 12px;border:1px solid var(--cc-border);border-radius:var(--cc-r-sm);font:inherit;font-size:13px;min-width:0;">
+                        <button type="submit" class="cc-copy-btn">Save</button>
+                        <button type="button" class="cc-copy-btn" style="background:#f3f4f6;color:#374151;" onclick="toggleWhUrlEdit(false)">Cancel</button>
+                    </div>
+                </form>
+            </div>
+
+            <div class="cc-field" style="margin-top:14px;">
+                <label>Webhook Secret</label>
+                <div class="cc-copy-row">
+                    <span class="cc-copy-val" id="wh-secret-box">{{ str_repeat('•', 40) }}</span>
+                    <button type="button" class="cc-copy-btn" onclick="toggleSecret(this)">Show</button>
+                    <button type="button" class="cc-copy-btn" onclick="copySecret(this)">Copy</button>
+                </div>
+            </div>
+        </div>
+
         {{-- Merchants --}}
         <div class="cc-card">
             <h3 class="cc-card-title">Merchants ({{ $client->merchants->count() }})</h3>
@@ -96,6 +133,26 @@ function toggleKey() {
 }
 function copyKey(btn) {
     navigator.clipboard.writeText(RAW_KEY).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+}
+
+function toggleWhUrlEdit(show) {
+    document.getElementById('wh-url-display').style.display = show ? 'none' : 'flex';
+    document.getElementById('wh-url-form').style.display = show ? 'block' : 'none';
+    if (show) document.querySelector('#wh-url-form input[name=webhook_url]').focus();
+}
+
+const RAW_SECRET = @json($webhookSecret);
+let secretVisible = false;
+function toggleSecret(btn) {
+    secretVisible = !secretVisible;
+    document.getElementById('wh-secret-box').textContent = secretVisible ? RAW_SECRET : '•'.repeat(40);
+    btn.textContent = secretVisible ? 'Hide' : 'Show';
+}
+function copySecret(btn) {
+    navigator.clipboard.writeText(RAW_SECRET).then(() => {
         btn.textContent = 'Copied!';
         setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
     });

@@ -143,6 +143,7 @@ Route::middleware('web')->group(function (): void {
     Route::prefix('inbound/boarding')->name('inbound.boarding.')->middleware(['merchant.auth', 'no-cache'])->group(function (): void {
         Route::get('/', [BoardingClientPortalController::class, 'show'])->name('page');
         Route::post('/master-links', [BoardingClientPortalController::class, 'updateMasterLinks'])->name('master-links');
+        Route::post('/webhook-url', [BoardingClientPortalController::class, 'updateWebhookUrl'])->name('webhook-url');
     });
 
 

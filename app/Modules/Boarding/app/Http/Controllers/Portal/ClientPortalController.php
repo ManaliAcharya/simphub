@@ -14,8 +14,22 @@ class ClientPortalController extends Controller
         $client = $request->attributes->get('client_account')->owner;
         $client->load(['merchants' => fn ($q) => $q->latest(), 'masterLinks']);
         $apiKey = $client->client_api_key;
+        $webhookSecret = $client->webhook_secret;
 
-        return view('boarding::portal.config-page', compact('client', 'apiKey'));
+        return view('boarding::portal.config-page', compact('client', 'apiKey', 'webhookSecret'));
+    }
+
+    public function updateWebhookUrl(Request $request): RedirectResponse
+    {
+        $client = $request->attributes->get('client_account')->owner;
+
+        $validated = $request->validate([
+            'webhook_url' => ['nullable', 'url', 'max:2048'],
+        ]);
+
+        $client->update(['webhook_url' => $validated['webhook_url'] ?? null]);
+
+        return back()->with('success', 'Webhook URL updated.');
     }
 
     public function updateMasterLinks(Request $request): RedirectResponse
