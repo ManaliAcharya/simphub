@@ -78,7 +78,7 @@ return [
         'token_url'              => rtrim(env('QB_TOKEN_URL', 'https://oauth.platform.intuit.com'), '/'),
         'webhook_callback_url'   => env('QB_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/quickbooks'),
         'webhook_verifier_token' => env('QB_WEBHOOK_VERIFIER_TOKEN'),
-        'minor_version'          => env('QB_MINOR_VERSION', '65'),
+        'minor_version'          => env('QB_MINOR_VERSION', '75'),
     ],
 
     'lawcus' => [
