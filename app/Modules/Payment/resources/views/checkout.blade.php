@@ -864,7 +864,7 @@
                         types: ['card'],
                         card: {
                             requireCVV: true,
-                            mask_number: true,
+                            mask_number: false,
                         },
                     },
                     styles: {
