@@ -10,9 +10,14 @@ use Modules\Inbound\Services\PmsConnectorRegistry;
 use Modules\Inbound\Services\PmsOAuthStateService;
 use Throwable;
 use Modules\Inbound\Models\WaveConnection;
+use Modules\Inbound\Services\WaveApiClient;
 
 class PmsAuthController extends Controller
 {
+    public function __construct(
+        private readonly WaveApiClient $waveApi,
+    ) {}
+
     public function redirect(string $provider, PmsConnectorRegistry $registry): RedirectResponse
     {
         $pmsClientId = (string) request()->query('pms_client_id', '');
@@ -81,6 +86,15 @@ class PmsAuthController extends Controller
             ->first();
 
         if ($connection) {
+            try {
+                $this->waveApi->uninstallApp($connection);
+            } catch (Throwable $e) {
+                logger()->warning('Wave: failed to uninstall app on disconnect', [
+                    'pms_client_id' => $pmsClientId,
+                    'error'         => $e->getMessage(),
+                ]);
+            }
+
             $connection->delete();
         }
 

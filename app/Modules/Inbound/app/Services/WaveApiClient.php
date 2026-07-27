@@ -447,6 +447,46 @@ class WaveApiClient
         return [];
     }
 
+    /**
+     * Revoke the app's authorization for this Wave business, which stops all webhook
+     * deliveries for it. There is no per-business webhook subscription ID to delete
+     * individually, so uninstalling the app is the mechanism disconnect uses.
+     */
+    public function uninstallApp(WaveConnection $connection): bool
+    {
+        $businessId = $this->fetchBusinessId($connection);
+
+        $mutation = <<<'GQL'
+        mutation UninstallApp($input: AppUninstallInput!) {
+            appUninstall(input: $input) {
+                didSucceed
+                inputErrors {
+                    code
+                    message
+                    path
+                }
+            }
+        }
+        GQL;
+
+        $data = $this->graphqlPost($connection, [
+            'query'     => $mutation,
+            'variables' => ['input' => ['businessId' => $this->toBusinessRelayId($businessId)]],
+        ], $connection->access_token);
+
+        $didSucceed  = (bool) Arr::get($data, 'data.appUninstall.didSucceed', false);
+        $inputErrors = Arr::get($data, 'data.appUninstall.inputErrors', []);
+
+        if (! $didSucceed) {
+            logger()->warning('Wave: appUninstall did not succeed', [
+                'pms_client_id' => $connection->pms_client_id,
+                'input_errors'  => $inputErrors,
+            ]);
+        }
+
+        return $didSucceed;
+    }
+
     public function fetchInvoice(WaveConnection $connection, string $invoiceId): array
     {
         // business(id:) takes the plain UUID; invoice(id:) requires a Relay global ID: base64("Invoice:{id}")
