@@ -2,6 +2,7 @@
 
 namespace Modules\Inbound\Services;
 
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Modules\Inbound\Models\AdvancedMdPractice;
@@ -11,6 +12,10 @@ use SimpleXMLElement;
 class AdvancedMdSessionService
 {
     private const PARTNER_LOGIN_URL = 'https://partnerlogin.advancedmd.com/practicemanager/xmlrpc/processrequest.aspx';
+
+    public function __construct(
+        private readonly AdvancedMdRateLimiter $rateLimiter,
+    ) {}
 
     public function ensureValidSession(AdvancedMdPractice $practice): AdvancedMdPractice
     {
@@ -136,11 +141,34 @@ class AdvancedMdSessionService
 
     private function postAndParseXml(string $url, array $body, string $context): SimpleXMLElement
     {
-        $responseBody = Http::withHeaders(['Accept' => 'text/xml'])
-            ->withBody(json_encode($body), 'application/json')
-            ->post($url)
-            ->throw()
-            ->body();
+        $officeKey = (string) ($body['ppmdmsg']['@officecode'] ?? 'unknown');
+        $this->rateLimiter->throttle($officeKey, 'login');
+
+        try {
+            $responseBody = Http::withHeaders(['Accept' => 'text/xml'])
+                ->withBody(json_encode($body), 'application/json')
+                ->post($url)
+                ->throw()
+                ->body();
+        } catch (RequestException $e) {
+            if ($e->response->status() === 429) {
+                $retryAfter = $e->response->header('Retry-After');
+
+                Log::warning('AdvancedMD rate limited (HTTP 429)', [
+                    'office_key'  => $officeKey,
+                    'action'      => 'login',
+                    'context'     => $context,
+                    'retry_after' => $retryAfter,
+                ]);
+
+                throw new RuntimeException(
+                    "AdvancedMD rate limit hit during {$context} for office {$officeKey}"
+                    . ($retryAfter ? "; retry after {$retryAfter}s." : '.')
+                );
+            }
+
+            throw $e;
+        }
 
         $xml = simplexml_load_string($responseBody);
 

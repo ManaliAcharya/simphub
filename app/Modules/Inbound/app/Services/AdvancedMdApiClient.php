@@ -3,6 +3,7 @@
 namespace Modules\Inbound\Services;
 
 use Exception;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Modules\Inbound\Models\AdvancedMdPractice;
 use RuntimeException;
@@ -11,6 +12,10 @@ use SimpleXMLElement;
 use Illuminate\Support\Facades\Log;
 class AdvancedMdApiClient
 {
+    public function __construct(
+        private readonly AdvancedMdRateLimiter $rateLimiter,
+    ) {}
+
     // ── REST PM endpoints (Bearer token, JSON response) ────────────────────────
 
     /**
@@ -19,11 +24,17 @@ class AdvancedMdApiClient
      */
     public function searchPatients(AdvancedMdPractice $practice, string $query = '!IDENTIFIER'): array
     {
-        $response = Http::acceptJson()
-            ->asJson()
-            ->withToken($practice->session_token)
-            ->post($practice->rest_pm_url . '/lookup/patients', ['query' => $query])
-            ->throw();
+        $this->rateLimiter->throttle($practice->office_key, 'lookup_patients');
+
+        try {
+            $response = Http::acceptJson()
+                ->asJson()
+                ->withToken($practice->session_token)
+                ->post($practice->rest_pm_url . '/lookup/patients', ['query' => $query])
+                ->throw();
+        } catch (RequestException $e) {
+            throw $this->wrapIfRateLimited($e, $practice->office_key, 'lookup_patients');
+        }
 
         return $response->json() ?? [];
     }
@@ -278,6 +289,8 @@ class AdvancedMdApiClient
      */
     public function recordPayment(AdvancedMdPractice $practice, array $patientPayload): array
     {
+        $this->rateLimiter->throttle($practice->office_key, 'transaction_payments');
+
         try {
 
             Log::info('AdvancedMD Outbound Payload Debug', [
@@ -297,6 +310,14 @@ class AdvancedMdApiClient
 
             if ($response->successful()) {
                 return $response->json();
+            }
+
+            if ($response->status() === 429) {
+                Log::warning('AdvancedMD rate limited (HTTP 429)', [
+                    'office_key'  => $practice->office_key,
+                    'action'      => 'transaction_payments',
+                    'retry_after' => $response->header('Retry-After'),
+                ]);
             }
 
             Log::warning('AdvancedMD Payment Error', [
@@ -323,12 +344,19 @@ class AdvancedMdApiClient
 
     private function xmlRpc(AdvancedMdPractice $practice, array $msg): SimpleXMLElement
     {
-        // Do NOT send Accept: application/json — AMD XML-RPC endpoints always return XML.
-        $responseBody = Http::withHeader('Cookie', 'token=' . $practice->session_token)
-            ->withBody(json_encode(['ppmdmsg' => $msg]), 'application/json')
-            ->post($practice->xmlrpc_url)
-            ->throw()
-            ->body();
+        $action = (string) ($msg['@action'] ?? 'unknown');
+        $this->rateLimiter->throttle($practice->office_key, $action);
+
+        try {
+            // Do NOT send Accept: application/json — AMD XML-RPC endpoints always return XML.
+            $responseBody = Http::withHeader('Cookie', 'token=' . $practice->session_token)
+                ->withBody(json_encode(['ppmdmsg' => $msg]), 'application/json')
+                ->post($practice->xmlrpc_url)
+                ->throw()
+                ->body();
+        } catch (RequestException $e) {
+            throw $this->wrapIfRateLimited($e, $practice->office_key, $action);
+        }
 
         $xml = simplexml_load_string($responseBody);
 
@@ -337,6 +365,31 @@ class AdvancedMdApiClient
         }
 
         return $xml;
+    }
+
+    /**
+     * AMD returns a plain HTTP 429 when a call would exceed its per-office-key
+     * rate limit. Surface the Retry-After it sends back instead of letting this
+     * look like an auth/XML-parsing failure (the two most common causes we log).
+     */
+    private function wrapIfRateLimited(RequestException $e, string $officeKey, string $action): \Throwable
+    {
+        if ($e->response->status() !== 429) {
+            return $e;
+        }
+
+        $retryAfter = $e->response->header('Retry-After');
+
+        Log::warning('AdvancedMD rate limited (HTTP 429)', [
+            'office_key'  => $officeKey,
+            'action'      => $action,
+            'retry_after' => $retryAfter,
+        ]);
+
+        return new RuntimeException(
+            "AdvancedMD rate limit hit for office {$officeKey} (action: {$action})"
+            . ($retryAfter ? "; retry after {$retryAfter}s." : '.')
+        );
     }
 
     /**
