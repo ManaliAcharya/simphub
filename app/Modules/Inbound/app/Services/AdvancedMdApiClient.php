@@ -323,12 +323,25 @@ class AdvancedMdApiClient
 
     private function xmlRpc(AdvancedMdPractice $practice, array $msg): SimpleXMLElement
     {
+        $requestBody = json_encode(['ppmdmsg' => $msg]);
+
         // Do NOT send Accept: application/json — AMD XML-RPC endpoints always return XML.
         $responseBody = Http::withHeader('Cookie', 'token=' . $practice->session_token)
-            ->withBody(json_encode(['ppmdmsg' => $msg]), 'application/json')
+            ->withBody($requestBody, 'application/json')
             ->post($practice->xmlrpc_url)
             ->throw()
             ->body();
+
+        // TEMPORARY diagnostic logging for the "charge not appearing in invoice table"
+        // investigation — remove once the getupdatedvisits gap is root-caused.
+        // SSN is redacted since the listChargesSince patient field selector requests it.
+        Log::debug('AdvancedMD xmlRpc raw exchange (temporary diagnostic)', [
+            'practice_id'   => $practice->id,
+            'office_key'    => $practice->office_key,
+            'action'        => $msg['@action'] ?? null,
+            'request_body'  => $requestBody,
+            'response_body' => $this->redactSensitiveXml($responseBody),
+        ]);
 
         $xml = simplexml_load_string($responseBody);
 
@@ -337,6 +350,14 @@ class AdvancedMdApiClient
         }
 
         return $xml;
+    }
+
+    /**
+     * Strip patient SSN out of a raw AMD XML response before it hits the logs.
+     */
+    private function redactSensitiveXml(string $body): string
+    {
+        return preg_replace('/ssn="[^"]*"/i', 'ssn="[REDACTED]"', $body) ?? $body;
     }
 
     /**
