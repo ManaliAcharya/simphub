@@ -587,11 +587,11 @@ class SyncInvoicePaidListener
             $paymentPayload =
             [
                 "allowTransactionDuplicates" => false,
-                "appointmentId" => $billing['visit_id'],
+                "appointmentId" => (int) $billing['visit_id'],
                 "carrierId" => null,
                 "charges" => [
                     [
-                        "chargeId" => $billing['charge_id'],
+                        "chargeId" => (int) $billing['charge_id'],
                         "amount"   => $totalDollars,
                     ],
                 ],
@@ -606,7 +606,21 @@ class SyncInvoicePaidListener
                 "creditCardToken" => null,
                 "cvnFilled" => false,
                 "depositDate" => now()->format('Y-m-d'),
-                "patientId" => $billing['patient_id'] ?: $invoice->external_client_id,
+                "forceZipcodeMismatch" => false,
+                "icnNumber" => null,
+                "includeOnStatement" => false,
+                "insurancePlan" => null,
+                // The card was authorized by FluidPay/Paya, not by an AMD-integrated
+                // processor — per AMD's documented "Create New Payment" schema, this must
+                // be flagged so AMD doesn't expect its own merchantAccountId/processor
+                // context (which we never have) to validate the payment against.
+                "isCreditCardPaymentWithoutProcessor" => true,
+                "isRepost" => false,
+                "maxMonthLimit" => null,
+                "merchantAccountId" => null,
+                "merchantDeviceId" => null,
+                "note" => "",
+                "patientId" => (int) ($billing['patient_id'] ?: $invoice->external_client_id),
                 // 1 = Patient. These are self-pay card/ACH collections, not insurance
                 // remittances — posting as paySource=2 (Insurance) makes AMD validate the
                 // amount against the charge's Insurance Balance instead of Patient Balance,
@@ -615,9 +629,14 @@ class SyncInvoicePaidListener
                 "paymentAmount" => $totalDollars,
                 "paymentCode" => "PP",
                 "paymentMethodId" => $this->advancedMdPaymentMethodId($transaction->gateway),
+                "paymentProcessor" => null,
                 "postingMethod" => "Trans Entry",
-                "profileId" => $billing['profile_id'],
-                "respPartyId" => $billing['resp_party_id'],
+                "profileId" => (int) $billing['profile_id'],
+                "remarkCodesIds" => null,
+                "requestMultiUseToken" => false,
+                "respPartyId" => (int) $billing['resp_party_id'],
+                "saveCCOF" => false,
+                "sendReceipt" => false,
                 "transactionId" => null,
                 // Fully applied to the single charge above, so nothing is left unapplied.
                 "unappliedPaymentAmount" => 0.00,
