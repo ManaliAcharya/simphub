@@ -508,6 +508,19 @@ class SyncInvoicePaidListener
         };
     }
 
+    /**
+     * AMD payment method codes: 3=Visa, 4=MC, 5=Discover, 6=Amex, 7=OtherCard, 15=ACH/EFT.
+     * We don't currently capture card brand from the gateway response, so card-based
+     * gateways post as "OtherCard" (7) rather than guessing a brand we can't confirm.
+     */
+    private function advancedMdPaymentMethodId(string $gateway): int
+    {
+        return match (strtolower($gateway)) {
+            'paya'  => 15,
+            default => 7,
+        };
+    }
+
     private function resolveOrganizationId(PmsConnection $connection, array $rawPayload): string
     {
         $organizationId = (string) (
@@ -569,11 +582,8 @@ class SyncInvoicePaidListener
             // cause of a swallowed database-level 500.
             $totalDollars = round($totalCents / 100, 2);
 
-            // TODO: zipCode has no confirmed source yet (not present in getChargeDetail's
-            // response) — check the patient search/demographics payload already stored in
-            // $invoice->raw_payload['patient'] for an address/zip field before relying on this.
-            // TODO: paymentMethodId is still a guess (1) — confirm AMD's enum for "credit card"
-            // vs ACH/check before relying on this for non-card gateways (e.g. Paya).
+            $zipCode = (string) Arr::get($transaction->billing_address ?? [], 'zip', '');
+
             $paymentPayload =
             [
                 "allowTransactionDuplicates" => false,
@@ -597,10 +607,14 @@ class SyncInvoicePaidListener
                 "cvnFilled" => false,
                 "depositDate" => now()->format('Y-m-d'),
                 "patientId" => $billing['patient_id'] ?: $invoice->external_client_id,
-                "paySource" => 2,
+                // 1 = Patient. These are self-pay card/ACH collections, not insurance
+                // remittances — posting as paySource=2 (Insurance) makes AMD validate the
+                // amount against the charge's Insurance Balance instead of Patient Balance,
+                // which fails with "attempting to over-apply" for any self-pay-only charge.
+                "paySource" => 1,
                 "paymentAmount" => $totalDollars,
                 "paymentCode" => "PP",
-                "paymentMethodId" => 1,
+                "paymentMethodId" => $this->advancedMdPaymentMethodId($transaction->gateway),
                 "postingMethod" => "Trans Entry",
                 "profileId" => $billing['profile_id'],
                 "respPartyId" => $billing['resp_party_id'],
@@ -608,7 +622,7 @@ class SyncInvoicePaidListener
                 // Fully applied to the single charge above, so nothing is left unapplied.
                 "unappliedPaymentAmount" => 0.00,
                 "unappliedVisitId" => null,
-                "zipCode" => "15136",
+                "zipCode" => $zipCode,
             ];
 
             Log::info('AdvancedMD outgoing payment payload', ['payload' => $paymentPayload]);
