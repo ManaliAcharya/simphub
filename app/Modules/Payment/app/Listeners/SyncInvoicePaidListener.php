@@ -608,7 +608,7 @@ class SyncInvoicePaidListener
                 '@depositdate'   => now()->format('m/d/Y'),
                 '@checknumber'   => '12345',
                 '@postedby'      => 'API_USER',
-                '@batch'         => '',
+                '@batch'         => 'AUTO',
             ];
 
             Log::info('AdvancedMD outgoing payment payload', ['payload' => $patientPayload]);
