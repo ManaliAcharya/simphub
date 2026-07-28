@@ -582,7 +582,7 @@ class SyncInvoicePaidListener
                         'paymentlist' => [
                             'payment' => [
                                 '@amount' => $amountString,
-                                '@id'     => '',
+                                '@id'     => '0',
                                 '@status' => 'A',
                             ],
                         ],
@@ -606,7 +606,7 @@ class SyncInvoicePaidListener
                 '@paymethod'     => '2',
                 '@carrierid'     => '',
                 '@depositdate'   => now()->format('m/d/Y'),
-                '@checknumber'   => '',
+                '@checknumber'   => '12345',
                 '@postedby'      => 'API_USER',
                 '@batch'         => '',
             ];
