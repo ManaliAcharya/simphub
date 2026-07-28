@@ -508,19 +508,6 @@ class SyncInvoicePaidListener
         };
     }
 
-    /**
-     * AMD payment method codes: 3=Visa, 4=MC, 5=Discover, 6=Amex, 7=OtherCard, 15=ACH/EFT.
-     * We don't currently capture card brand from the gateway response, so card-based
-     * gateways post as "OtherCard" (7) rather than guessing a brand we can't confirm.
-     */
-    private function advancedMdPaymentMethodId(string $gateway): int
-    {
-        return match (strtolower($gateway)) {
-            'paya'  => 15,
-            default => 7,
-        };
-    }
-
     private function resolveOrganizationId(PmsConnection $connection, array $rawPayload): string
     {
         $organizationId = (string) (
@@ -556,107 +543,78 @@ class SyncInvoicePaidListener
                 throw new \RuntimeException('Zero patient balance.');
             }
 
-            // Look up the real per-patient/per-visit/per-charge billing IDs from AMD instead
-            // of the hardcoded test constants this used to ship with (see getChargeBillingContext
-            // docblock). zipCode still isn't sourced from anywhere confirmed — flagged below.
+            // Look up the real per-patient/per-visit/per-charge billing IDs and the charge's
+            // live balance snapshot from AMD instead of hardcoded test constants.
             $billing = $this->advancedMdApi->getChargeBillingContext(
                 $connection,
                 (string) $invoice->external_invoice_id,
             );
 
-            // Pull real card details off the FluidPay response instead of sending an all-null
-            // card block for what is actually a card transaction — AMD's REST endpoint may well
-            // reject a card payment (paymentMethodId=1) that carries no card evidence at all.
-            $cardInfo = (array) data_get($transaction->gateway_response, 'data.response_body.card', []);
-            [$cardExpMonth, $cardExpYear] = array_pad(
-                explode('/', (string) ($cardInfo['expiration_date'] ?? '')),
-                2,
-                null
-            );
-            $cardholderName = trim(
-                ($transaction->cardholder_first_name ?? '') . ' ' . ($transaction->cardholder_last_name ?? '')
-            ) ?: null;
-
             // AMD's financial fields expect plain decimal dollars, not cents — sending 7500
             // instead of 75.00 tells AMD the patient paid $7,500.00, which is a very plausible
             // cause of a swallowed database-level 500.
             $totalDollars = round($totalCents / 100, 2);
+            $amountString = number_format($totalDollars, 2, '.', '');
 
-            $zipCode = (string) Arr::get($transaction->billing_address ?? [], 'zip', '');
-
-            $paymentPayload =
-            [
-                "allowTransactionDuplicates" => false,
-                "appointmentId" => (int) $billing['visit_id'],
-                "carrierId" => null,
-                // AMD's own documented payment-record shape carries the charge's current
-                // balance snapshot as part of the request, not just chargeId + amount —
-                // without it, AMD appears to validate against an empty/zero balance
-                // context regardless of the charge's real state. Pulled fresh from
-                // getChargeBillingContext() (live AMD data), never cached or estimated.
-                "charges" => [
-                    [
-                        "chargeId"         => (int) $billing['charge_id'],
-                        "amount"           => $totalDollars,
-                        "allowedAmount"    => $billing['allowed'],
-                        "insurancePortion" => $billing['insurance_portion'],
-                        "patientPortion"   => $billing['patient_portion'],
-                        "insuranceBalance" => $billing['insurance_balance'],
-                        "patientBalance"   => $billing['patient_balance'],
+            // Posting via XML-RPC addpayments, not the REST /transaction/payments endpoint —
+            // the REST endpoint consistently rejected valid, unpaid charges with "exceeds the
+            // payee's balance" regardless of payload shape. This shape is confirmed working
+            // against a real sandbox charge; every field below is required — omitting the
+            // unappliedpaymentlist/unappliedwriteofflist/writeofflist sibling nodes (even blank)
+            // or the nested paymentlist.payment block throws a null-argument error deep in
+            // AMD's own PaymentEntryShared.CreateAddPaymentsCommands.
+            $patientPayload = [
+                'unappliedpaymentlist'  => '',
+                'unappliedwriteofflist' => '',
+                'chargelist' => [
+                    'charge' => [
+                        '@id'         => (string) $billing['charge_id'],
+                        '@allowed'    => number_format($billing['allowed'], 2, '.', ''),
+                        '@insportion' => number_format($billing['insurance_portion'], 2, '.', ''),
+                        '@patportion' => number_format($billing['patient_portion'], 2, '.', ''),
+                        '@insbalance' => number_format($billing['insurance_balance'], 2, '.', ''),
+                        '@patbalance' => number_format($billing['patient_balance'], 2, '.', ''),
+                        '@profile'    => (string) $billing['profile_id'],
+                        'writeofflist' => '',
+                        // The per-charge allocation — must sum to the patient-level @amount
+                        // below. @id/@status are assigned by AMD; @status "H" is required as
+                        // input regardless (confirmed empirically, meaning unconfirmed).
+                        'paymentlist' => [
+                            'payment' => [
+                                '@amount' => $amountString,
+                                '@id'     => '',
+                                '@status' => 'H',
+                            ],
+                        ],
                     ],
                 ],
-                "checkId" => null,
-                "checkNumber" => "",
-                "creditCardAuthorizationResponse" => $cardInfo['auth_code'] ?? null,
-                "creditCardExpirationMonth" => $cardExpMonth,
-                "creditCardExpirationYear" => $cardExpYear,
-                "creditCardLastFourDigits" => $cardInfo['last_four'] ?? null,
-                "creditCardName" => $cardholderName,
-                "creditCardOnFileId" => null,
-                "creditCardToken" => null,
-                "cvnFilled" => false,
-                "depositDate" => now()->format('Y-m-d'),
-                "forceZipcodeMismatch" => false,
-                "icnNumber" => null,
-                "includeOnStatement" => false,
-                "insurancePlan" => null,
-                // The card was authorized by FluidPay/Paya, not by an AMD-integrated
-                // processor — per AMD's documented "Create New Payment" schema, this must
-                // be flagged so AMD doesn't expect its own merchantAccountId/processor
-                // context (which we never have) to validate the payment against.
-                "isCreditCardPaymentWithoutProcessor" => true,
-                "isRepost" => false,
-                "maxMonthLimit" => null,
-                "merchantAccountId" => null,
-                "merchantDeviceId" => null,
-                "note" => "",
-                "patientId" => (int) ($billing['patient_id'] ?: $invoice->external_client_id),
+                '@patientid'     => (string) ($billing['patient_id'] ?: $invoice->external_client_id),
                 // 1 = Patient. These are self-pay card/ACH collections, not insurance
-                // remittances — posting as paySource=2 (Insurance) makes AMD validate the
+                // remittances — posting as paysource=2 (Insurance) makes AMD validate the
                 // amount against the charge's Insurance Balance instead of Patient Balance,
                 // which fails with "attempting to over-apply" for any self-pay-only charge.
-                "paySource" => 1,
-                "paymentAmount" => $totalDollars,
-                "paymentCode" => "PP",
-                "paymentMethodId" => $this->advancedMdPaymentMethodId($transaction->gateway),
-                "paymentProcessor" => null,
-                "postingMethod" => "Trans Entry",
-                "profileId" => (int) $billing['profile_id'],
-                "remarkCodesIds" => null,
-                "requestMultiUseToken" => false,
-                "respPartyId" => (int) $billing['resp_party_id'],
-                "saveCCOF" => false,
-                "sendReceipt" => false,
-                "transactionId" => null,
-                // Fully applied to the single charge above, so nothing is left unapplied.
-                "unappliedPaymentAmount" => 0.00,
-                "unappliedVisitId" => null,
-                "zipCode" => $zipCode,
+                '@paysource'     => '1',
+                '@postingmethod' => 'payentry',
+                '@amount'        => $amountString,
+                '@paycode'       => 'PP',
+                '@woamount'      => '0',
+                // 2 = confirmed working for a card-collected self-pay payment in sandbox
+                // testing. AMD's paymethod enum for this XML-RPC action isn't documented
+                // anywhere we have access to, so this is applied uniformly for now rather
+                // than guessing at codes for other gateways (e.g. Paya/ACH) we haven't
+                // confirmed — revisit once AMD support can confirm the actual enum.
+                '@paymethod'     => '2',
+                '@carrierid'     => '',
+                '@depositdate'   => '',
+                '@checknumber'   => '',
+                '@postedby'      => '',
+                '@batch'         => '',
             ];
 
-            Log::info('AdvancedMD outgoing payment payload', ['payload' => $paymentPayload]);
+            Log::info('AdvancedMD outgoing payment payload', ['payload' => $patientPayload]);
 
-            $this->advancedMdApi->recordPayment($connection, $paymentPayload);
+            $result = $this->advancedMdApi->postPayment($connection, $patientPayload);
+            $amdPaymentId = $result['Results']['@paymentid'] ?? null;
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
 
@@ -666,6 +624,7 @@ class SyncInvoicePaidListener
                 'gateway'             => $transaction->gateway,
                 'gateway_txn_id'      => $transaction->gateway_txn_id,
                 'external_invoice_id' => $invoice->external_invoice_id,
+                'amd_payment_id'      => $amdPaymentId,
             ]);
         } catch (\Throwable $exception) {
             $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
