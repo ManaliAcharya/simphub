@@ -577,13 +577,13 @@ class SyncInvoicePaidListener
                         '@profile'    => (string) $billing['profile_id'],
                         'writeofflist' => '',
                         // The per-charge allocation — must sum to the patient-level @amount
-                        // below. @id/@status are assigned by AMD; @status "H" is required as
+                        // below. @id/@status are assigned by AMD; @status "A" is required as
                         // input regardless (confirmed empirically, meaning unconfirmed).
                         'paymentlist' => [
                             'payment' => [
                                 '@amount' => $amountString,
                                 '@id'     => '',
-                                '@status' => 'H',
+                                '@status' => 'A',
                             ],
                         ],
                     ],
