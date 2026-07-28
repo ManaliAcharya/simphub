@@ -60,10 +60,17 @@ class AdvancedMdApiClient
 
     /**
      * Resolve the profile / responsible-party / visit IDs needed to post a payment
-     * against a specific charge. These are per-patient/per-visit AMD values (not
-     * fixed constants) — required before recordPayment() can post a valid payload.
+     * against a specific charge, plus that charge's current balance snapshot
+     * (allowed/insurance/patient portions and balances). These are per-patient/
+     * per-visit AMD values (not fixed constants) — required before recordPayment()
+     * can post a valid payload. AMD's own documented "addpayments" payment-record
+     * shape echoes the charge's current balance fields back as part of the request
+     * (not just chargeId + amount) — omitting them appears to make AMD validate the
+     * payment against an empty/zero balance context regardless of the charge's real
+     * state, which is the likely cause of "exceeds the payee's balance" rejections
+     * even against charges confirmed to have a real, unpaid balance.
      *
-     * @return array{patient_id: string, visit_id: string, profile_id: string, resp_party_id: string, charge_id: string}
+     * @return array{patient_id: string, visit_id: string, profile_id: string, resp_party_id: string, charge_id: string, allowed: float, insurance_portion: float, patient_portion: float, insurance_balance: float, patient_balance: float}
      */
     public function getChargeBillingContext(AdvancedMdPractice $practice, string $chargeId): array
     {
@@ -86,6 +93,12 @@ class AdvancedMdApiClient
             'profile_id'    => $this->stripAmdIdPrefix((string) ($visit['@profile'] ?? '')),
             'resp_party_id' => $this->stripAmdIdPrefix((string) ($charge['@respparty'] ?? '')),
             'charge_id'     => $this->stripAmdIdPrefix((string) ($charge['@id'] ?? $chargeId)),
+
+            'allowed'           => (float) ($charge['@allowed'] ?? 0),
+            'insurance_portion' => (float) ($charge['@insportion'] ?? 0),
+            'patient_portion'   => (float) ($charge['@patportion'] ?? 0),
+            'insurance_balance' => (float) ($charge['@insbalance'] ?? 0),
+            'patient_balance'   => (float) ($charge['@patbalance'] ?? 0),
         ];
 
         Log::info('AdvancedMD getChargeBillingContext resolved', [

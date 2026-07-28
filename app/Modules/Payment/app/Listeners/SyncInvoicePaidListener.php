@@ -589,10 +589,20 @@ class SyncInvoicePaidListener
                 "allowTransactionDuplicates" => false,
                 "appointmentId" => (int) $billing['visit_id'],
                 "carrierId" => null,
+                // AMD's own documented payment-record shape carries the charge's current
+                // balance snapshot as part of the request, not just chargeId + amount —
+                // without it, AMD appears to validate against an empty/zero balance
+                // context regardless of the charge's real state. Pulled fresh from
+                // getChargeBillingContext() (live AMD data), never cached or estimated.
                 "charges" => [
                     [
-                        "chargeId" => (int) $billing['charge_id'],
-                        "amount"   => $totalDollars,
+                        "chargeId"         => (int) $billing['charge_id'],
+                        "amount"           => $totalDollars,
+                        "allowedAmount"    => $billing['allowed'],
+                        "insurancePortion" => $billing['insurance_portion'],
+                        "patientPortion"   => $billing['patient_portion'],
+                        "insuranceBalance" => $billing['insurance_balance'],
+                        "patientBalance"   => $billing['patient_balance'],
                     ],
                 ],
                 "checkId" => null,
