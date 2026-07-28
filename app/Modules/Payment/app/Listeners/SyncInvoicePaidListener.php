@@ -605,9 +605,9 @@ class SyncInvoicePaidListener
                 // confirmed — revisit once AMD support can confirm the actual enum.
                 '@paymethod'     => '2',
                 '@carrierid'     => '',
-                '@depositdate'   => '',
+                '@depositdate'   => now()->format('m/d/Y'),
                 '@checknumber'   => '',
-                '@postedby'      => '',
+                '@postedby'      => 'API_USER',
                 '@batch'         => '',
             ];
 
