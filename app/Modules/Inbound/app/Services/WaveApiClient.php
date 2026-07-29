@@ -114,6 +114,7 @@ class WaveApiClient
                             id
                             name
                             type { value }
+                            subtype { value }
                             isArchived
                         }
                     }
