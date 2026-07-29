@@ -771,7 +771,7 @@
                                         <label>QBO Custom Field Name</label>
                                         <input type="text" name="qb_fee_override_field"
                                             value="{{ old('qb_fee_override_field', $client->qb_fee_override_field ?? 'Cash Discount') }}"
-                                            placeholder="e.g. Cash Discount">
+                                            placeholder="e.g. Fee Override">
                                         <div style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">Must match
                                             the exact custom field name on the QuickBooks invoice template.</div>
                                     </div>
@@ -843,10 +843,10 @@
                                                 <tr style="border-top:1px solid var(--cc-border-light);">
                                                     <td style="padding:9px 12px;"><code
                                                             style="background:#f3f4f6;color:var(--cc-text-2);padding:2px 7px;border-radius:4px;font-size:12px;">Not
-                                                            set</code></td>
+                                                            set / anything else</code></td>
                                                     <td
                                                         style="padding:9px 12px;color:var(--cc-text-2);font-size:13px;">
-                                                        Falls back to client-level default above</td>
+                                                        Merchant absorbs fees — flat amount shown (treated the same as "No")</td>
                                                 </tr>
                                             </tbody>
                                         </table>

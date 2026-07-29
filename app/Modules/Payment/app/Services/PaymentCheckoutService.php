@@ -153,17 +153,15 @@ class PaymentCheckoutService
                 // on any gateway/payment method, regardless of Processing Fee Configuration.
                 $applyFee = false;
             } else {
-                // Override is ON → the per-invoice field (Yes/No) decides directly, via the
-                // standard cc/ach percentages below. Not set → falls back to the client-level
-                // Processing Fee Configuration. Multi-MID Routing (if also enabled) can still
-                // replace this with a per-gateway rate further down — see resolveQbMidRoute().
+                // Override is ON → the per-invoice field decides directly, via the standard
+                // cc/ach percentages below. Only an exact "Yes" charges a fee — No, a typo, or
+                // the field being unset all mean the merchant absorbs it, so a data-entry mistake
+                // never accidentally charges a customer. Multi-MID Routing (if also enabled) can
+                // still replace this with a per-gateway rate further down — see resolveQbMidRoute().
                 $fieldName  = (string) ($feeClient->qb_fee_override_field ?? 'Cash Discount');
                 $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
 
-                if ($fieldValue !== null) {
-                    $applyFee = strtolower($fieldValue) === 'yes';
-                }
-                // null (not set) → $applyFee stays at fee_surcharge_enabled (client-level default)
+                $applyFee = $fieldValue !== null && strtolower(trim($fieldValue)) === 'yes';
             }
         }
 
@@ -544,16 +542,13 @@ class PaymentCheckoutService
             return null;
         }
 
-        // Multi-MID ON → read Cash Discount field.
-        // Field not set → return null (use Processing fees, no MID override).
+        // Multi-MID ON → read the fee-override field. Only an exact "Yes" routes to the
+        // fees_on MID — No, a typo, or the field being unset all route to fees_off, matching
+        // the merchant-absorbs default applied above.
         $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
         $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
 
-        if ($fieldValue === null) {
-            return null; // no field → fall back to Processing fees default
-        }
-
-        $routeType = strtolower($fieldValue) === 'yes' ? 'fees_on' : 'fees_off';
+        $routeType = ($fieldValue !== null && strtolower(trim($fieldValue)) === 'yes') ? 'fees_on' : 'fees_off';
 
         return ClientMidRoute::query()
             ->where('client_id',  $client->id)

@@ -66,17 +66,16 @@ class PaymentPageController extends Controller
                 // Configuration.
                 $feeEnabled = false;
             } else {
-                // Override is ON → the per-invoice field (Yes/No) decides directly. Not set →
-                // falls back to the client-level Processing Fee Configuration. $routeType is
-                // only used below to further refine per-gateway rates when Multi-MID is ALSO on.
+                // Override is ON → the per-invoice field decides directly. Only an exact "Yes"
+                // enables the fee — No, a typo, or the field being unset all mean the merchant
+                // absorbs it, so a data-entry mistake never accidentally charges a customer.
+                // $routeType is used below to further refine per-gateway rates when Multi-MID
+                // is ALSO on.
                 $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
                 $fieldValue = $this->extractQbField($invoice, $fieldName);
 
-                if ($fieldValue !== null) {
-                    $feeEnabled = strtolower($fieldValue) === 'yes';
-                    $routeType  = $feeEnabled ? 'fees_on' : 'fees_off';
-                }
-                // field not set → feeEnabled stays at fee_surcharge_enabled, routeType stays null
+                $feeEnabled = $fieldValue !== null && strtolower(trim($fieldValue)) === 'yes';
+                $routeType  = $feeEnabled ? 'fees_on' : 'fees_off';
             }
         }
 
