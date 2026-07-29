@@ -95,7 +95,7 @@ class QuickBooksAuthController extends Controller
         ]);
     }
 
-    public function disconnect(Request $request): RedirectResponse
+    public function disconnect(Request $request, QuickBooksOAuthService $oauth): RedirectResponse
     {
         $pmsClientId = $request->validate([
             'pms_client_id' => ['required', 'string'],
@@ -107,6 +107,15 @@ class QuickBooksAuthController extends Controller
             ->first();
 
         if ($connection) {
+            try {
+                $oauth->revokeToken($connection);
+            } catch (Throwable $e) {
+                logger()->warning('QuickBooks: failed to revoke token on disconnect', [
+                    'pms_client_id' => $pmsClientId,
+                    'error'         => $e->getMessage(),
+                ]);
+            }
+
             $connection->delete();
         }
 

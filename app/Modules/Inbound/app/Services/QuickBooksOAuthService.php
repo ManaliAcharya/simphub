@@ -166,6 +166,39 @@ class QuickBooksOAuthService
         return $this->state->validate($state);
     }
 
+    /**
+     * Revoke this connection's OAuth token with Intuit, which invalidates it immediately
+     * instead of leaving it to expire naturally (refresh tokens are long-lived).
+     */
+    public function revokeToken(QuickBooksConnection $connection): bool
+    {
+        $token = $connection->refresh_token ?: $connection->access_token;
+
+        if (! $token) {
+            return true;
+        }
+
+        $environment = $connection->environment();
+
+        $response = Http::acceptJson()
+            ->withBasicAuth($this->clientId($environment), $this->clientSecret($environment))
+            ->post('https://developer.api.intuit.com/v2/oauth2/tokens/revoke', [
+                'token' => $token,
+            ]);
+
+        if ($response->failed()) {
+            logger()->warning('QuickBooks: token revocation failed', [
+                'pms_client_id' => $connection->pms_client_id,
+                'status'        => $response->status(),
+                'body'          => $response->json() ?? $response->body(),
+            ]);
+
+            return false;
+        }
+
+        return true;
+    }
+
     private function persistTokens(
         array $payload,
         ?QuickBooksConnection $connection = null,
