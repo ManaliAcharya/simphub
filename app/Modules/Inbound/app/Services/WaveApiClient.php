@@ -140,10 +140,19 @@ class WaveApiClient
             if ($node['isArchived'] ?? false) {
                 continue;
             }
+
+            $subtype = $node['subtype']['value'] ?? '';
+
+            // Only allow payment accounts
+            if (!in_array($subtype, ['CASH_AND_BANK', 'MONEY_IN_TRANSIT'], true)) {
+                continue;
+            }
+
             $accounts[] = [
                 'account_id'   => (string) ($node['id'] ?? ''),
                 'account_name' => (string) ($node['name'] ?? ''),
                 'account_type' => (string) ($node['type']['value'] ?? ''),
+                'account_subtype' => $subtype,
             ];
         }
 
