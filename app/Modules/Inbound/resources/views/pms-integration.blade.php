@@ -1653,7 +1653,7 @@
 
                                         <td>{{ ucfirst($invoice->status ?? 'Unknown') }}</td>
                                         <td>
-                                            @if (!empty($invoice->recipient_emails))
+                                            @if ((!empty($invoice->recipient_emails)) && (strtolower($invoice->status)  !== 'paid'))
                                                 <form action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id,'invoice' => $invoice->id,]) }}" method="POST">
                                                          @csrf
 
