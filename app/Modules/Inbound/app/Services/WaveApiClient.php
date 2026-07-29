@@ -448,43 +448,39 @@ class WaveApiClient
     }
 
     /**
-     * Revoke the app's authorization for this Wave business, which stops all webhook
-     * deliveries for it. There is no per-business webhook subscription ID to delete
-     * individually, so uninstalling the app is the mechanism disconnect uses.
+     * Revoke this connection's OAuth token via Wave's token-revoke endpoint, which stops
+     * all further API access and webhook deliveries for the business. Wave's GraphQL API
+     * has no per-app "uninstall" mutation — token revocation is the real disconnect mechanism.
      */
     public function uninstallApp(WaveConnection $connection): bool
     {
-        $businessId = $this->fetchBusinessId($connection);
+        $token = $connection->refresh_token ?: $connection->access_token;
 
-        $mutation = <<<'GQL'
-        mutation UninstallApp($input: AppUninstallInput!) {
-            appUninstall(input: $input) {
-                didSucceed
-                inputErrors {
-                    code
-                    message
-                    path
-                }
-            }
+        if (! $token) {
+            return true;
         }
-        GQL;
 
-        $data = $this->graphqlPost($connection, [
-            'query'     => $mutation,
-            'variables' => ['input' => ['businessId' => $this->toBusinessRelayId($businessId)]],
-        ], $connection->access_token);
+        $response = Http::asForm()->post(
+            rtrim(config('services.wave.base_url', 'https://api.waveapps.com'), '/') . '/oauth2/token-revoke/',
+            [
+                'client_id'       => config('services.wave.client_id'),
+                'client_secret'   => config('services.wave.client_secret'),
+                'token'           => $token,
+                'token_type_hint' => $connection->refresh_token ? 'refresh_token' : 'access_token',
+            ]
+        );
 
-        $didSucceed  = (bool) Arr::get($data, 'data.appUninstall.didSucceed', false);
-        $inputErrors = Arr::get($data, 'data.appUninstall.inputErrors', []);
-
-        if (! $didSucceed) {
-            logger()->warning('Wave: appUninstall did not succeed', [
+        if ($response->failed()) {
+            logger()->warning('Wave: token revocation failed', [
                 'pms_client_id' => $connection->pms_client_id,
-                'input_errors'  => $inputErrors,
+                'status'        => $response->status(),
+                'body'          => $response->json() ?? $response->body(),
             ]);
+
+            return false;
         }
 
-        return $didSucceed;
+        return true;
     }
 
     public function fetchInvoice(WaveConnection $connection, string $invoiceId): array
