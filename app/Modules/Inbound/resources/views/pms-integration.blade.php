@@ -185,6 +185,14 @@
             {{-- ── Connection tab ── --}}
             <div id="cc-panel-connection" class="cc-tab-panel">
 
+                @if(request()->query('success'))
+                    <div class="cc-notice success" style="margin-bottom:14px;">  {{ request()->query('success') }}</div>
+                @endif
+
+                @if(request()->query('error'))
+                    <div class="cc-notice error" style="margin-bottom:14px;">  {{ request()->query('error') }}</div>
+                @endif
+
                 {{-- Connected Services --}}
                 <div class="cc-card">
                     <div class="cc-card-title">Connected Services</div>
@@ -234,6 +242,16 @@
                                 @if ($provider === 'quickbooks' && $client)
                                     <form method="POST" action="{{ route('inbound.quickbooks.disconnect') }}"
                                         onsubmit="return confirm('Disconnect QuickBooks? The client will need to reconnect to resume invoice processing.');">
+                                        @csrf
+                                        <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                        <button type="submit" class="button secondary"
+                                            style="font-size:12px;padding:7px 16px;color:#dc2626;border-color:#dc2626;">Disconnect</button>
+                                    </form>
+                                @endif
+
+                                @if ($provider === 'wave' && $client)
+                                    <form method="POST" action="{{ route('inbound.wave.disconnect') }}"
+                                        onsubmit="return confirm('Disconnect Wave? The client will need to reconnect to resume invoice processing.');">
                                         @csrf
                                         <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
                                         <button type="submit" class="button secondary"
