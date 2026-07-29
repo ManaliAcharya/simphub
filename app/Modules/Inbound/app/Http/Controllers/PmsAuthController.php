@@ -9,9 +9,15 @@ use Modules\Inbound\Models\Client;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Modules\Inbound\Services\PmsOAuthStateService;
 use Throwable;
+use Modules\Inbound\Models\WaveConnection;
+use Modules\Inbound\Services\WaveApiClient;
 
 class PmsAuthController extends Controller
 {
+    public function __construct(
+        private readonly WaveApiClient $waveApi,
+    ) {}
+
     public function redirect(string $provider, PmsConnectorRegistry $registry): RedirectResponse
     {
         $pmsClientId = (string) request()->query('pms_client_id', '');
@@ -65,5 +71,36 @@ class PmsAuthController extends Controller
                 'pms_client_id' => $pmsClientId,
             ]);
         }
+    }
+
+    public function disconnect(Request $request): RedirectResponse
+    {
+        $pmsClientId = $request->validate([
+            'pms_client_id' => ['required', 'string'],
+        ])['pms_client_id'];
+
+
+        $connection = WaveConnection::query()
+            ->where('provider', 'wave')
+            ->where('pms_client_id', $pmsClientId)
+            ->first();
+
+        if ($connection) {
+            try {
+                $this->waveApi->uninstallApp($connection);
+            } catch (Throwable $e) {
+                logger()->warning('Wave: failed to uninstall app on disconnect', [
+                    'pms_client_id' => $pmsClientId,
+                    'error'         => $e->getMessage(),
+                ]);
+            }
+
+            $connection->delete();
+        }
+
+        return redirect()->route('inbound.wave.page', [
+            'success'       => 'Wave disconnected. Click "Connect Wave" to reconnect.',
+            'pms_client_id' => $pmsClientId,
+        ]);
     }
 }

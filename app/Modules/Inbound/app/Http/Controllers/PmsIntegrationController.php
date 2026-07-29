@@ -458,6 +458,8 @@ class PmsIntegrationController extends Controller
                     return $invoice;
                 });
 
+
+
         return view('inbound::pms-integration', [
             'provider' => $provider,
             'providerLabel' => $connector->label(),
