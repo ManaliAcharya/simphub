@@ -46,6 +46,7 @@ class ZohoConnector implements PmsConnectorInterface
                     ...((array) $connection->meta),
                     'webhook_id' => $ids['webhook_id'],
                     'workflow_id' => $ids['workflow_id'],
+                    'edit_workflow_id' => $ids['edit_workflow_id'] ?? null,
                     'webhook_auto_setup' => 'success',
                     'webhook_auto_setup_error' => null,
                 ],

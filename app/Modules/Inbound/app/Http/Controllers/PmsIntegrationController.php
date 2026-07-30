@@ -292,7 +292,7 @@ class PmsIntegrationController extends Controller
         return redirect()->back()->with('success', 'Surcharge split ' . ($validated['qb_surcharge_enabled'] ? 'enabled' : 'disabled') . '.');
     }
 
-    public function saveQbAutoResendToggle(Request $request): RedirectResponse
+    public function saveAutoResendToggle(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'pms_client_id'        => ['required', 'string'],
@@ -303,7 +303,11 @@ class PmsIntegrationController extends Controller
             ->where('pms_client_id', $validated['pms_client_id'])
             ->firstOrFail();
 
-        abort_unless(strtoupper((string) $client->client_pms) === 'QUICKBOOKS', 422, 'Auto-resend toggle is only for QuickBooks clients.');
+        abort_unless(
+            in_array(strtoupper((string) $client->client_pms), ['QUICKBOOKS', 'CLIO', 'ZOHO', 'WAVE'], true),
+            422,
+            'Auto-resend toggle is not supported for this PMS.'
+        );
 
         $client->forceFill(['auto_resend_on_change' => (bool) $validated['auto_resend_on_change']])->save();
 

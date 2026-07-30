@@ -14,6 +14,7 @@ class ClioWebhookService
     public function __construct(
         private readonly ClioApiClient $client,
         private readonly InternalInboundApiCaller $inboundApi,
+        private readonly InvoiceLinkLifecycleService $lifecycle,
     ) {}
 
     public function registerInvoiceCreatedWebhook(ClioConnection $connection): array
@@ -97,14 +98,37 @@ class ClioWebhookService
             return response()->json(['message' => 'Webhook payload does not contain an invoice id.'], 422);
         }
 
+        $rawEvent  = (string) Arr::get($payloadData, 'data.event', 'created');
+        $operation = $this->normalizeOperation($rawEvent);
+
+        if ($operation === 'delete') {
+            $this->lifecycle->disableOnRemoval('clio', $invoiceId, $connection->pms_client_id, 'disabled');
+
+            return response()->json(['accepted' => true], 202);
+        }
+
         $this->inboundApi->callInvoiceIngestion('clio', array_merge($payloadData, [
             'invoice_id' => $invoiceId,
             'pms_client_id' => $connection->pms_client_id,
-            'event_name' => (string) Arr::get($payloadData, 'data.event', 'created'),
+            'event_name' => $rawEvent,
+            'operation' => $operation,
             'headers' => $request->headers->all(),
         ]));
 
         return response()->json(['accepted' => true], 202);
+    }
+
+    /**
+     * Clio bill webhook events are 'created' | 'updated' | 'deleted'. Any
+     * unrecognized value is treated as an update — never dropped or crashed on.
+     */
+    private function normalizeOperation(string $rawEvent): string
+    {
+        return match (strtolower($rawEvent)) {
+            'created' => 'create',
+            'deleted' => 'delete',
+            default   => 'update',
+        };
     }
 
     private function callbackUrl(ClioConnection $connection): string

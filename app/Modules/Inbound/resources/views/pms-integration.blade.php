@@ -452,20 +452,19 @@
                     </div>
                 @endif
 
-                {{-- QB Auto-Resend on Invoice Change --}}
-                @if ($provider === 'quickbooks' && $connection && $client)
+                {{-- Auto-Resend on Invoice Change --}}
+                @if (in_array($provider, ['quickbooks', 'clio', 'zoho', 'wave'], true) && $connection && $client)
                     <div class="cc-card">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
                             <div>
                                 <div class="cc-card-title" style="margin-bottom:2px;">Auto-Resend Payment Link on
                                     Invoice Change</div>
                                 <div class="cc-card-desc" style="margin:0;">
-                                    When enabled, the payment link email is automatically re-sent when QuickBooks
-                                    reports an invoice amount change greater than $1 or 1%. A 15-minute cooldown
-                                    prevents duplicate sends.
+                                    When enabled, the payment link email is automatically re-sent whenever
+                                    {{ $providerLabel ?? ucfirst($provider) }} reports the invoice was updated.
                                 </div>
                             </div>
-                            <form method="POST" action="{{ route('inbound.quickbooks.auto-resend-toggle') }}"
+                            <form method="POST" action="{{ route('inbound.'.$provider.'.auto-resend-toggle') }}"
                                 id="qb-auto-resend-toggle-form">
                                 @csrf
                                 <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
@@ -679,6 +678,15 @@
                                 <li>Middleware creates a payment session and emails a payment link.</li>
                                 <li>Customer pays → middleware records it in Wave as <strong>Paid</strong>.</li>
                             </ol>
+                        </div>
+                        <div
+                            style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:12px 14px;font-size:13px;color:#9a3412;line-height:1.6;">
+                            <strong style="display:block;margin-bottom:4px;">Action needed for auto-resend / auto-disable on invoice changes</strong>
+                            Wave's webhook topics are configured once for this app in Wave's own Developer Dashboard,
+                            not per client here. To have the payment link automatically re-sent when an invoice is
+                            edited, or disabled when it's deleted, the update and delete invoice topics must also be
+                            enabled there (only <code style="background:#ffedd5;padding:1px 4px;border-radius:3px;">invoice.approved</code>
+                            is enabled today).
                         </div>
                     </div>
                 @endif

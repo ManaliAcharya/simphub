@@ -45,7 +45,7 @@ return [
         'webhook_callback_url' => env('CLIO_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/clio'),
         'api_version' => env('CLIO_API_VERSION', '4'),
         'webhook_model' => env('CLIO_WEBHOOK_MODEL', 'bill'),
-        'webhook_events' => array_values(array_filter(array_map('trim', explode(',', env('CLIO_WEBHOOK_EVENTS', 'created'))))),
+        'webhook_events' => array_values(array_filter(array_map('trim', explode(',', env('CLIO_WEBHOOK_EVENTS', 'created,updated,deleted'))))),
         'webhook_fields' => array_values(array_filter(array_map('trim', explode(',', env('CLIO_WEBHOOK_FIELDS', 'id,number,total,balance,state,issued_at,created_at,updated_at'))))),
         'webhook_expiry_days' => (int) env('CLIO_WEBHOOK_EXPIRY_DAYS', 30),
     ],

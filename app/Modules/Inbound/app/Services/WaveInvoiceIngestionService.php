@@ -19,6 +19,7 @@ class WaveInvoiceIngestionService
         private readonly WaveOAuthService $oauth,
         private readonly PaymentSessionService $paymentSessions,
         private readonly PaymentLinkService $paymentLinks,
+        private readonly InvoiceLinkLifecycleService $lifecycle,
     ) {}
 
     public function ingest(string $externalInvoiceId, array $triggerPayload = []): array
@@ -48,6 +49,12 @@ class WaveInvoiceIngestionService
 
         $normalized = $this->normalizeInvoice($invoiceData, $triggerPayload);
         $emails     = $this->extractClientEmails($invoiceData);
+
+        $existedBefore = Invoice::query()
+            ->where('pms_source', 'wave')
+            ->where('pms_client_id', $pmsClientId)
+            ->where('external_invoice_id', $normalized['external_invoice_id'])
+            ->exists();
 
         $result = DB::transaction(function () use ($normalized, $invoiceData, $triggerPayload, $emails, $pmsClientId) {
             $invoice = Invoice::query()->updateOrCreate(
@@ -116,6 +123,10 @@ class WaveInvoiceIngestionService
                 'emails_sent'     => $emailsSent,
                 'recipient_emails' => $emails,
             ]);
+        }
+
+        if ($existedBefore) {
+            $this->lifecycle->resendOnUpdate($result['invoice'], $result['payment_session'], $emails, $pmsClientId);
         }
 
         $result['emails_sent'] = $emailsSent;

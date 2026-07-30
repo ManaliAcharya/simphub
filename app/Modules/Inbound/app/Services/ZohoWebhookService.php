@@ -12,6 +12,7 @@ class ZohoWebhookService
 {
     public function __construct(
         private readonly InternalInboundApiCaller $inboundApi,
+        private readonly InvoiceLinkLifecycleService $lifecycle,
     ) {}
 
     public function handleIncoming(Request $request): Response
@@ -50,21 +51,45 @@ class ZohoWebhookService
             ?? ''
         );
 
+        $rawEvent  = (string) (
+            Arr::get($payloadData, 'event')
+            ?? Arr::get($payloadData, 'event_type')
+            ?? Arr::get($payloadData, 'data.event')
+            ?? 'bill.created'
+        );
+        $operation = $this->normalizeOperation($rawEvent);
+
+        if ($operation === 'delete') {
+            $this->lifecycle->disableOnRemoval('zoho', $invoiceId, $connection->pms_client_id, 'disabled');
+
+            return response()->json(['accepted' => true], 202);
+        }
+
         $this->inboundApi->callInvoiceIngestion('zoho', array_merge($payloadData, [
             'invoice_id' => $invoiceId,
             'bill_id' => $invoiceId,
             'pms_client_id' => $connection->pms_client_id,
             'organization_id' => $organizationId,
-            'event_name' => (string) (
-                Arr::get($payloadData, 'event')
-                ?? Arr::get($payloadData, 'event_type')
-                ?? Arr::get($payloadData, 'data.event')
-                ?? 'bill.created'
-            ),
+            'event_name' => $rawEvent,
+            'operation' => $operation,
             'headers' => $request->headers->all(),
         ]));
 
         return response()->json(['accepted' => true], 202);
+    }
+
+    /**
+     * Our own webhook template (ZohoWebhookSetupService) is what sets this
+     * 'event' value — 'invoice.created' | 'invoice.updated' | 'invoice.deleted'.
+     * Any unrecognized value is treated as an update — never dropped or crashed on.
+     */
+    private function normalizeOperation(string $rawEvent): string
+    {
+        return match (strtolower($rawEvent)) {
+            'invoice.created', 'bill.created' => 'create',
+            'invoice.deleted', 'bill.deleted' => 'delete',
+            default => 'update',
+        };
     }
 
     private function findConnection(string $pmsClientId): ?PmsConnection

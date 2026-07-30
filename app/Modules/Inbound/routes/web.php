@@ -82,8 +82,17 @@ Route::middleware('web')->group(function (): void {
         Route::post('/inbound/quickbooks/surcharge-account', [PmsIntegrationController::class, 'saveQbSurchargeAccount'])
             ->name('inbound.quickbooks.surcharge-account');
 
-        Route::post('/inbound/quickbooks/auto-resend-toggle', [PmsIntegrationController::class, 'saveQbAutoResendToggle'])
+        Route::post('/inbound/quickbooks/auto-resend-toggle', [PmsIntegrationController::class, 'saveAutoResendToggle'])
             ->name('inbound.quickbooks.auto-resend-toggle');
+
+        Route::post('/inbound/clio/auto-resend-toggle', [PmsIntegrationController::class, 'saveAutoResendToggle'])
+            ->name('inbound.clio.auto-resend-toggle');
+
+        Route::post('/inbound/zoho/auto-resend-toggle', [PmsIntegrationController::class, 'saveAutoResendToggle'])
+            ->name('inbound.zoho.auto-resend-toggle');
+
+        Route::post('/inbound/wave/auto-resend-toggle', [PmsIntegrationController::class, 'saveAutoResendToggle'])
+            ->name('inbound.wave.auto-resend-toggle');
 
         Route::post('/inbound/quickbooks/surcharge-toggle', [PmsIntegrationController::class, 'saveQbSurchargeToggle'])
             ->name('inbound.quickbooks.surcharge-toggle');

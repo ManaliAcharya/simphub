@@ -12,6 +12,7 @@ class WaveWebhookService
 {
     public function __construct(
         private readonly InternalInboundApiCaller $inboundApi,
+        private readonly InvoiceLinkLifecycleService $lifecycle,
     ) {}
 
     public function handleIncoming(Request $request): Response
@@ -57,14 +58,42 @@ class WaveWebhookService
             return response()->json(['message' => 'Cannot resolve PMS client identifier from Wave webhook.'], 422);
         }
 
+        $rawEvent  = (string) (Arr::get($payloadData, 'event_type') ?? Arr::get($payloadData, 'topic') ?? 'invoice.approved');
+        $operation = $this->normalizeOperation($rawEvent);
+
+        if ($operation === 'delete' || $operation === 'void') {
+            $this->lifecycle->disableOnRemoval('wave', $invoiceId, $pmsClientId, $operation === 'void' ? 'voided' : 'disabled');
+
+            return response()->json(['accepted' => true], 202);
+        }
+
         $this->inboundApi->callInvoiceIngestion('wave', array_merge($payloadData, [
             'invoice_id'     => $invoiceId,
             'pms_client_id'  => $pmsClientId,
-            'event_name'     => (string) (Arr::get($payloadData, 'event_type') ?? Arr::get($payloadData, 'topic') ?? 'invoice.approved'),
+            'event_name'     => $rawEvent,
+            'operation'      => $operation,
             'headers'        => $request->headers->all(),
         ]));
 
         return response()->json(['accepted' => true], 202);
+    }
+
+    /**
+     * Wave's exact webhook topic strings for update/delete are unverified against a
+     * live Wave app (see plan open items) — match by substring rather than an exact
+     * table so minor casing/format differences still normalize correctly. Anything
+     * unrecognized is treated as an update — never dropped or crashed on.
+     */
+    private function normalizeOperation(string $rawEvent): string
+    {
+        $normalized = strtolower($rawEvent);
+
+        return match (true) {
+            str_contains($normalized, 'delete') => 'delete',
+            str_contains($normalized, 'void')   => 'void',
+            str_contains($normalized, 'create'), str_contains($normalized, 'approve') => 'create',
+            default => 'update',
+        };
     }
 
     private function resolvePmsClientIdFromPayload(array $payload): string
