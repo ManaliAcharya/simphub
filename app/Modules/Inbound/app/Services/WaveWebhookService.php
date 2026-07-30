@@ -34,6 +34,11 @@ class WaveWebhookService
             }
         }
 
+        logger()->info('Wave webhook received', [
+            'payload' => $request->json()->all(),
+            'headers' => $request->headers->all(),
+        ]);
+
         $payloadData = $request->json()->all();
 
         $invoiceId = (string) (

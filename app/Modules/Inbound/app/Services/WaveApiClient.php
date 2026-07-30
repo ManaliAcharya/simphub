@@ -131,10 +131,7 @@ class WaveApiClient
         $edges    = Arr::get($data, 'data.business.accounts.edges', []);
         $accounts = [];
 
-        Log::info('GraphQL Response & Accounts Edges', [
-            'response' => $data,
-            'edges' => Arr::get($data, 'data.business.accounts.edges', []),
-        ]);
+
         foreach ($edges as $edge) {
             $node = $edge['node'] ?? [];
             if ($node['isArchived'] ?? false) {
