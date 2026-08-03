@@ -808,7 +808,7 @@
                             <div class="cc-field" style="margin-bottom:14px;">
                                 <label>Reminder Schedule (days after the first payment email, comma-separated)</label>
                                 <input type="text" name="reminder_schedule_days_raw" id="reminder-schedule-input"
-                                    value="{{ old('reminder_schedule_days_raw', implode(',', $client->reminder_schedule_days ?? config('reminders.default_schedule_days'))) }}"
+                                    value="{{ old('reminder_schedule_days_raw', implode(',', $client->reminderScheduleDays())) }}"
                                     placeholder="3,7,14,30,45">
                                 @error('reminder_schedule_days')
                                     <p style="font-size:12px;color:#dc2626;margin-top:3px;">{{ $message }}</p>

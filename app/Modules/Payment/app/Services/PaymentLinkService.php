@@ -13,6 +13,8 @@ use Modules\Inbound\Models\EmailConfiguration;
 use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Payment\Mail\PaymentLinkAdminMail;
 use Modules\Payment\Mail\PaymentLinkMail;
+use Modules\Payment\Mail\PaymentReminderAdminMail;
+use Modules\Payment\Mail\PaymentReminderMail;
 
 class PaymentLinkService
 {
@@ -60,6 +62,15 @@ class PaymentLinkService
             return 0;
         }
 
+        // Anchor for the reminder cadence — set once, alongside the once-only send claim below.
+        $firstEmailSentAt = now();
+        $nextReminderAt   = null;
+
+        if ($client?->reminders_enabled) {
+            $schedule       = $client->reminderScheduleDays();
+            $nextReminderAt = $firstEmailSentAt->copy()->addDays((int) $schedule[0]);
+        }
+
         // Claim the session — prevents duplicate sends on webhook retries
         $claimed = DB::table('payment_sessions')
             ->where('id', $session->id)
@@ -67,6 +78,8 @@ class PaymentLinkService
             ->update([
                 'payment_link_sent_at'       => now(),
                 'payment_link_last_sent_to'  => json_encode($allRecipients, JSON_THROW_ON_ERROR),
+                'first_email_sent_at'        => $firstEmailSentAt,
+                'next_reminder_at'           => $nextReminderAt,
                 'updated_at'                 => now(),
             ]);
 
@@ -186,6 +199,64 @@ class PaymentLinkService
                     'failure_reasons'    => $failures,
                 ]
             );
+        }
+
+        return $sent;
+    }
+
+    /**
+     * Send a payment reminder for an invoice that's still unpaid after the initial
+     * email — reuses the same recipient routing as sendInvoiceLinkOnce/resendPaymentLink.
+     */
+    public function sendReminder(Invoice $invoice, PaymentSession $session, array $emails, ?string $pdfContent = null): int
+    {
+        $client = $invoice->pms_client_id
+            ? Client::query()->where('pms_client_id', $invoice->pms_client_id)->first()
+            : null;
+
+        $overrideEnabled = (bool) ($client?->payment_link_override_enabled ?? false);
+        $recipient       = $overrideEnabled ? ($client?->payment_link_recipient ?? 'customer') : 'customer';
+        $adminEmail      = $overrideEnabled && $client?->payment_link_admin_email
+            ? trim(strtolower((string) $client->payment_link_admin_email))
+            : null;
+
+        $customerEmails = array_values(array_unique(array_filter(array_map(
+            static fn ($e) => is_string($e) ? trim(strtolower($e)) : null,
+            $emails
+        ))));
+
+        $toCustomer = in_array($recipient, ['customer', 'both'], true) ? $customerEmails : [];
+        $toAdmin    = in_array($recipient, ['admin', 'both'], true) && $adminEmail ? [$adminEmail] : [];
+
+        if ($recipient === 'customer' && $toCustomer === []) {
+            Log::warning('sendReminder: no customer email on invoice, reminder not sent.', ['invoice_id' => $invoice->id]);
+            return 0;
+        }
+
+        if ($recipient === 'both' && $toCustomer === []) {
+            Log::warning('sendReminder: no customer email on invoice, sending reminder to admin only.', ['invoice_id' => $invoice->id]);
+        }
+
+        $allRecipients = array_values(array_unique(array_merge($toCustomer, $toAdmin)));
+
+        if ($allRecipients === []) {
+            return 0;
+        }
+
+        $paymentUrl  = $this->urlForSession($session);
+        $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
+        $subject     = (string) ($client?->reminder_subject_template ?? config('reminders.default_subject_template', 'Reminder: Invoice {invoice_number} is awaiting payment'));
+        $fromName    = $this->resolveFromName($invoice, $client);
+        $sent        = 0;
+
+        foreach ($toCustomer as $email) {
+            Mail::to($email)->send(new PaymentReminderMail($invoice, $session, $paymentUrl, $subject, $pdfContent, $emailConfig, $fromName));
+            $sent++;
+        }
+
+        if ($toAdmin !== []) {
+            Mail::to($toAdmin[0])->send(new PaymentReminderAdminMail($invoice, $session, $paymentUrl, $subject));
+            $sent++;
         }
 
         return $sent;
