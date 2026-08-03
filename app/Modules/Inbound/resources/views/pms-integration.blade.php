@@ -559,6 +559,18 @@
                             </form>
                         </div>
                     </div>
+
+                    <script>
+                        function qbAutoResendToggle() {
+                            var inp = document.getElementById('qb-auto-resend-val');
+                            var btn = document.getElementById('qb-auto-resend-btn');
+                            var next = inp.value !== '1';
+                            inp.value = next ? '1' : '0';
+                            btn.textContent = next ? 'ON' : 'OFF';
+                            btn.className = next ? 'button primary' : 'button secondary';
+                            document.getElementById('qb-auto-resend-toggle-form').submit();
+                        }
+                    </script>
                 @endif
 
                 {{-- Default Account (Clio) --}}
@@ -1336,16 +1348,6 @@
                             btn.textContent = next ? 'ON' : 'OFF';
                             btn.className = next ? 'button primary' : 'button secondary';
                             document.getElementById('qb-surcharge-toggle-form').submit();
-                        }
-
-                        function qbAutoResendToggle() {
-                            var inp = document.getElementById('qb-auto-resend-val');
-                            var btn = document.getElementById('qb-auto-resend-btn');
-                            var next = inp.value !== '1';
-                            inp.value = next ? '1' : '0';
-                            btn.textContent = next ? 'ON' : 'OFF';
-                            btn.className = next ? 'button primary' : 'button secondary';
-                            document.getElementById('qb-auto-resend-toggle-form').submit();
                         }
                     </script>
                 @endif
