@@ -55,6 +55,21 @@ class Client extends Model
     }
 
     /**
+     * Last-resort fallback if config('reminders.default_schedule_days') itself is
+     * missing/null — e.g. config/reminders.php not deployed, or a stale config
+     * cache from before it existed. Keeps this accessor from ever 500ing regardless
+     * of deployment state; the config value is still preferred when it's valid.
+     */
+    private const FALLBACK_SCHEDULE_DAYS = [3, 7, 14, 30, 45];
+
+    private static function defaultScheduleDays(): array
+    {
+        $configured = config('reminders.default_schedule_days');
+
+        return is_array($configured) && $configured !== [] ? $configured : self::FALLBACK_SCHEDULE_DAYS;
+    }
+
+    /**
      * Effective reminder cadence as an array of ints, falling back to the system
      * default. Tolerates reminder_schedule_days having been stored as a raw
      * comma string rather than a JSON array (e.g. from data written before/outside
@@ -70,12 +85,12 @@ class Client extends Model
         }
 
         if (! is_array($days) || $days === []) {
-            return config('reminders.default_schedule_days');
+            return self::defaultScheduleDays();
         }
 
         $days = array_values(array_filter($days, static fn ($d) => is_numeric($d) && (int) $d > 0));
 
-        return $days !== [] ? $days : config('reminders.default_schedule_days');
+        return $days !== [] ? $days : self::defaultScheduleDays();
     }
 
     public function gatewayDisplayName(string $gateway): string

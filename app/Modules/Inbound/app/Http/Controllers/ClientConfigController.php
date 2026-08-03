@@ -481,6 +481,39 @@ class ClientConfigController extends Controller
         return redirect()->back()->with('success', 'QuickBooks settings saved.');
     }
 
+    public function updateReminderSettings(Request $request, string $pmsClientId): RedirectResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        $validated = $request->validate([
+            'reminders_enabled'         => ['required', 'boolean'],
+            'reminder_schedule_days'    => ['nullable', 'array', 'min:1', 'max:10'],
+            'reminder_schedule_days.*'  => ['integer', 'min:1', 'max:365'],
+            'reminder_subject_template' => ['required', 'string', 'max:500'],
+        ]);
+
+        $days = $validated['reminder_schedule_days'] ?? null;
+
+        if ($days !== null) {
+            $sorted = $days;
+            sort($sorted);
+
+            if ($days !== $sorted || count($days) !== count(array_unique($days))) {
+                return redirect()->back()
+                    ->withErrors(['reminder_schedule_days' => 'Cadence days must be unique and ascending.'])
+                    ->withInput();
+            }
+        }
+
+        $client->update([
+            'reminders_enabled'         => (bool) $validated['reminders_enabled'],
+            'reminder_schedule_days'    => $days,
+            'reminder_subject_template' => $validated['reminder_subject_template'],
+        ]);
+
+        return redirect()->back()->with('success', 'Payment reminder settings saved.');
+    }
+
     public function saveMidRoutes(Request $request, string $pmsClientId): RedirectResponse
     {
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
