@@ -452,6 +452,87 @@
                     </div>
                 @endif
 
+                {{-- Wave Surcharge Split (toggle + account selector) --}}
+                @if ($provider === 'wave' && $connection && $client)
+                    <div class="cc-card">
+                        {{-- Toggle row --}}
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                            <div>
+                                <div class="cc-card-title" style="margin-bottom:2px;">Surcharge Income Account</div>
+                                <div class="cc-card-desc" style="margin:0;">
+                                    When enabled, surcharge is split in Wave: invoice settled at face value,
+                                    surcharge posted to a separate income account.
+                                </div>
+                            </div>
+                            <form method="POST" action="{{ route('inbound.wave.surcharge-toggle') }}"
+                                id="wave-surcharge-toggle-form">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <input type="hidden" name="wave_surcharge_enabled" id="wave-surcharge-enabled-val"
+                                    value="{{ $client->wave_surcharge_enabled ? '1' : '0' }}">
+                                <button type="button" onclick="waveSurchargeToggle()" id="wave-surcharge-btn"
+                                    class="button {{ $client->wave_surcharge_enabled ? 'primary' : 'secondary' }}"
+                                    style="white-space:nowrap;font-size:13px;min-width:72px;">
+                                    {{ $client->wave_surcharge_enabled ? 'ON' : 'OFF' }}
+                                </button>
+                            </form>
+                        </div>
+
+                        {{-- Account selector — only when toggle is ON --}}
+                        @if ($client->wave_surcharge_enabled)
+                            <div style="margin-top:16px;border-top:1px solid var(--cc-border);padding-top:16px;">
+                                @if ($client->wave_surcharge_account_name)
+                                    <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">
+                                        Currently: {{ $client->wave_surcharge_account_name }}
+                                    </div>
+                                @endif
+                                @error('wave_surcharge_account_id')
+                                    <p style="font-size:12px;color:#dc2626;margin-bottom:8px;">{{ $message }}</p>
+                                @enderror
+                                @if (!empty($wave_account_load_error))
+                                    <div class="cc-notice error">{{ $wave_account_load_error }}</div>
+                                @elseif(!empty($wave_income_accounts))
+                                    <form method="POST" action="{{ route('inbound.wave.surcharge-account') }}">
+                                        @csrf
+                                        <input type="hidden" name="pms_client_id"
+                                            value="{{ $client->pms_client_id }}">
+                                        <div class="cc-field">
+                                            <label>Select income account</label>
+                                            <select name="wave_surcharge_account_id" required>
+                                                <option value="">Choose from income accounts…</option>
+                                                @foreach ($wave_income_accounts as $account)
+                                                    <option value="{{ $account['account_id'] }}"
+                                                        @selected((string) $client->wave_surcharge_account_id === (string) $account['account_id'])>
+                                                        {{ $account['account_name'] }}{{ $account['account_type'] ? ' (' . $account['account_type'] . ')' : '' }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                        </div>
+                                        <button type="submit" class="button primary" style="font-size:13px;">Save
+                                            account</button>
+                                    </form>
+                                @else
+                                    <div class="cc-notice error">No income accounts returned from Wave. Reconnect
+                                        or verify the connected user has access.</div>
+                                @endif
+                            </div>
+                        @endif
+                    </div>
+
+                    <script>
+                        function waveSurchargeToggle() {
+                            var inp = document.getElementById('wave-surcharge-enabled-val');
+                            var btn = document.getElementById('wave-surcharge-btn');
+                            var current = inp.value === '1';
+                            var next = !current;
+                            inp.value = next ? '1' : '0';
+                            btn.textContent = next ? 'ON' : 'OFF';
+                            btn.className = next ? 'button primary' : 'button secondary';
+                            document.getElementById('wave-surcharge-toggle-form').submit();
+                        }
+                    </script>
+                @endif
+
                 {{-- Auto-Resend on Invoice Change --}}
                 @if (in_array($provider, ['quickbooks', 'clio', 'zoho', 'wave'], true) && $connection && $client)
                     <div class="cc-card">
@@ -697,6 +778,102 @@
                     :show-fees="false" :show-logo="true" :compact="true" />
 
                 <x-inbound::notification-settings-form :client="$client" :form-action="route('inbound.clients.update-notification-settings', $client->pms_client_id)" />
+
+                {{-- Payment Reminders — applies uniformly across all PMS providers --}}
+                <div class="cc-card">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                        <div class="cc-card-title">Payment Reminders</div>
+                    </div>
+                    <div class="cc-card-desc">Automatically re-send the payment link on a schedule while the
+                        invoice is still unpaid.</div>
+
+                    <form method="POST" action="{{ route('inbound.clients.update-reminder-settings', $client->pms_client_id) }}" id="reminders-form">
+                        @csrf
+                        <div
+                            style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;margin:14px 0;">
+                            <div style="font-size:14px;font-weight:600;color:var(--cc-text);">Enable Payment Reminders</div>
+                            <div style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700;">
+                                <input type="hidden" name="reminders_enabled" id="reminders-enabled-val"
+                                    value="{{ $client->reminders_enabled ? '1' : '0' }}">
+                                <button type="button" id="reminders-on"
+                                    onclick="remindersToggle(true)"
+                                    style="padding:5px 14px;border:none;cursor:pointer;font-family:inherit;{{ $client->reminders_enabled ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">ON</button>
+                                <button type="button" id="reminders-off"
+                                    onclick="remindersToggle(false)"
+                                    style="padding:5px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $client->reminders_enabled ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
+                            </div>
+                        </div>
+
+                        <div id="reminders-section" style="{{ $client->reminders_enabled ? '' : 'display:none;' }}">
+                            <div class="cc-field" style="margin-bottom:14px;">
+                                <label>Reminder Schedule (days after the first payment email, comma-separated)</label>
+                                <input type="text" name="reminder_schedule_days_raw" id="reminder-schedule-input"
+                                    value="{{ old('reminder_schedule_days_raw', implode(',', $client->reminder_schedule_days ?? config('reminders.default_schedule_days'))) }}"
+                                    placeholder="3,7,14,30,45">
+                                @error('reminder_schedule_days')
+                                    <p style="font-size:12px;color:#dc2626;margin-top:3px;">{{ $message }}</p>
+                                @enderror
+                                <div style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">Must be ascending,
+                                    unique, 1-365 each, up to 10 steps. Leave default to use the system schedule.</div>
+                            </div>
+
+                            <div class="cc-field" style="margin-bottom:14px;">
+                                <label>Reminder Email Subject</label>
+                                <input type="text" name="reminder_subject_template"
+                                    value="{{ old('reminder_subject_template', $client->reminder_subject_template ?? 'Reminder: Invoice {invoice_number} is awaiting payment') }}">
+                            </div>
+
+                            <div style="font-size:12px;color:var(--cc-text-2);margin-bottom:14px;">Reminders are sent
+                                only while the invoice is unpaid. They stop automatically when the invoice is paid,
+                                voided, or deleted.</div>
+                        </div>
+
+                        <button type="submit" class="button primary" style="font-size:13px;">Save reminder settings</button>
+                    </form>
+                </div>
+
+                <script>
+                    function remindersToggle(on) {
+                        document.getElementById('reminders-enabled-val').value = on ? '1' : '0';
+                        document.getElementById('reminders-on').style.background = on ? '#132238' : '#fff';
+                        document.getElementById('reminders-on').style.color = on ? '#fff' : '#9ca3af';
+                        document.getElementById('reminders-off').style.background = on ? '#fff' : '#f1f5f9';
+                        document.getElementById('reminders-off').style.color = on ? '#9ca3af' : '#374151';
+                        document.getElementById('reminders-section').style.display = on ? '' : 'none';
+                        var input = document.getElementById('reminder-schedule-input');
+                        if (on && input.value.trim() === '') input.value = '3,7,14,30,45';
+                    }
+
+                    (function () {
+                        var form = document.getElementById('reminders-form');
+                        if (!form) return;
+                        form.addEventListener('submit', function (e) {
+                            var enabled = document.getElementById('reminders-enabled-val').value === '1';
+                            var hidden = form.querySelectorAll('input[name="reminder_schedule_days[]"]');
+                            hidden.forEach(function (el) { el.remove(); });
+                            if (!enabled) return;
+
+                            var raw = document.getElementById('reminder-schedule-input').value.trim();
+                            var days = raw.split(',').map(function (s) { return parseInt(s.trim(), 10); }).filter(function (n) { return !isNaN(n); });
+                            var sorted = days.slice().sort(function (a, b) { return a - b; });
+                            var unique = Array.from(new Set(days));
+
+                            if (days.length === 0 || days.length > 10 || JSON.stringify(days) !== JSON.stringify(sorted) || unique.length !== days.length) {
+                                e.preventDefault();
+                                alert('Cadence days must be unique, ascending, and at most 10 steps.');
+                                return;
+                            }
+
+                            days.forEach(function (day) {
+                                var input = document.createElement('input');
+                                input.type = 'hidden';
+                                input.name = 'reminder_schedule_days[]';
+                                input.value = day;
+                                form.appendChild(input);
+                            });
+                        });
+                    })();
+                </script>
 
             </div>{{-- end cc-panel-connection --}}
 

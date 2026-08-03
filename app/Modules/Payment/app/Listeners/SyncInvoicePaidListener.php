@@ -264,10 +264,12 @@ class SyncInvoicePaidListener
                     $paymentPayload['DepositToAccountRef'] = ['value' => $client->qb_default_account_id];
                 }
 
-                $this->qbApi->recordPayment($connection, $paymentPayload);
+                $paymentResponse = $this->qbApi->recordPayment($connection, $paymentPayload);
+                $qbPaymentId     = (string) data_get($paymentResponse, 'Payment.Id', '');
+                $qbJournalEntryId = null;
 
                 if ($hasDepositAccount) {
-                    $this->qbApi->recordJournalEntry($connection, [
+                    $journalResponse = $this->qbApi->recordJournalEntry($connection, [
                         'TxnDate'     => now()->toDateString(),
                         'DocNumber'   => substr('SRCHG-'.(string) $transaction->gateway_txn_id, 0, 21),
                         'PrivateNote' => $desc,
@@ -292,9 +294,15 @@ class SyncInvoicePaidListener
                             ],
                         ],
                     ]);
+                    $qbJournalEntryId = (string) data_get($journalResponse, 'JournalEntry.Id', '');
                 }
 
                 $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
+
+                $transaction->forceFill([
+                    'qb_payment_id'      => $qbPaymentId !== '' ? $qbPaymentId : null,
+                    'qb_journalentry_id' => $qbJournalEntryId !== null && $qbJournalEntryId !== '' ? $qbJournalEntryId : null,
+                ])->save();
 
                 AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
                     'pms_source'           => 'quickbooks',
@@ -306,6 +314,8 @@ class SyncInvoicePaidListener
                     'surcharge_amount'     => $feeAmount,
                     'deposit_account_id'   => $client->qb_default_account_id ?? null,
                     'surcharge_account_id' => $client->qb_surcharge_account_id,
+                    'qb_payment_id'        => $qbPaymentId,
+                    'qb_journalentry_id'   => $qbJournalEntryId,
                 ]);
 
                 return;
@@ -332,9 +342,14 @@ class SyncInvoicePaidListener
                 $payload['DepositToAccountRef'] = ['value' => $client->qb_default_account_id];
             }
 
-            $this->qbApi->recordPayment($connection, $payload);
+            $paymentResponse = $this->qbApi->recordPayment($connection, $payload);
+            $qbPaymentId     = (string) data_get($paymentResponse, 'Payment.Id', '');
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
+
+            $transaction->forceFill([
+                'qb_payment_id' => $qbPaymentId !== '' ? $qbPaymentId : null,
+            ])->save();
 
             AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
                 'pms_source'          => 'quickbooks',
@@ -343,6 +358,7 @@ class SyncInvoicePaidListener
                 'gateway_txn_id'      => $transaction->gateway_txn_id,
                 'external_invoice_id' => $invoice->external_invoice_id,
                 'deposit_account_id'  => $client->qb_default_account_id ?? null,
+                'qb_payment_id'       => $qbPaymentId,
             ]);
         } catch (\Throwable $exception) {
             $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
@@ -427,8 +443,6 @@ class SyncInvoicePaidListener
 
             $connection = $this->waveOAuth->ensureValidAccessToken($connection);
 
-            $amount = round(((int) $transaction->amount_cents) / 100, 2);
-
             // The invoices listing query stores the Relay global ID in raw_payload.invoice.id
             $invoiceRelayId = (string) Arr::get((array) $invoice->raw_payload, 'invoice.id', '');
 
@@ -439,6 +453,72 @@ class SyncInvoicePaidListener
             $clientAccountId = is_string($client->wave_default_account_id) && trim($client->wave_default_account_id) !== ''
                 ? $client->wave_default_account_id
                 : null;
+
+            $feeCents   = (int) ($transaction->fee_cents ?? 0);
+            $totalCents = (int) $transaction->amount_cents;
+
+            // If fee_cents wasn't stored correctly, derive it from the difference
+            // between what was actually charged and the invoice face value.
+            if ($feeCents === 0 && $totalCents > (int) $invoice->amount_cents) {
+                $feeCents = $totalCents - (int) $invoice->amount_cents;
+            }
+
+            $hasSurchargeAccount = (bool) ($client->wave_surcharge_enabled ?? false)
+                && is_string($client->wave_surcharge_account_id ?? null)
+                && trim((string) $client->wave_surcharge_account_id) !== '';
+
+            // ── Split mode: surcharge toggle ON + account configured + fee was charged ──
+            // 1. Wave Payment for invoice amount only → closes invoice via invoicePaymentCreateManual
+            // 2. Wave Money Transaction: deposit fee to bank account, categorize to Surcharge Income (no AR involvement)
+            if ($feeCents > 0 && $hasSurchargeAccount) {
+                $invoiceAmount = round((int) $invoice->amount_cents / 100, 2);
+                $feeAmount     = round($feeCents / 100, 2);
+                $desc          = "Surcharge for invoice #{$invoice->invoice_number}";
+
+                $this->waveApi->recordInvoicePayment(
+                    $connection,
+                    $invoiceRelayId,
+                    $invoiceAmount,
+                    (string) $transaction->gateway_txn_id,
+                    now()->toDateString(),
+                    clientAccountId: $clientAccountId,
+                    paymentMethod: $this->wavePaymentMethod((string) $transaction->gateway),
+                );
+
+                $wtxnId = null;
+                if ($clientAccountId !== null) {
+                    $wtxnId = $this->waveApi->recordSurchargeIncome(
+                        $connection,
+                        depositAccountId: $clientAccountId,
+                        incomeAccountId: (string) $client->wave_surcharge_account_id,
+                        amount: $feeAmount,
+                        date: now()->toDateString(),
+                        description: $desc,
+                        externalId: 'SRCHG-' . (string) $transaction->gateway_txn_id,
+                    );
+                }
+
+                $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
+
+                AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
+                    'pms_source'           => 'wave',
+                    'transaction_id'       => $transaction->id,
+                    'gateway'              => $transaction->gateway,
+                    'gateway_txn_id'       => $transaction->gateway_txn_id,
+                    'external_invoice_id'  => $invoice->external_invoice_id,
+                    'invoice_relay_id'     => $invoiceRelayId,
+                    'invoice_amount'       => $invoiceAmount,
+                    'surcharge_amount'     => $feeAmount,
+                    'deposit_account_id'   => $clientAccountId,
+                    'surcharge_account_id' => $client->wave_surcharge_account_id,
+                    'wave_money_txn_id'    => $wtxnId,
+                ]);
+
+                return;
+            }
+
+            // ── Standard mode: no surcharge split ──────────────────────────────
+            $amount = round($totalCents / 100, 2);
 
             $this->waveApi->recordInvoicePayment(
                 $connection,

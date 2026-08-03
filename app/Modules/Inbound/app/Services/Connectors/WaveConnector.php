@@ -91,12 +91,14 @@ class WaveConnector implements PmsConnectorInterface
     public function integrationData(?Client $client, ?PmsConnection $connection): array
     {
         $paymentAccounts    = [];
+        $incomeAccounts     = [];
         $accountLoadError   = null;
 
         if ($connection) {
             try {
                 $connection      = $this->oauth->ensureValidAccessToken($connection);
                 $paymentAccounts = $this->api->fetchPaymentAccounts($connection);
+                $incomeAccounts  = $this->api->fetchIncomeAccounts($connection);
             } catch (\Throwable $e) {
                 $accountLoadError = $e->getMessage();
             }
@@ -107,6 +109,7 @@ class WaveConnector implements PmsConnectorInterface
             'copy'                        => 'Authenticate with Wave to allow this middleware to fetch invoices and process payments on your behalf.',
             'webhook_instructions'        => [],
             'wave_payment_accounts'       => $paymentAccounts,
+            'wave_income_accounts'        => $incomeAccounts,
             'wave_account_load_error'     => $accountLoadError,
             'wave_webhook_url'            => config('services.wave.webhook_callback_url', url('/api/v1/inbound/webhooks/wave')),
         ];

@@ -4,6 +4,7 @@ namespace Modules\Inbound\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Inbound\Jobs\PollAdvancedMdChargesJob;
+use Modules\Inbound\Jobs\PollWaveInvoicesJob;
 use Modules\Inbound\Services\Connectors\ClioConnector;
 use Modules\Inbound\Services\Connectors\LawcusConnector;
 use Modules\Inbound\Services\Connectors\QuickBooksConnector;
@@ -68,6 +69,10 @@ class InboundServiceProvider extends ModuleServiceProvider
         $this->app->booted(function () {
             $schedule = $this->app->make(Schedule::class);
             $schedule->job(PollAdvancedMdChargesJob::class)->everyFiveMinutes()
+                ->withoutOverlapping()
+                ->onOneServer();
+
+            $schedule->job(PollWaveInvoicesJob::class)->everyFiveMinutes()
                 ->withoutOverlapping()
                 ->onOneServer();
         });

@@ -274,6 +274,65 @@ class PmsIntegrationController extends Controller
         ]);
     }
 
+    public function saveWaveSurchargeToggle(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'pms_client_id'        => ['required', 'string'],
+            'wave_surcharge_enabled' => ['required', 'boolean'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'WAVE', 422, 'Surcharge toggle is only for Wave clients.');
+
+        $client->forceFill(['wave_surcharge_enabled' => (bool) $validated['wave_surcharge_enabled']])->save();
+
+        return redirect()->back()->with('success', 'Surcharge split ' . ($validated['wave_surcharge_enabled'] ? 'enabled' : 'disabled') . '.');
+    }
+
+    public function saveWaveSurchargeAccount(
+        Request $request,
+        WaveOAuthService $waveOAuth,
+        WaveApiClient $waveApi,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'pms_client_id'            => ['required', 'string'],
+            'wave_surcharge_account_id' => ['required', 'string', 'max:100'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'WAVE', 422, 'Surcharge account is only supported for Wave clients.');
+
+        $connection = WaveConnection::query()
+            ->where('provider', 'wave')
+            ->where('pms_client_id', $client->pms_client_id)
+            ->latest('created_at')
+            ->firstOrFail();
+
+        $connection = $waveOAuth->ensureValidAccessToken($connection);
+        $accounts   = $waveApi->fetchIncomeAccounts($connection);
+
+        $selected = collect($accounts)
+            ->first(fn (array $a): bool => (string) ($a['account_id'] ?? '') === (string) $validated['wave_surcharge_account_id']);
+
+        abort_unless(is_array($selected), 422, 'Selected account is invalid. Please choose from the dropdown.');
+
+        $client->forceFill([
+            'wave_surcharge_account_id'   => (string) $selected['account_id'],
+            'wave_surcharge_account_name' => (string) ($selected['account_name'] ?? ''),
+        ])->save();
+
+        return redirect()->route('inbound.wave.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => 'Surcharge income account saved.',
+        ]);
+    }
+
     public function saveQbSurchargeToggle(Request $request): RedirectResponse
     {
         $validated = $request->validate([

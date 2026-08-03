@@ -159,6 +159,119 @@ class WaveApiClient
     }
 
     /**
+     * Fetch all non-archived Wave income accounts, for surcharge-income-account selection.
+     * Mirrors fetchPaymentAccounts() but filters to INCOME-type accounts instead of bank/cash.
+     */
+    public function fetchIncomeAccounts(WaveConnection $connection): array
+    {
+        $businessId = $this->fetchBusinessId($connection);
+        $query = <<<'GQL'
+        query GetAccounts($businessId: ID!, $page: Int!, $pageSize: Int!) {
+            business(id: $businessId) {
+                accounts(page: $page, pageSize: $pageSize) {
+                    edges {
+                        node {
+                            id
+                            name
+                            type { value }
+                            subtype { value }
+                            isArchived
+                        }
+                    }
+                }
+            }
+        }
+        GQL;
+        $data  = $this->graphqlPost($connection, [
+            'query'     => $query,
+            'variables' => ['businessId' => $this->toBusinessRelayId($businessId), 'page' => 1, 'pageSize' => 200],
+        ], $connection->access_token);
+        $edges    = Arr::get($data, 'data.business.accounts.edges', []);
+        $accounts = [];
+        foreach ($edges as $edge) {
+            $node = $edge['node'] ?? [];
+            if ($node['isArchived'] ?? false) {
+                continue;
+            }
+            if (strtoupper($node['type']['value'] ?? '') !== 'INCOME') {
+                continue;
+            }
+            $accounts[] = [
+                'account_id'      => (string) ($node['id'] ?? ''),
+                'account_name'    => (string) ($node['name'] ?? ''),
+                'account_type'    => (string) ($node['type']['value'] ?? ''),
+                'account_subtype' => (string) ($node['subtype']['value'] ?? ''),
+            ];
+        }
+        usort($accounts, fn ($a, $b) => strcasecmp($a['account_name'], $b['account_name']));
+        return array_values(array_filter($accounts, fn ($a) => $a['account_id'] !== ''));
+    }
+    /**
+     * Book the surcharge fee as income via moneyTransactionCreate — deposits the fee into
+     * the client's deposit account (anchor) and categorizes it against the surcharge income
+     * account (line item), without touching the invoice or its Accounts Receivable balance.
+     * This is Wave's equivalent of the QuickBooks Debit-bank/Credit-income journal entry.
+     */
+    public function recordSurchargeIncome(
+        WaveConnection $connection,
+        string $depositAccountId,
+        string $incomeAccountId,
+        float $amount,
+        string $date,
+        string $description,
+        ?string $externalId = null,
+    ): ?string {
+        $businessId = $this->fetchBusinessId($connection);
+        $amountStr  = number_format($amount, 2, '.', '');
+        $input = [
+            'businessId'  => $this->toBusinessRelayId($businessId),
+            'date'        => $date,
+            'description' => $description,
+            'anchor'      => [
+                'accountId' => $depositAccountId,
+                'amount'    => $amountStr,
+                'direction' => 'DEPOSIT',
+            ],
+            'lineItems'   => [[
+                'accountId' => $incomeAccountId,
+                'amount'    => $amountStr,
+                'balance'   => 'INCREASE',
+            ]],
+        ];
+        if ($externalId !== null && $externalId !== '') {
+            $input['externalId'] = $externalId;
+        }
+        $mutation = <<<'GQL'
+        mutation MoneyTransactionCreate($input: MoneyTransactionCreateInput!) {
+            moneyTransactionCreate(input: $input) {
+                didSucceed
+                inputErrors {
+                    code
+                    message
+                    path
+                }
+                transaction {
+                    id
+                }
+            }
+        }
+        GQL;
+        $data = $this->graphqlPost($connection, [
+            'query'     => $mutation,
+            'variables' => ['input' => $input],
+        ], $connection->access_token);
+        $didSucceed  = (bool) Arr::get($data, 'data.moneyTransactionCreate.didSucceed', false);
+        $inputErrors = Arr::get($data, 'data.moneyTransactionCreate.inputErrors', []);
+        $txnId       = Arr::get($data, 'data.moneyTransactionCreate.transaction.id', '');
+        if (! $didSucceed) {
+            $errorMsg = collect($inputErrors)->pluck('message')->filter()->implode('; ');
+            throw new RuntimeException("Wave surcharge income recording failed: {$errorMsg}");
+        }
+        return $txnId !== '' ? (string) $txnId : null;
+    }
+    }
+
+    /**
      * Fetch the Accounts Receivable account ID for the Wave business.
      * Required as anchor.accountId in moneyTransactionCreate for invoice payments.
      */
@@ -393,6 +506,94 @@ class WaveApiClient
         }
     }
 
+    /**
+     * List invoices modified since a given time, for change-detection polling —
+     * Wave has no reliable "invoice updated" webhook (see PollWaveInvoicesJob).
+     *
+     * Wave's public docs describe a server-side `modifiedAtStart` filter on this
+     * connection, but its exact argument shape is unverified against a live
+     * connection. Rather than bet the whole query on a guessed filter/sort
+     * argument, this only relies on the `modifiedAt` scalar field (confirmed in
+     * Wave's schema docs) and filters client-side — same brute-force pagination
+     * already proven working in findInvoiceByWebhookId().
+     */
+    public function fetchInvoicesModifiedSince(WaveConnection $connection, \DateTimeInterface $since): array
+    {
+        $businessId = $this->fetchBusinessId($connection);
+        $query = <<<'GQL'
+        query ListInvoices($businessId: ID!, $page: Int!, $pageSize: Int!) {
+            business(id: $businessId) {
+                invoices(page: $page, pageSize: $pageSize) {
+                    edges {
+                        node {
+                            id
+                            invoiceNumber
+                            status
+                            modifiedAt
+                        }
+                    }
+                }
+            }
+        }
+        GQL;
+        $page       = 1;
+        $pageSize   = 50;
+        $maxPages   = 10;
+        $changed    = [];
+        $reachedEnd = false;
+        while ($page <= $maxPages) {
+            $data  = $this->graphqlPost($connection, [
+                'query'     => $query,
+                'variables' => ['businessId' => $this->toBusinessRelayId($businessId), 'page' => $page, 'pageSize' => $pageSize],
+            ], $connection->access_token);
+            $edges = Arr::get($data, 'data.business.invoices.edges', []);
+            if (empty($edges)) {
+                break;
+            }
+            foreach ($edges as $edge) {
+                $node       = $edge['node'] ?? [];
+                $modifiedAt = $node['modifiedAt'] ?? null;
+                if ($modifiedAt === null) {
+                    continue;
+                }
+                try {
+                    $modifiedAtDate = new \DateTimeImmutable($modifiedAt);
+                } catch (\Throwable) {
+                    continue;
+                }
+                if ($modifiedAtDate <= $since) {
+                    continue;
+                }
+                $decoded   = base64_decode($node['id'] ?? '');
+                $numericId = str_contains($decoded, ':')
+                    ? substr($decoded, strrpos($decoded, ':') + 1)
+                    : ($node['id'] ?? '');
+                if ($numericId === '') {
+                    continue;
+                }
+                $changed[] = [
+                    'id'             => $numericId,
+                    'invoice_number' => (string) ($node['invoiceNumber'] ?? ''),
+                    'status'         => (string) ($node['status'] ?? ''),
+                    'modified_at'    => $modifiedAt,
+                ];
+            }
+            if (count($edges) < $pageSize) {
+                $reachedEnd = true;
+                break;
+            }
+            $page++;
+        }
+        if (! $reachedEnd && $page > $maxPages) {
+            logger()->warning('Wave: fetchInvoicesModifiedSince hit the page cap — older invoices were not scanned this run', [
+                'pms_client_id' => $connection->pms_client_id,
+                'max_pages'     => $maxPages,
+                'page_size'     => $pageSize,
+            ]);
+        }
+        return $changed;
+    }
+    
     /**
      * Fetch a Wave invoice by its webhook integer ID.
      * Wave's invoices() connection returns Relay global IDs; we decode each to match the plain integer.
