@@ -269,7 +269,6 @@ class WaveApiClient
         }
         return $txnId !== '' ? (string) $txnId : null;
     }
-    }
 
     /**
      * Fetch the Accounts Receivable account ID for the Wave business.
