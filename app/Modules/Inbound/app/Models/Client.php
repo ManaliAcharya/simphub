@@ -54,6 +54,30 @@ class Client extends Model
         return ! empty($this->allowed_terminals);
     }
 
+    /**
+     * Effective reminder cadence as an array of ints, falling back to the system
+     * default. Tolerates reminder_schedule_days having been stored as a raw
+     * comma string rather than a JSON array (e.g. from data written before/outside
+     * the normal save path) — the array cast doesn't error on that, it just leaves
+     * the value as a string, which used to blow up every count()/implode() caller.
+     */
+    public function reminderScheduleDays(): array
+    {
+        $days = $this->reminder_schedule_days;
+
+        if (is_string($days)) {
+            $days = array_map(static fn ($d) => (int) trim($d), explode(',', $days));
+        }
+
+        if (! is_array($days) || $days === []) {
+            return config('reminders.default_schedule_days');
+        }
+
+        $days = array_values(array_filter($days, static fn ($d) => is_numeric($d) && (int) $d > 0));
+
+        return $days !== [] ? $days : config('reminders.default_schedule_days');
+    }
+
     public function gatewayDisplayName(string $gateway): string
     {
         $names = (array) ($this->gateway_display_names ?? []);
