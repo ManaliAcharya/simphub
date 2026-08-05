@@ -5,6 +5,7 @@ namespace Modules\Payment\Services;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
 use Modules\Billing\Models\Invoice;
 use Modules\Inbound\Models\ClioConnection;
 use Modules\Inbound\Models\PmsConnection;
@@ -52,20 +53,56 @@ class InvoiceLiveStatusResolver
                 default      => null,
             };
         } catch (RequestException $e) {
-            return $e->response->status() === 404 ? 'gone' : 'unknown';
-        } catch (ConnectionException) {
+            $result = $e->response->status() === 404 ? 'gone' : 'unknown';
+            Log::info('InvoiceLiveStatusResolver: RequestException', [
+                'invoice_id'  => $invoice->id,
+                'pms_source'  => $invoice->pms_source,
+                'status_code' => $e->response->status(),
+                'body'        => $e->response->body(),
+                'result'      => $result,
+            ]);
+            return $result;
+        } catch (ConnectionException $e) {
+            Log::warning('InvoiceLiveStatusResolver: ConnectionException', [
+                'invoice_id' => $invoice->id,
+                'pms_source' => $invoice->pms_source,
+                'error'      => $e->getMessage(),
+            ]);
             return 'unknown';
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            Log::warning('InvoiceLiveStatusResolver: unexpected Throwable', [
+                'invoice_id' => $invoice->id,
+                'pms_source' => $invoice->pms_source,
+                'error'      => $e->getMessage(),
+                'class'      => $e::class,
+            ]);
             return 'unknown';
         }
 
         if ($balance === null) {
+            Log::info('InvoiceLiveStatusResolver: no connection/org resolved, treating as unknown', [
+                'invoice_id'          => $invoice->id,
+                'pms_source'          => $invoice->pms_source,
+                'pms_client_id'       => $invoice->pms_client_id,
+                'external_invoice_id' => $invoice->external_invoice_id,
+            ]);
             return 'unknown';
         }
 
         if ($balance === 'gone') {
+            Log::info('InvoiceLiveStatusResolver: source returned empty/not-found result', [
+                'invoice_id'          => $invoice->id,
+                'pms_source'          => $invoice->pms_source,
+                'external_invoice_id' => $invoice->external_invoice_id,
+            ]);
             return 'gone';
         }
+
+        Log::info('InvoiceLiveStatusResolver: balance resolved', [
+            'invoice_id' => $invoice->id,
+            'pms_source' => $invoice->pms_source,
+            'balance'    => $balance,
+        ]);
 
         return ((float) $balance) <= 0.0 ? 'paid' : 'unpaid';
     }
