@@ -7,6 +7,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Models\PaymentSessionReminder;
@@ -31,9 +32,18 @@ class SendInvoiceReminder implements ShouldQueue
 
     public function handle(InvoiceLiveStatusResolver $resolver, PaymentLinkService $paymentLinks): void
     {
+        Log::info('SendInvoiceReminder started', ['payment_session_id' => $this->paymentSessionId]);
+
         $session = PaymentSession::query()->with('invoice')->find($this->paymentSessionId);
 
         if (! $session || $session->link_status !== 'active' || ! $session->invoice || ! $session->first_email_sent_at) {
+            Log::warning('SendInvoiceReminder aborted: session/invoice guard failed', [
+                'payment_session_id'  => $this->paymentSessionId,
+                'session_found'       => (bool) $session,
+                'link_status'         => $session?->link_status,
+                'has_invoice'         => (bool) $session?->invoice,
+                'first_email_sent_at' => $session?->first_email_sent_at?->toDateTimeString(),
+            ]);
             return;
         }
 
@@ -43,6 +53,12 @@ class SendInvoiceReminder implements ShouldQueue
             : null;
 
         if (! $client || ! $client->reminders_enabled) {
+            Log::info('SendInvoiceReminder aborted: reminders disabled or client not found', [
+                'payment_session_id' => $session->id,
+                'pms_client_id'      => $invoice->pms_client_id,
+                'client_found'       => (bool) $client,
+                'reminders_enabled'  => $client?->reminders_enabled,
+            ]);
             $session->forceFill(['next_reminder_at' => null])->save();
             return;
         }
@@ -51,11 +67,22 @@ class SendInvoiceReminder implements ShouldQueue
         $stepIndex = $session->reminders_sent_count;
 
         if ($stepIndex >= count($schedule)) {
+            Log::info('SendInvoiceReminder aborted: cadence exhausted', [
+                'payment_session_id' => $session->id,
+                'step_index'         => $stepIndex,
+                'schedule_length'    => count($schedule),
+            ]);
             $session->forceFill(['next_reminder_at' => null])->save();
             return;
         }
 
         $status = $resolver->resolve($invoice);
+
+        Log::info('SendInvoiceReminder resolved invoice status', [
+            'payment_session_id' => $session->id,
+            'invoice_id'         => $invoice->id,
+            'status'             => $status,
+        ]);
 
         if ($status === 'paid' || $status === 'gone') {
             $session->forceFill([
@@ -72,6 +99,10 @@ class SendInvoiceReminder implements ShouldQueue
         }
 
         if ($status === 'unknown') {
+            Log::warning('SendInvoiceReminder: invoice status unknown, releasing for retry in 30 min', [
+                'payment_session_id' => $session->id,
+                'invoice_id'         => $invoice->id,
+            ]);
             $this->release(now()->addMinutes(30));
             return;
         }
@@ -83,10 +114,22 @@ class SendInvoiceReminder implements ShouldQueue
             ? ($client->payment_link_recipient ?? 'customer')
             : 'customer';
 
+        Log::info('SendInvoiceReminder attempting send', [
+            'payment_session_id' => $session->id,
+            'reminder_number'    => $reminderNumber,
+            'day_offset'         => $dayOffset,
+            'recipient_emails'   => $invoice->recipient_emails ?? [],
+        ]);
+
         try {
             $emailsSent = $paymentLinks->sendReminder($invoice, $session, (array) ($invoice->recipient_emails ?? []));
 
             if ($emailsSent === 0) {
+                Log::warning('SendInvoiceReminder: no recipient email, skipping send', [
+                    'payment_session_id' => $session->id,
+                    'reminder_number'    => $reminderNumber,
+                ]);
+
                 PaymentSessionReminder::updateOrCreate(
                     ['payment_session_id' => $session->id, 'reminder_number' => $reminderNumber],
                     ['day_offset' => $dayOffset, 'status' => 'skipped', 'reason' => 'no_customer_email', 'recipient' => $recipient],
@@ -112,12 +155,24 @@ class SendInvoiceReminder implements ShouldQueue
 
             $this->advance($session, $schedule, $reminderNumber);
 
+            Log::info('SendInvoiceReminder sent successfully', [
+                'payment_session_id' => $session->id,
+                'reminder_number'    => $reminderNumber,
+                'emails_sent'        => $emailsSent,
+            ]);
+
             AuditLogger::log('payment_reminder_sent', 'payment_session', $session->id, [
                 'invoice_id'      => $invoice->id,
                 'reminder_number' => $reminderNumber,
                 'day_offset'      => $dayOffset,
             ]);
         } catch (\Throwable $e) {
+            Log::error('SendInvoiceReminder failed with exception', [
+                'payment_session_id' => $session->id,
+                'reminder_number'    => $reminderNumber,
+                'error'              => $e->getMessage(),
+            ]);
+
             PaymentSessionReminder::updateOrCreate(
                 ['payment_session_id' => $session->id, 'reminder_number' => $reminderNumber],
                 ['day_offset' => $dayOffset, 'status' => 'failed', 'reason' => $e->getMessage(), 'recipient' => $recipient],
