@@ -175,23 +175,6 @@
         background: #f9fafb;
         text-align: left;
     }
-
-    .reconnect-btn {
-        background: #eff6ff;
-        color: #2563eb;
-        border: 1px solid #bfdbfe;
-        border-radius: 9999px;
-        padding: 8px 18px;
-        font-size: 13px;
-        font-weight: 600;
-        text-decoration: none;
-        transition: .2s;
-    }
-
-    .reconnect-btn:hover {
-        background: #dbeafe;
-        border-color: #93c5fd;
-    }
 </style>
 
 <x-inbound::layouts.master :title="($providerLabel ?? 'PMS') . ' Configuration'">
@@ -202,12 +185,12 @@
             {{-- ── Connection tab ── --}}
             <div id="cc-panel-connection" class="cc-tab-panel">
 
-                @if(request()->query('success'))
-                    <div class="cc-notice success" style="margin-bottom:14px;">  {{ request()->query('success') }}</div>
+                @if (request()->query('success'))
+                    <div class="cc-notice success" style="margin-bottom:14px;"> {{ request()->query('success') }}</div>
                 @endif
 
-                @if(request()->query('error'))
-                    <div class="cc-notice error" style="margin-bottom:14px;">  {{ request()->query('error') }}</div>
+                @if (request()->query('error'))
+                    <div class="cc-notice error" style="margin-bottom:14px;"> {{ request()->query('error') }}</div>
                 @endif
 
                 {{-- Connected Services --}}
@@ -254,16 +237,26 @@
                             <div style="display:flex;gap:8px;flex-wrap:wrap;">
 
                                 @if ($connectUrl)
-                                    <a href="{{ $connectUrl }}" class="button secondary reconnect-btn"
-                                        style="font-size:12px;padding:7px 16px;">Reconnect</a>
+                                    {{-- <a href="{{ $connectUrl }}" class="reconnect-btn"
+                                        style="font-size:12px;padding:7px 16px;">Reconnect</a> --}}
+                                    <a href="{{ $connectUrl }}" class="button secondary"
+                                        style="font-size:12px;padding:7px 16px;color:#2563eb;border-color:#2563eb;background:#eff6ff;text-decoration:none;">
+                                        Reconnect
+                                    </a>
                                 @endif
                                 @if ($provider === 'quickbooks' && $client)
                                     <form method="POST" action="{{ route('inbound.quickbooks.disconnect') }}"
                                         onsubmit="return confirm('Disconnect QuickBooks? The client will need to reconnect to resume invoice processing.');">
                                         @csrf
-                                        <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                        <input type="hidden" name="pms_client_id"
+                                            value="{{ $client->pms_client_id }}">
+                                        {{-- <button type="submit" class="button secondary"
+                                            style="font-size:12px;padding:7px 16px;color:#dc2626;border-color:#dc2626;">Disconnect</button> --}}
+
                                         <button type="submit" class="button secondary"
-                                            style="font-size:12px;padding:7px 16px;color:#dc2626;border-color:#dc2626;">Disconnect</button>
+                                            style="font-size:12px;padding:7px 16px;color:#dc2626;border-color:#dc2626;background:#fef2f2;">
+                                            Disconnect
+                                        </button>
                                     </form>
                                 @endif
 
@@ -271,9 +264,15 @@
                                     <form method="POST" action="{{ route('inbound.wave.disconnect') }}"
                                         onsubmit="return confirm('Disconnect Wave? The client will need to reconnect to resume invoice processing.');">
                                         @csrf
-                                        <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                        <input type="hidden" name="pms_client_id"
+                                            value="{{ $client->pms_client_id }}">
+                                        {{-- <button type="submit" class="button secondary"
+                                            style="font-size:12px;padding:7px 16px;color:#dc2626;border-color:#dc2626;">Disconnect</button> --}}
+
                                         <button type="submit" class="button secondary"
-                                            style="font-size:12px;padding:7px 16px;color:#dc2626;border-color:#dc2626;">Disconnect</button>
+                                            style="font-size:12px;padding:7px 16px;color:#dc2626;border-color:#dc2626;background:#fef2f2;">
+                                            Disconnect
+                                        </button>
                                     </form>
                                 @endif
                             </div>
@@ -590,7 +589,8 @@
                                 @if (!empty($qb_account_load_error))
                                     <div class="cc-notice error">{{ $qb_account_load_error }}</div>
                                 @elseif(!empty($qb_income_accounts))
-                                    <form method="POST" action="{{ route('inbound.quickbooks.surcharge-account') }}">
+                                    <form method="POST"
+                                        action="{{ route('inbound.quickbooks.surcharge-account') }}">
                                         @csrf
                                         <input type="hidden" name="pms_client_id"
                                             value="{{ $client->pms_client_id }}">
@@ -699,7 +699,7 @@
                     </script>
                 @endif
 
-                 {{-- Auto-Resend on Invoice Change --}}
+                {{-- Auto-Resend on Invoice Change --}}
                 @if (in_array($provider, ['quickbooks', 'clio', 'zoho', 'wave'], true) && $connection && $client)
                     <div class="cc-card">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
@@ -711,7 +711,7 @@
                                     {{ $providerLabel ?? ucfirst($provider) }} reports the invoice was updated.
                                 </div>
                             </div>
-                            <form method="POST" action="{{ route('inbound.'.$provider.'.auto-resend-toggle') }}"
+                            <form method="POST" action="{{ route('inbound.' . $provider . '.auto-resend-toggle') }}"
                                 id="qb-auto-resend-toggle-form">
                                 @csrf
                                 <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
@@ -819,19 +819,21 @@
                     <div class="cc-card-desc">Automatically re-send the payment link on a schedule while the
                         invoice is still unpaid.</div>
 
-                    <form method="POST" action="{{ route('inbound.clients.update-reminder-settings', $client->pms_client_id) }}" id="reminders-form">
+                    <form method="POST"
+                        action="{{ route('inbound.clients.update-reminder-settings', $client->pms_client_id) }}"
+                        id="reminders-form">
                         @csrf
                         <div
                             style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;margin:14px 0;">
-                            <div style="font-size:14px;font-weight:600;color:var(--cc-text);">Enable Payment Reminders</div>
-                            <div style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700;">
+                            <div style="font-size:14px;font-weight:600;color:var(--cc-text);">Enable Payment Reminders
+                            </div>
+                            <div
+                                style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700;">
                                 <input type="hidden" name="reminders_enabled" id="reminders-enabled-val"
                                     value="{{ $client->reminders_enabled ? '1' : '0' }}">
-                                <button type="button" id="reminders-on"
-                                    onclick="remindersToggle(true)"
+                                <button type="button" id="reminders-on" onclick="remindersToggle(true)"
                                     style="padding:5px 14px;border:none;cursor:pointer;font-family:inherit;{{ $client->reminders_enabled ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">ON</button>
-                                <button type="button" id="reminders-off"
-                                    onclick="remindersToggle(false)"
+                                <button type="button" id="reminders-off" onclick="remindersToggle(false)"
                                     style="padding:5px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $client->reminders_enabled ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
                             </div>
                         </div>
@@ -860,7 +862,8 @@
                                 voided, or deleted.</div>
                         </div>
 
-                        <button type="submit" class="button primary" style="font-size:13px;">Save reminder settings</button>
+                        <button type="submit" class="button primary" style="font-size:13px;">Save reminder
+                            settings</button>
                     </form>
                 </div>
 
@@ -876,27 +879,36 @@
                         if (on && input.value.trim() === '') input.value = '3,7,14,30,45';
                     }
 
-                    (function () {
+                    (function() {
                         var form = document.getElementById('reminders-form');
                         if (!form) return;
-                        form.addEventListener('submit', function (e) {
+                        form.addEventListener('submit', function(e) {
                             var enabled = document.getElementById('reminders-enabled-val').value === '1';
                             var hidden = form.querySelectorAll('input[name="reminder_schedule_days[]"]');
-                            hidden.forEach(function (el) { el.remove(); });
+                            hidden.forEach(function(el) {
+                                el.remove();
+                            });
                             if (!enabled) return;
 
                             var raw = document.getElementById('reminder-schedule-input').value.trim();
-                            var days = raw.split(',').map(function (s) { return parseInt(s.trim(), 10); }).filter(function (n) { return !isNaN(n); });
-                            var sorted = days.slice().sort(function (a, b) { return a - b; });
+                            var days = raw.split(',').map(function(s) {
+                                return parseInt(s.trim(), 10);
+                            }).filter(function(n) {
+                                return !isNaN(n);
+                            });
+                            var sorted = days.slice().sort(function(a, b) {
+                                return a - b;
+                            });
                             var unique = Array.from(new Set(days));
 
-                            if (days.length === 0 || days.length > 10 || JSON.stringify(days) !== JSON.stringify(sorted) || unique.length !== days.length) {
+                            if (days.length === 0 || days.length > 10 || JSON.stringify(days) !== JSON.stringify(sorted) ||
+                                unique.length !== days.length) {
                                 e.preventDefault();
                                 alert('Cadence days must be unique, ascending, and at most 10 steps.');
                                 return;
                             }
 
-                            days.forEach(function (day) {
+                            days.forEach(function(day) {
                                 var input = document.createElement('input');
                                 input.type = 'hidden';
                                 input.name = 'reminder_schedule_days[]';
@@ -997,8 +1009,10 @@
                                     <div
                                         style="padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--cc-r-md);margin-bottom:14px;">
                                         <div style="font-size:13px;color:#1e40af;line-height:1.6;">
-                                            <strong>This only works if the custom field is set up exactly this way in QuickBooks</strong>
-                                            (Settings &rarr; Custom fields &rarr; Add field) &mdash; otherwise the override is silently ignored.
+                                            <strong>This only works if the custom field is set up exactly this way in
+                                                QuickBooks</strong>
+                                            (Settings &rarr; Custom fields &rarr; Add field) &mdash; otherwise the
+                                            override is silently ignored.
                                             <a href="javascript:void(0)"
                                                 onclick="document.getElementById('qbCustomFieldSetupModal').style.display='flex'"
                                                 style="color:#1e40af;font-weight:700;text-decoration:underline;white-space:nowrap;">View
@@ -1063,7 +1077,8 @@
                                                             set / anything else</code></td>
                                                     <td
                                                         style="padding:9px 12px;color:var(--cc-text-2);font-size:13px;">
-                                                        Merchant absorbs fees — flat amount shown (treated the same as "No")</td>
+                                                        Merchant absorbs fees — flat amount shown (treated the same as
+                                                        "No")</td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -1861,14 +1876,17 @@
                                         <td>{{ ucfirst($invoice->status ?? 'Unknown') }}</td>
                                         <td>
                                             @if (!empty($invoice->recipient_emails))
-                                                <form action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id,'invoice' => $invoice->id,]) }}" method="POST">
-                                                         @csrf
+                                                <form
+                                                    action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
+                                                    method="POST">
+                                                    @csrf
 
-                                                        <input type="hidden" name="provider" value="{{ $provider }}">
+                                                    <input type="hidden" name="provider"
+                                                        value="{{ $provider }}">
 
-                                                        <button type="submit" class="button primary">
-                                                            Resend
-                                                        </button>
+                                                    <button type="submit" class="button primary">
+                                                        Resend
+                                                    </button>
                                                 </form>
                                             @else
                                                 -
