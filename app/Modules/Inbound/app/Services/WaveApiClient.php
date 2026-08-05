@@ -600,6 +600,11 @@ class WaveApiClient
      */
     public function findInvoiceByWebhookId(WaveConnection $connection, string $webhookInvoiceId): array
     {
+        // external_invoice_id was historically stored as the full base64 compound Relay ID
+        // ("Business:...;Invoice:12345") rather than the plain webhook integer — normalize
+        // it here so lookups match regardless of which form is stored.
+        $webhookInvoiceId = $this->extractTrailingNumericId($webhookInvoiceId);
+
         $businessId = $this->fetchBusinessId($connection);
 
         $query = <<<'GQL'
@@ -657,6 +662,21 @@ class WaveApiClient
         }
 
         return [];
+    }
+
+    /**
+     * Accepts either a plain webhook integer ID or a base64 compound Relay ID
+     * ("Business:...;Invoice:12345") and returns just the trailing numeric id.
+     */
+    private function extractTrailingNumericId(string $value): string
+    {
+        $decoded = base64_decode($value, true);
+
+        if ($decoded !== false && str_contains($decoded, 'Invoice:')) {
+            return substr($decoded, strrpos($decoded, ':') + 1);
+        }
+
+        return $value;
     }
 
     /**
