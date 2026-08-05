@@ -175,6 +175,23 @@
         background: #f9fafb;
         text-align: left;
     }
+
+    .reconnect-btn {
+        background: #eff6ff;
+        color: #2563eb;
+        border: 1px solid #bfdbfe;
+        border-radius: 9999px;
+        padding: 8px 18px;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: .2s;
+    }
+
+    .reconnect-btn:hover {
+        background: #dbeafe;
+        border-color: #93c5fd;
+    }
 </style>
 
 <x-inbound::layouts.master :title="($providerLabel ?? 'PMS') . ' Configuration'">
@@ -235,8 +252,9 @@
                                 </div>
                             </div>
                             <div style="display:flex;gap:8px;flex-wrap:wrap;">
+
                                 @if ($connectUrl)
-                                    <a href="{{ $connectUrl }}" class="button secondary"
+                                    <a href="{{ $connectUrl }}" class="button secondary reconnect-btn"
                                         style="font-size:12px;padding:7px 16px;">Reconnect</a>
                                 @endif
                                 @if ($provider === 'quickbooks' && $client)
@@ -383,6 +401,154 @@
                         @endif
                     </div>
                 @endif
+
+                {{-- Default Account (Clio) --}}
+                @if ($provider === 'clio' && $client && $connection)
+                    <div class="cc-card">
+                        <div class="cc-card-title">Default Clio Bank Account</div>
+                        <div class="cc-card-desc">Bank account used when recording payments back to Clio.</div>
+                        @if ($client->clio_default_bank_account_name)
+                            <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">Currently:
+                                {{ $client->clio_default_bank_account_name }}</div>
+                        @endif
+                        @if (!empty($clio_bank_account_load_error))
+                            <div class="cc-notice error">{{ $clio_bank_account_load_error }}</div>
+                        @elseif(!empty($clio_bank_accounts))
+                            <form method="POST" action="{{ route('inbound.clio.default-bank-account') }}">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <div class="cc-field">
+                                    <label>Select bank account</label>
+                                    <select name="clio_default_bank_account_id" required>
+                                        <option value="">Choose account…</option>
+                                        @foreach ($clio_bank_accounts as $account)
+                                            <option value="{{ $account['account_id'] }}" @selected((string) $client->clio_default_bank_account_id === (string) $account['account_id'])>
+                                                {{ $account['account_name'] }}{{ $account['account_type'] ? ' (' . $account['account_type'] . ')' : '' }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <button type="submit" class="button primary" style="font-size:13px;">Save
+                                    account</button>
+                            </form>
+                        @else
+                            <div class="cc-notice error">No Clio bank accounts returned. Reconnect or verify the user
+                                has access.</div>
+                        @endif
+                    </div>
+                @endif
+
+                {{-- Default Account (Lawcus) --}}
+                @if ($provider === 'lawcus' && $client && $connection)
+                    <div class="cc-card">
+                        <div class="cc-card-title">Default Lawcus Bank Account</div>
+                        <div class="cc-card-desc">Bank account used when recording payments back to Lawcus.</div>
+                        @if ($client->lawcus_default_bank_account_name)
+                            <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">Currently:
+                                {{ $client->lawcus_default_bank_account_name }}</div>
+                        @endif
+                        @if (!empty($lawcus_bank_account_load_error))
+                            <div class="cc-notice error">{{ $lawcus_bank_account_load_error }}</div>
+                        @elseif(!empty($lawcus_bank_accounts))
+                            <form method="POST" action="{{ route('inbound.lawcus.default-bank-account') }}">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <div class="cc-field">
+                                    <label>Select bank account</label>
+                                    <select name="lawcus_default_bank_account_id" required>
+                                        <option value="">Choose account…</option>
+                                        @foreach ($lawcus_bank_accounts as $account)
+                                            <option value="{{ $account['account_id'] }}" @selected((string) $client->lawcus_default_bank_account_id === (string) $account['account_id'])>
+                                                {{ $account['account_name'] }}{{ $account['account_type'] ? ' (' . $account['account_type'] . ')' : '' }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <button type="submit" class="button primary" style="font-size:13px;">Save
+                                    account</button>
+                            </form>
+                        @else
+                            <div class="cc-notice error">No Lawcus bank accounts returned. Reconnect or verify the user
+                                has access.</div>
+                        @endif
+                    </div>
+                @endif
+
+                {{-- Default Account (Wave) --}}
+                @if ($provider === 'wave' && $client && $connection)
+                    <div class="cc-card">
+                        <div class="cc-card-title">Default Wave Payment Account</div>
+                        <div class="cc-card-desc">Wave account where payments are deposited after invoice settlement.
+                        </div>
+                        @if ($client->wave_default_account_name)
+                            <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">Currently:
+                                {{ $client->wave_default_account_name }}</div>
+                        @endif
+                        @if (!empty($wave_account_load_error))
+                            <div class="cc-notice error">{{ $wave_account_load_error }}</div>
+                        @elseif(!empty($wave_payment_accounts))
+                            <form method="POST" action="{{ route('inbound.wave.default-account') }}">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <div class="cc-field">
+                                    <label>Select payment account</label>
+                                    <select name="wave_default_account_id" required>
+                                        <option value="">Choose account…</option>
+                                        @foreach ($wave_payment_accounts as $account)
+                                            <option value="{{ $account['account_id'] }}" @selected((string) $client->wave_default_account_id === (string) $account['account_id'])>
+                                                {{ $account['account_name'] }}{{ $account['account_type'] ? ' (' . $account['account_type'] . ')' : '' }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <button type="submit" class="button primary" style="font-size:13px;">Save
+                                    account</button>
+                            </form>
+                        @else
+                            <div class="cc-notice error">No Wave accounts returned. Reconnect or verify the user has
+                                access.</div>
+                        @endif
+                    </div>
+                @endif
+
+                {{-- Default Account (Zoho) --}}
+                @if ($provider === 'zoho' && $client && $connection)
+                    <div class="cc-card">
+                        <div class="cc-card-title">Default Zoho Deposit Account</div>
+                        <div class="cc-card-desc">Zoho Books account where payments are recorded after settlement.
+                        </div>
+                        @if ($client->zoho_default_account_name)
+                            <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">Currently:
+                                {{ $client->zoho_default_account_name }}</div>
+                        @endif
+                        @if (!empty($zoho_account_load_error))
+                            <div class="cc-notice error">{{ $zoho_account_load_error }}</div>
+                        @elseif(!empty($zoho_payment_accounts))
+                            <form method="POST" action="{{ route('inbound.zoho.default-account') }}">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <div class="cc-field">
+                                    <label>Select deposit account</label>
+                                    <select name="zoho_default_account_id" required>
+                                        <option value="">Choose account…</option>
+                                        @foreach ($zoho_payment_accounts as $account)
+                                            <option value="{{ $account['account_id'] }}" @selected((string) $client->zoho_default_account_id === (string) $account['account_id'])>
+                                                {{ $account['account_name'] }}
+                                                ({{ $account['account_type'] ?: 'Account' }})
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                                <button type="submit" class="button primary" style="font-size:13px;">Save
+                                    account</button>
+                            </form>
+                        @else
+                            <div class="cc-notice error">No Zoho accounts returned. Reconnect or verify the user has
+                                access.</div>
+                        @endif
+                    </div>
+                @endif
+
 
                 {{-- QB Surcharge Split (toggle + account selector) --}}
                 @if ($provider === 'quickbooks' && $connection && $client)
@@ -533,7 +699,7 @@
                     </script>
                 @endif
 
-                {{-- Auto-Resend on Invoice Change --}}
+                 {{-- Auto-Resend on Invoice Change --}}
                 @if (in_array($provider, ['quickbooks', 'clio', 'zoho', 'wave'], true) && $connection && $client)
                     <div class="cc-card">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
@@ -573,152 +739,6 @@
                     </script>
                 @endif
 
-                {{-- Default Account (Clio) --}}
-                @if ($provider === 'clio' && $client && $connection)
-                    <div class="cc-card">
-                        <div class="cc-card-title">Default Clio Bank Account</div>
-                        <div class="cc-card-desc">Bank account used when recording payments back to Clio.</div>
-                        @if ($client->clio_default_bank_account_name)
-                            <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">Currently:
-                                {{ $client->clio_default_bank_account_name }}</div>
-                        @endif
-                        @if (!empty($clio_bank_account_load_error))
-                            <div class="cc-notice error">{{ $clio_bank_account_load_error }}</div>
-                        @elseif(!empty($clio_bank_accounts))
-                            <form method="POST" action="{{ route('inbound.clio.default-bank-account') }}">
-                                @csrf
-                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
-                                <div class="cc-field">
-                                    <label>Select bank account</label>
-                                    <select name="clio_default_bank_account_id" required>
-                                        <option value="">Choose account…</option>
-                                        @foreach ($clio_bank_accounts as $account)
-                                            <option value="{{ $account['account_id'] }}" @selected((string) $client->clio_default_bank_account_id === (string) $account['account_id'])>
-                                                {{ $account['account_name'] }}{{ $account['account_type'] ? ' (' . $account['account_type'] . ')' : '' }}
-                                            </option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                <button type="submit" class="button primary" style="font-size:13px;">Save
-                                    account</button>
-                            </form>
-                        @else
-                            <div class="cc-notice error">No Clio bank accounts returned. Reconnect or verify the user
-                                has access.</div>
-                        @endif
-                    </div>
-                @endif
-
-                {{-- Default Account (Lawcus) --}}
-                @if ($provider === 'lawcus' && $client && $connection)
-                    <div class="cc-card">
-                        <div class="cc-card-title">Default Lawcus Bank Account</div>
-                        <div class="cc-card-desc">Bank account used when recording payments back to Lawcus.</div>
-                        @if ($client->lawcus_default_bank_account_name)
-                            <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">Currently:
-                                {{ $client->lawcus_default_bank_account_name }}</div>
-                        @endif
-                        @if (!empty($lawcus_bank_account_load_error))
-                            <div class="cc-notice error">{{ $lawcus_bank_account_load_error }}</div>
-                        @elseif(!empty($lawcus_bank_accounts))
-                            <form method="POST" action="{{ route('inbound.lawcus.default-bank-account') }}">
-                                @csrf
-                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
-                                <div class="cc-field">
-                                    <label>Select bank account</label>
-                                    <select name="lawcus_default_bank_account_id" required>
-                                        <option value="">Choose account…</option>
-                                        @foreach ($lawcus_bank_accounts as $account)
-                                            <option value="{{ $account['account_id'] }}" @selected((string) $client->lawcus_default_bank_account_id === (string) $account['account_id'])>
-                                                {{ $account['account_name'] }}{{ $account['account_type'] ? ' (' . $account['account_type'] . ')' : '' }}
-                                            </option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                <button type="submit" class="button primary" style="font-size:13px;">Save
-                                    account</button>
-                            </form>
-                        @else
-                            <div class="cc-notice error">No Lawcus bank accounts returned. Reconnect or verify the user
-                                has access.</div>
-                        @endif
-                    </div>
-                @endif
-
-                {{-- Default Account (Wave) --}}
-                @if ($provider === 'wave' && $client && $connection)
-                    <div class="cc-card">
-                        <div class="cc-card-title">Default Wave Payment Account</div>
-                        <div class="cc-card-desc">Wave account where payments are deposited after invoice settlement.
-                        </div>
-                        @if ($client->wave_default_account_name)
-                            <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">Currently:
-                                {{ $client->wave_default_account_name }}</div>
-                        @endif
-                        @if (!empty($wave_account_load_error))
-                            <div class="cc-notice error">{{ $wave_account_load_error }}</div>
-                        @elseif(!empty($wave_payment_accounts))
-                            <form method="POST" action="{{ route('inbound.wave.default-account') }}">
-                                @csrf
-                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
-                                <div class="cc-field">
-                                    <label>Select payment account</label>
-                                    <select name="wave_default_account_id" required>
-                                        <option value="">Choose account…</option>
-                                        @foreach ($wave_payment_accounts as $account)
-                                            <option value="{{ $account['account_id'] }}" @selected((string) $client->wave_default_account_id === (string) $account['account_id'])>
-                                                {{ $account['account_name'] }}{{ $account['account_type'] ? ' (' . $account['account_type'] . ')' : '' }}
-                                            </option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                <button type="submit" class="button primary" style="font-size:13px;">Save
-                                    account</button>
-                            </form>
-                        @else
-                            <div class="cc-notice error">No Wave accounts returned. Reconnect or verify the user has
-                                access.</div>
-                        @endif
-                    </div>
-                @endif
-
-                {{-- Default Account (Zoho) --}}
-                @if ($provider === 'zoho' && $client && $connection)
-                    <div class="cc-card">
-                        <div class="cc-card-title">Default Zoho Deposit Account</div>
-                        <div class="cc-card-desc">Zoho Books account where payments are recorded after settlement.
-                        </div>
-                        @if ($client->zoho_default_account_name)
-                            <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">Currently:
-                                {{ $client->zoho_default_account_name }}</div>
-                        @endif
-                        @if (!empty($zoho_account_load_error))
-                            <div class="cc-notice error">{{ $zoho_account_load_error }}</div>
-                        @elseif(!empty($zoho_payment_accounts))
-                            <form method="POST" action="{{ route('inbound.zoho.default-account') }}">
-                                @csrf
-                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
-                                <div class="cc-field">
-                                    <label>Select deposit account</label>
-                                    <select name="zoho_default_account_id" required>
-                                        <option value="">Choose account…</option>
-                                        @foreach ($zoho_payment_accounts as $account)
-                                            <option value="{{ $account['account_id'] }}" @selected((string) $client->zoho_default_account_id === (string) $account['account_id'])>
-                                                {{ $account['account_name'] }}
-                                                ({{ $account['account_type'] ?: 'Account' }})
-                                            </option>
-                                        @endforeach
-                                    </select>
-                                </div>
-                                <button type="submit" class="button primary" style="font-size:13px;">Save
-                                    account</button>
-                            </form>
-                        @else
-                            <div class="cc-notice error">No Zoho accounts returned. Reconnect or verify the user has
-                                access.</div>
-                        @endif
-                    </div>
-                @endif
 
                 {{-- Zoho webhook auto-setup result --}}
                 @if ($provider === 'zoho' && $connection && ($webhook_auto_setup_status ?? null))
@@ -750,7 +770,7 @@
 
                 {{-- Wave integration info --}}
                 @if ($provider === 'wave')
-                    <div class="cc-card">
+                    {{-- <div class="cc-card">
                         <div class="cc-card-title">How Wave Integration Works</div>
                         <div class="cc-card-desc">End-to-end flow from invoice approval to payment recording.</div>
                         <div
@@ -781,7 +801,7 @@
                             enabled there (only <code style="background:#ffedd5;padding:1px 4px;border-radius:3px;">invoice.approved</code>
                             is enabled today).
                         </div>
-                    </div>
+                    </div> --}}
                 @endif
 
 
