@@ -239,8 +239,9 @@
                                 @if ($connectUrl)
                                     {{-- <a href="{{ $connectUrl }}" class="reconnect-btn"
                                         style="font-size:12px;padding:7px 16px;">Reconnect</a> --}}
+
                                     <a href="{{ $connectUrl }}" class="button secondary"
-                                        style="font-size:12px;padding:7px 16px;color:#2563eb;border-color:#2563eb;background:#eff6ff;text-decoration:none;">
+                                        style="background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe;font-size:12px;padding:7px 16px;display:inline-block;text-decoration:none;line-height:1.2;vertical-align:middle;box-sizing:border-box;">
                                         Reconnect
                                     </a>
                                 @endif
