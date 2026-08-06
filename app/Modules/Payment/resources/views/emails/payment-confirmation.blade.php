@@ -11,8 +11,8 @@
 
     {{-- Logo --}}
     @if($logoUrl)
-    <div style="padding:28px 32px 0;">
-        <img src="{{ $logoUrl }}" alt="{{ $merchantName }}" style="max-height:60px;max-width:200px;object-fit:contain;display:block;">
+    <div style="padding:28px 32px 0;text-align:center;">
+        <img src="{{ $logoUrl }}" alt="{{ $merchantName }}" style="max-height:60px;max-width:200px;object-fit:contain;display:inline-block;">
     </div>
     @endif
 

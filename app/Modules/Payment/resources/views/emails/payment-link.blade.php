@@ -10,9 +10,9 @@
         <div style="padding: 32px 32px 24px;">
 
             @if(!empty($logoUrl))
-            <div style="margin-bottom: 24px;">
+            <div style="margin-bottom: 24px; text-align: center;">
                 <img src="{{ $logoUrl }}" alt="Company Logo"
-                     style="max-height: 60px; max-width: 200px; object-fit: contain; display: block;">
+                     style="max-height: 60px; max-width: 200px; object-fit: contain; display: inline-block;">
             </div>
             @endif
 
