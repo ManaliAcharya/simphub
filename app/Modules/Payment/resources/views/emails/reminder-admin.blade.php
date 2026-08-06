@@ -6,9 +6,9 @@
 </head>
 <body style="font-family: Arial, sans-serif; color: #14213d; line-height: 1.6;">
     @if(!empty($logoUrl))
-    <div style="margin-bottom: 24px;">
+    <div style="margin-bottom: 24px; text-align: center;">
         <img src="{{ $logoUrl }}" alt="Company Logo"
-             style="max-height: 60px; max-width: 200px; object-fit: contain; display: block;">
+             style="max-height: 60px; max-width: 200px; object-fit: contain; display: inline-block;">
     </div>
     @endif
 
