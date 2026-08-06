@@ -237,7 +237,7 @@
 
         <div style="text-align:center;padding:20px 0 4px;display:inline-flex;align-items:center;gap:6px;justify-content:center;width:100%;color:var(--muted);font-size:12px;">
             Powered by
-            <img src="{{ asset('images/logo/simphub-favicon.jpeg') }}" alt="" style="height:14px;border-radius:3px;vertical-align:middle;">
+            <img src="{{ asset('images/logo/simphub-favicon.jpeg') }}" alt="SimpHub" width="16" height="16" style="height:16px;width:16px;border-radius:3px;vertical-align:middle;">
             <strong style="color:var(--muted);font-weight:600;">SimpHub</strong>
         </div>
     </div>
