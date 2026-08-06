@@ -53,7 +53,7 @@
     @endif
 
     <p style="margin-top: 24px; color: #9ca3af; font-size: 11px;">
-        Powered by <img src="{{ asset('images/logo/simphub-favicon.jpeg') }}" alt="SimpHub" width="16" height="16" style="height: 16px; width: 16px; border-radius: 3px; vertical-align: middle;"> <strong>SimpHub</strong>
+        Powered by <img src="{{ rtrim(config('app.url'), '/') }}/images/logo/simphub-favicon.jpeg" alt="SimpHub" width="16" height="16" style="height: 16px; width: 16px; border-radius: 3px; vertical-align: middle;"> <strong>SimpHub</strong>
     </p>
 </body>
 </html>
