@@ -234,6 +234,12 @@
 
             </div>
         </section>
+
+        <div style="text-align:center;padding:20px 0 4px;display:inline-flex;align-items:center;gap:6px;justify-content:center;width:100%;color:var(--muted);font-size:12px;">
+            Powered by
+            <img src="{{ asset('images/logo/simphub-favicon.jpeg') }}" alt="" style="height:14px;border-radius:3px;vertical-align:middle;">
+            <strong style="color:var(--muted);font-weight:600;">SimpHub</strong>
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" defer></script>

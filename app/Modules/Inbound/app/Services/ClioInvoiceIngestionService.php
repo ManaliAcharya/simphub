@@ -19,6 +19,7 @@ class ClioInvoiceIngestionService
         private readonly ClioOAuthService $oauth,
         private readonly PaymentSessionService $paymentSessions,
         private readonly PaymentLinkService $paymentLinks,
+        private readonly InvoiceLinkLifecycleService $lifecycle,
     ) {}
 
     public function ingest(string $externalInvoiceId, array $triggerPayload = []): array
@@ -30,6 +31,12 @@ class ClioInvoiceIngestionService
         $customerPayload = $this->fetchCustomerPayload($connection, (string) $normalized['external_client_id']);
         $recipientEmails = $this->extractClientEmails($invoicePayload);
 
+        $existedBefore = Invoice::query()
+            ->where('pms_source', 'clio')
+            ->where('pms_client_id', $pmsClientId)
+            ->where('external_invoice_id', $normalized['external_invoice_id'])
+            ->exists();
+
         $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $pmsClientId) {
             $invoice = Invoice::query()->updateOrCreate(
                 [
@@ -38,21 +45,22 @@ class ClioInvoiceIngestionService
                     'external_invoice_id' => $normalized['external_invoice_id'],
                 ],
                 [
-                    'pms_client_id' => $pmsClientId,
+                    'pms_client_id'      => $pmsClientId,
+                    'invoice_number'     => $normalized['invoice_number'] ?: null,
                     'external_client_id' => $normalized['external_client_id'],
                     'external_matter_id' => $normalized['external_matter_id'],
-                    'status' => $normalized['status'],
-                    'fund_type' => $normalized['fund_type'],
-                    'amount_cents' => $normalized['amount_cents'],
-                    'currency' => $normalized['currency'],
-                    'pms_sync_status' => 'SYNCED',
-                    'raw_payload' => [
-                        'trigger' => $triggerPayload,
-                        'invoice' => $invoicePayload,
+                    'status'             => $normalized['status'],
+                    'fund_type'          => $normalized['fund_type'],
+                    'amount_cents'       => $normalized['amount_cents'],
+                    'currency'           => $normalized['currency'],
+                    'pms_sync_status'    => 'SYNCED',
+                    'raw_payload'        => [
+                        'trigger'  => $triggerPayload,
+                        'invoice'  => $invoicePayload,
                         'customer' => $customerPayload,
                     ],
                     'recipient_emails' => $recipientEmails,
-                    'synced_at' => now(),
+                    'synced_at'        => now(),
                 ]
             );
 
@@ -105,6 +113,10 @@ class ClioInvoiceIngestionService
             ]);
         }
 
+        if ($existedBefore) {
+            $this->lifecycle->resendOnUpdate($result['invoice'], $result['payment_session'], $recipientEmails, $pmsClientId);
+        }
+
         $result['emails_sent'] = $emailsSent;
 
         return $result;
@@ -141,6 +153,7 @@ class ClioInvoiceIngestionService
 
         return [
             'external_invoice_id' => (string) $id,
+            'invoice_number'      => (string) (Arr::get($data, 'number') ?? ''),
             'external_client_id' => (string) (
                 Arr::get($data, 'client.id')
                 ?? Arr::get($data, 'client.number')

@@ -11,6 +11,10 @@
 
             <div class="text-center mb-10">
                 <div class="mb-5">
+                    <img src="{{ asset('images/logo/simphub-logo.jpeg') }}" alt="SimpHub" style="height: 64px; border-radius: 8px;">
+                </div>
+
+                <div class="mb-5">
                     <span class="auth-badge">
                         Password Recovery
                     </span>
@@ -148,7 +152,7 @@
                 </div>
             </form>
 
-            <div class="security-notice p-6">
+            <!-- <div class="security-notice p-6">
                 <div class="fw-bold text-dark mb-1">
                     Secure Password Reset
                 </div>
@@ -156,7 +160,7 @@
                 <div class="fw-semibold text-gray-700">
                     Password reset codes are single-use and expire shortly. If you did not request a reset, you can safely ignore the email.
                 </div>
-            </div>
+            </div> -->
 
             <div class="text-center mt-8">
                 <a href="{{ route('auth.login') }}" class="link-primary fw-semibold">

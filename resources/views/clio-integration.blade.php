@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Clio Integration</title>
+    <link rel="icon" type="image/jpeg" href="{{ asset('images/logo/simphub-favicon.jpeg') }}">
     <style>
         :root {
             --bg: #f4efe5;
