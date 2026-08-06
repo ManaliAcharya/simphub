@@ -50,7 +50,7 @@
         <div style="background: #f9fafb; padding: 14px 32px; text-align: center; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb;">
             This email was sent by {{ $merchantName ?? 'your merchant' }}. Please do not reply to this email directly.
             <div style="margin-top: 8px;">
-                Powered by <img src="{{ asset('images/logo/simphub-favicon.jpeg') }}" alt="" style="height: 12px; border-radius: 2px; vertical-align: middle;"> <strong>SimpHub</strong>
+                Powered by <img src="{{ asset('images/logo/simphub-favicon.jpeg') }}" alt="SimpHub" width="16" height="16" style="height: 16px; width: 16px; border-radius: 3px; vertical-align: middle;"> <strong>SimpHub</strong>
             </div>
         </div>
 
