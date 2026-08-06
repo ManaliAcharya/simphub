@@ -12,8 +12,12 @@
 
                 <div class="text-center mb-10">
                     <div class="mb-5">
+                        <img src="{{ asset('images/logo/simphub-logo.jpeg') }}" alt="SimpHub" style="height: 64px; border-radius: 8px;">
+                    </div>
+
+                    <div class="mb-5">
                         <span class="auth-badge">
-                            Client Payment Middlware
+                            Client Portal
                         </span>
                     </div>
 
@@ -21,9 +25,9 @@
                         Sign In
                     </h1>
 
-                    <div class="text-gray-500 fw-semibold fs-6">
-                        Access your Payment Middleware dashboard.
-                    </div>
+                    <!-- <div class="text-gray-500 fw-semibold fs-6">
+                        Access your SimpHub dashboard.
+                    </div> -->
                 </div>
 
                 <form method="POST" action="{{ route('auth.login.submit') }}" id="loginForm" novalidate="novalidate">
@@ -77,15 +81,15 @@
                     </div>
                 </form>
 
-                <div class="security-notice p-6">
+                <!-- <div class="security-notice p-6">
                     <div class="fw-bold text-dark mb-1">
                         Secure Access
                     </div>
 
                     <div class="fw-semibold text-gray-700">
-                        Sign in to manage your client payment middleware account and payment integrations.
+                        Sign in to manage your SimpHub account and payment integrations.
                     </div>
-                </div>
+                </div> -->
 
             </div>
         </div>

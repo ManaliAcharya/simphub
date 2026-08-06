@@ -51,5 +51,9 @@
     @if($merchantName)
     <p style="margin-top: 24px; color: #6b7280; font-size: 13px;">{{ $merchantName }}</p>
     @endif
+
+    <p style="margin-top: 24px; color: #9ca3af; font-size: 11px;">
+        Powered by <img src="{{ asset('images/logo/simphub-favicon.jpeg') }}" alt="" style="height: 12px; border-radius: 2px; vertical-align: middle;"> <strong>SimpHub</strong>
+    </p>
 </body>
 </html>

@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BookSync — {{ $client->name }}</title>
+    <title>{{ $client->name }} — SimpHub</title>
+    <link rel="icon" type="image/jpeg" href="{{ asset('images/logo/simphub-favicon.jpeg') }}">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f1f5f9; color: #111827; min-height: 100vh; }
         .topbar { background: #fff; border-bottom: 1px solid #e5e7eb; padding: 0 32px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
-        .topbar-logo { font-size: 1.15rem; font-weight: 800; color: #111827; letter-spacing: -.02em; }
-        .topbar-logo span { color: #2563eb; }
+        .topbar-logo img { height: 32px; border-radius: 6px; display: block; }
         .topbar-right { display: flex; align-items: center; gap: 16px; }
         .topbar-client { font-size: .85rem; color: #6b7280; }
         .topbar-client strong { color: #111827; }
@@ -51,7 +51,7 @@
 <body>
 
 <div class="topbar">
-    <div class="topbar-logo">Book<span>Sync</span></div>
+    <div class="topbar-logo"><img src="{{ asset('images/logo/simphub-logo.jpeg') }}" alt="SimpHub"></div>
     <div class="topbar-right">
         <div class="topbar-client">Signed in as <strong>{{ $client->name }}</strong></div>
         <form method="POST" action="{{ route('booksync.portal.logout') }}" style="margin:0;">

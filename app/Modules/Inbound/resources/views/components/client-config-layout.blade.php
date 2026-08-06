@@ -608,9 +608,10 @@ $activeTab — default active tab id (first tab if not set)
     <nav class="cc-topnav">
 
         <a class="cc-topnav-logo" href="#">
-            Payment<span>Middleware</span>
+            <img src="{{ asset('images/logo/simphub-logo.jpeg') }}" alt="SimpHub" style="height: 34px; border-radius: 6px; display: block;">
         </a>
 
+        {{--
         <div class="cc-breadcrumb">
             @foreach ($breadcrumbs as $index => $breadcrumb)
                 @if ($index > 0)
@@ -626,6 +627,7 @@ $activeTab — default active tab id (first tab if not set)
                 @endif
             @endforeach
         </div>
+        --}}
 
 
         <div class="cc-user-menu" id="ccUserMenu">

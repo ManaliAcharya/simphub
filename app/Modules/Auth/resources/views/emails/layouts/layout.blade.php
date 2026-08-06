@@ -15,9 +15,7 @@
 
             <tr>
                 <td align="center" style="padding-bottom:30px;">
-                    <h2 style="margin:0; color:#009ef7;">
-                        Payment Middleware
-                    </h2>
+                    <img src="{{ asset('images/logo/simphub-logo.jpeg') }}" alt="SimpHub" style="height:40px; border-radius:6px;">
                 </td>
             </tr>
 
@@ -29,7 +27,7 @@
 
                         <div style="padding-top:30px;">
                             Kind regards,<br>
-                            <strong>Payment Middleware Team</strong>
+                            <strong>SimpHub Team</strong>
                         </div>
 
                     </div>
@@ -38,7 +36,7 @@
 
             <tr>
                 <td align="center" style="padding:20px; color:#7e8299; font-size:12px;">
-                    © {{ date('Y') }} Payment Middleware. All rights reserved.
+                    © {{ date('Y') }} SimpHub. All rights reserved.
                 </td>
             </tr>
 

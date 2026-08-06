@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BookSync — Client Login</title>
+    <title>SimpHub — Client Login</title>
+    <link rel="icon" type="image/jpeg" href="{{ asset('images/logo/simphub-favicon.jpeg') }}">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f1f5f9; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
         .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,.08); width: 100%; max-width: 420px; padding: 40px; }
-        .logo { font-size: 1.35rem; font-weight: 800; color: #111827; margin-bottom: 6px; letter-spacing: -.02em; }
-        .logo span { color: #2563eb; }
+        .logo { margin-bottom: 16px; }
+        .logo img { height: 40px; border-radius: 8px; display: block; }
         .subtitle { font-size: .88rem; color: #6b7280; margin-bottom: 32px; }
         .form-group { margin-bottom: 18px; }
         label { display: block; font-size: .82rem; font-weight: 600; color: #374151; margin-bottom: 6px; }
@@ -27,7 +28,7 @@
 </head>
 <body>
 <div class="card">
-    <div class="logo">Book<span>Sync</span></div>
+    <div class="logo"><img src="{{ asset('images/logo/simphub-logo.jpeg') }}" alt="SimpHub"></div>
     <p class="subtitle">Sign in to your client portal</p>
 
     @if($errors->any())

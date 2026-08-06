@@ -96,6 +96,9 @@
     {{-- Footer --}}
     <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;font-size:11px;color:#9ca3af;text-align:center;line-height:1.6;">
         This is an automated payment confirmation. No additional transfer fees or taxes apply.
+        <div style="margin-top:8px;">
+            Powered by <img src="{{ asset('images/logo/simphub-favicon.jpeg') }}" alt="" style="height:12px;border-radius:2px;vertical-align:middle;"> <strong>SimpHub</strong>
+        </div>
     </div>
 
 </div>

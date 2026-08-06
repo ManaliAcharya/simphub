@@ -39,6 +39,7 @@ class LawcusInvoiceIngestionService
                 ],
                 [
                     'pms_client_id'      => $pmsClientId,
+                    'invoice_number'     => $normalized['invoice_number'] ?: null,
                     'external_client_id' => $normalized['external_client_id'],
                     'external_matter_id' => $normalized['external_matter_id'],
                     'status'             => $normalized['status'],
@@ -139,6 +140,7 @@ class LawcusInvoiceIngestionService
 
         return [
             'external_invoice_id' => (string) $id,
+            'invoice_number'      => (string) (Arr::get($data, 'number') ?? Arr::get($data, 'invoice_number') ?? ''),
             'external_client_id'  => (string) (
                 Arr::get($data, 'client.id')
                 ?? Arr::get($data, 'client.number')
