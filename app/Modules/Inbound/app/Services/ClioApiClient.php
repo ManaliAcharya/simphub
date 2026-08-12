@@ -37,7 +37,7 @@ class ClioApiClient
         //https://paymentmiddleware.myreporthub.dev/api/v1/inbound/webhooks/clio?pms_client_id=c50d4823-40c9-4167-a4a4-db44aa7deb21
         $response = $this->authenticatedRequest($connection)
             ->get("/api/v4/bills/{$externalInvoiceId}.json" , [
-                'fields' => 'id,number,total,balance,client{id,name,primary_email_address}'
+                'fields' => 'id,number,total,balance,state,client{id,name,primary_email_address}'
             ]);
 
         if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
