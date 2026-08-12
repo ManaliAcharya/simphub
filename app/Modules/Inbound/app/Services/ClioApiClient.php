@@ -40,11 +40,13 @@ class ClioApiClient
      */
     public function fetchBillPreviewHtml(ClioConnection $connection, string $billId): ?string
     {
-        // This resource serves raw HTML, not JSON, despite the .json suffix on the
-        // URL - baseRequest() forces `Accept: application/json` on every other
-        // call, which this endpoint rejects with a 406 InvalidFormatError.
-        $response = $this->authenticatedRequest($connection)
-            ->withHeaders(['Accept' => 'text/html'])
+        // Deliberately bypasses baseRequest()/authenticatedRequest() - this
+        // resource serves raw HTML, not JSON, despite the .json URL suffix, and
+        // 406s on both `Accept: application/json` and an explicit `Accept:
+        // text/html` override, which points at asJson()'s Content-Type header
+        // (sent even on this bodyless GET) being what Clio actually rejects.
+        $response = Http::withToken($connection->access_token)
+            ->baseUrl(config('services.clio.api_base_url'))
             ->get("/api/v4/bills/{$billId}/preview.json");
 
         if ($response->failed()) {
