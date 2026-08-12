@@ -98,11 +98,13 @@ class ClioInvoiceIngestionService
 
         $emailsSent = 0;
 
-        $emailsSent = $this->paymentLinks->sendInvoiceLinkOnce(
-            $result['invoice'],
-            $result['payment_session'],
-            $recipientEmails
-        );
+        if ($this->isApprovedState($result['invoice']->status)) {
+            $emailsSent = $this->paymentLinks->sendInvoiceLinkOnce(
+                $result['invoice'],
+                $result['payment_session'],
+                $recipientEmails
+            );
+        }
 
         if ($emailsSent > 0) {
             AuditLogger::log('PAYMENT_LINK_SENT', 'payment_session', $result['payment_session']->id, [
@@ -120,6 +122,16 @@ class ClioInvoiceIngestionService
         $result['emails_sent'] = $emailsSent;
 
         return $result;
+    }
+
+    /**
+     * Clio bills start in draft/awaiting-approval and only become payable once
+     * approved — hold the payment-link email until the bill's state reaches
+     * one of the configured approved values (CLIO_APPROVED_BILL_STATES).
+     */
+    private function isApprovedState(string $status): bool
+    {
+        return in_array(strtoupper($status), config('services.clio.approved_bill_states', ['APPROVED']), true);
     }
 
     private function fetchCustomerPayload(ClioConnection $connection, string $externalClientId): array
