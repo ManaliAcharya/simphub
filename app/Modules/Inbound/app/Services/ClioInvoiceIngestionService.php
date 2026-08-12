@@ -2,8 +2,10 @@
 
 namespace Modules\Inbound\Services;
 
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
@@ -11,6 +13,7 @@ use Modules\Billing\Services\PaymentSessionService;
 use Modules\Inbound\Models\ClioConnection;
 use Modules\Payment\Services\PaymentLinkService;
 use RuntimeException;
+use Throwable;
 
 class ClioInvoiceIngestionService
 {
@@ -99,10 +102,13 @@ class ClioInvoiceIngestionService
         $emailsSent = 0;
 
         if ($this->isApprovedState($result['invoice']->status)) {
+            $pdfContent = $this->fetchBillPdf($connection, $normalized['external_invoice_id']);
+
             $emailsSent = $this->paymentLinks->sendInvoiceLinkOnce(
                 $result['invoice'],
                 $result['payment_session'],
-                $recipientEmails
+                $recipientEmails,
+                $pdfContent
             );
         }
 
@@ -122,6 +128,33 @@ class ClioInvoiceIngestionService
         $result['emails_sent'] = $emailsSent;
 
         return $result;
+    }
+
+    /**
+     * Clio has no native PDF export for bills, only a pre-rendered HTML preview
+     * (with the firm's bill theme/CSS already applied) — convert that to a PDF
+     * ourselves so Clio invoices get the same PDF attachment QuickBooks invoices
+     * already do. Never throws: a PDF failure must not block the payment-link
+     * email itself.
+     */
+    private function fetchBillPdf(ClioConnection $connection, string $billId): ?string
+    {
+        try {
+            $html = $this->client->fetchBillPreviewHtml($connection, $billId);
+
+            if ($html === null) {
+                return null;
+            }
+
+            return Pdf::loadHTML($html)->output();
+        } catch (Throwable $e) {
+            Log::warning('Clio bill PDF generation failed, sending payment link without an attachment.', [
+                'bill_id' => $billId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**

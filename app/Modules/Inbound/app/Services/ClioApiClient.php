@@ -31,6 +31,33 @@ class ClioApiClient
         return $this->authenticatedRequest($connection)->post('/api/v4/webhooks', $payload);
     }
 
+    /**
+     * Clio has no raw PDF export for bills - this returns the same pre-rendered,
+     * themed HTML (with embedded CSS) Clio's own UI shows, for converting to a
+     * PDF attachment ourselves. Returns null if Clio has nothing to preview yet
+     * (e.g. a brand new draft) rather than throwing, since a missing PDF should
+     * never block the payment-link email.
+     */
+    public function fetchBillPreviewHtml(ClioConnection $connection, string $billId): ?string
+    {
+        $response = $this->authenticatedRequest($connection)
+            ->get("/api/v4/bills/{$billId}/preview.json");
+
+        if ($response->failed()) {
+            Log::warning('Clio bill preview fetch failed.', [
+                'bill_id' => $billId,
+                'status' => $response->status(),
+                'error' => $response->json(),
+            ]);
+
+            return null;
+        }
+
+        $html = Arr::get($response->json(), 'data.html');
+
+        return is_string($html) && trim($html) !== '' ? $html : null;
+    }
+
     public function fetchBill(ClioConnection $connection, string $externalInvoiceId): array
     {
         //"/api/v4/webhooks.json?fields=id,url,events,status"
