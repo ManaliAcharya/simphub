@@ -155,41 +155,25 @@ class SyncInvoicePaidListener
                 $state = 'awaiting_approval';
             }
 
-            $lineItems = collect($this->clioApi->fetchLineItems($connection, $billId))
-                ->filter(fn (array $li): bool => (float) ($li['total'] ?? 0) > 0)
-                ->values();
-
             AuditLogger::log('CLIO_BILL_DEBUG', 'invoice', $invoice->id, [
                 'bill_id'          => $billId,
                 'bill_state_final' => $state,
                 'bill_total'       => $billData['total'] ?? null,
                 'bill_balance'     => $billData['balance'] ?? null,
-                'line_items_count' => $lineItems->count(),
-                'line_items'       => $lineItems->all(),
             ]);
 
-            $remaining   = $amount;
-            $allocations = [];
-
-            foreach ($lineItems as $lineItem) {
-                if ($remaining <= 0) {
-                    break;
-                }
-                $lineBalance   = (float) ($lineItem['total'] ?? 0);
-                $allocated     = min($remaining, $lineBalance);
-                $remaining     = round($remaining - $allocated, 2);
-                $allocations[] = [
-                    'line_item_id'   => (int) $lineItem['id'],
-                    'amount'         => $allocated,
-                    'date'           => $date,
-                    'payment_method' => $paymentMethod,
-                    'note'           => $note,
-                ];
-            }
-
-            foreach ($allocations as $allocationPayload) {
-                $this->clioApi->recordLineItemPayment($connection, $allocationPayload);
-            }
+            $this->clioApi->recordPayment($connection, [
+                'payment_method' => $paymentMethod,
+                'date'           => $date,
+                'received_at'    => now()->toIso8601String(),
+                'description'    => $note,
+                'bill_payments'  => [
+                    [
+                        'bill'   => ['id' => (int) $billId],
+                        'amount' => $amount,
+                    ],
+                ],
+            ]);
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
 
@@ -199,7 +183,7 @@ class SyncInvoicePaidListener
                 'gateway'             => $transaction->gateway,
                 'gateway_txn_id'      => $transaction->gateway_txn_id,
                 'external_invoice_id' => $invoice->external_invoice_id,
-                'line_items_paid'     => count($allocations),
+                'amount'              => $amount,
             ]);
         } catch (\Throwable $exception) {
             $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();

@@ -137,6 +137,19 @@ class ClioApiClient
             ->json();
     }
 
+    /**
+     * Records a bill-level payment via Clio's Payments API. `line_item_payments`
+     * (above) 404s — Clio's actual API has no such resource; a Payment record
+     * with a `bill_payments` array (bill id + amount) is the real mechanism.
+     */
+    public function recordPayment(ClioConnection $connection, array $payload): array
+    {
+        return $this->authenticatedRequest($connection)
+            ->post('/api/v4/payments.json', ['data' => $payload])
+            ->throw()
+            ->json();
+    }
+
     public function markBillPaid(ClioConnection $connection, string $billId): array
     {
         return $this->authenticatedRequest($connection)
