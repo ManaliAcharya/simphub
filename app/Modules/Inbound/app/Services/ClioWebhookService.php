@@ -25,7 +25,7 @@ class ClioWebhookService
             'url' => $callbackUrl,
             'model' => config('services.clio.webhook_model', 'bill'),
             'events' => config('services.clio.webhook_events', ['created']),
-            'fields' => config('services.clio.webhook_fields', []),
+            'fields' => implode(',', config('services.clio.webhook_fields', [])),
             'expires_at' => $expiresAt->toIso8601String(),
         ];
 
