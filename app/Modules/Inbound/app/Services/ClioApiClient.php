@@ -40,30 +40,49 @@ class ClioApiClient
      */
     public function fetchBillPreviewHtml(ClioConnection $connection, string $billId): ?string
     {
-        // Deliberately bypasses baseRequest()/authenticatedRequest() - this
-        // resource serves raw HTML, not JSON, despite the .json URL suffix, and
-        // 406s on both `Accept: application/json` and an explicit `Accept:
-        // text/html` override, which points at asJson()'s Content-Type header
-        // (sent even on this bodyless GET) being what Clio actually rejects.
+        // Two prior guesses at the Accept/Content-Type headers both still 406'd,
+        // and Clio's own docs confirm this returns a JSON object (not raw HTML)
+        // and don't list 406 as an expected response at all for this endpoint -
+        // so log everything we actually sent/received instead of guessing again.
+        $requestHeaders = [
+            'Authorization' => 'Bearer [redacted]',
+            'Accept'        => 'application/json',
+        ];
+
         $response = Http::withToken($connection->access_token)
+            ->withHeaders(['Accept' => 'application/json'])
             ->baseUrl(config('services.clio.api_base_url'))
             ->get("/api/v4/bills/{$billId}/preview.json");
 
         if ($response->failed()) {
             Log::warning('Clio bill preview fetch failed.', [
                 'bill_id' => $billId,
+                'url' => config('services.clio.api_base_url')."/api/v4/bills/{$billId}/preview.json",
+                'request_headers' => $requestHeaders,
                 'status' => $response->status(),
-                'error' => $response->header('Content-Type') === 'application/json'
-                    ? $response->json()
-                    : $response->body(),
+                'response_content_type' => $response->header('Content-Type'),
+                'response_headers' => $response->headers(),
+                'response_body' => $response->body(),
             ]);
 
             return null;
         }
 
-        $html = $response->body();
+        // Clio's own docs describe this as returning a JSON "HTML object", matching
+        // the {"data": {...}} envelope every other v4 endpoint here uses - not raw
+        // HTML text.
+        $html = Arr::get($response->json(), 'data.html');
 
-        return trim($html) !== '' ? $html : null;
+        if (! is_string($html) || trim($html) === '') {
+            Log::warning('Clio bill preview succeeded but had no data.html field.', [
+                'bill_id' => $billId,
+                'response_body' => $response->body(),
+            ]);
+
+            return null;
+        }
+
+        return $html;
     }
 
     public function fetchBill(ClioConnection $connection, string $externalInvoiceId): array
