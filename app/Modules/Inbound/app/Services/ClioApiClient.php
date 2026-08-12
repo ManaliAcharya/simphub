@@ -40,22 +40,28 @@ class ClioApiClient
      */
     public function fetchBillPreviewHtml(ClioConnection $connection, string $billId): ?string
     {
+        // This resource serves raw HTML, not JSON, despite the .json suffix on the
+        // URL - baseRequest() forces `Accept: application/json` on every other
+        // call, which this endpoint rejects with a 406 InvalidFormatError.
         $response = $this->authenticatedRequest($connection)
+            ->withHeaders(['Accept' => 'text/html'])
             ->get("/api/v4/bills/{$billId}/preview.json");
 
         if ($response->failed()) {
             Log::warning('Clio bill preview fetch failed.', [
                 'bill_id' => $billId,
                 'status' => $response->status(),
-                'error' => $response->json(),
+                'error' => $response->header('Content-Type') === 'application/json'
+                    ? $response->json()
+                    : $response->body(),
             ]);
 
             return null;
         }
 
-        $html = Arr::get($response->json(), 'data.html');
+        $html = $response->body();
 
-        return is_string($html) && trim($html) !== '' ? $html : null;
+        return trim($html) !== '' ? $html : null;
     }
 
     public function fetchBill(ClioConnection $connection, string $externalInvoiceId): array
