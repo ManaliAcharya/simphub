@@ -49,19 +49,20 @@ class ClioApiClient
             'Accept'        => 'application/json',
         ];
 
-        // EXPERIMENT: dropping the .json suffix on a hunch, despite Clio's own docs
-        // screenshot showing the path WITH .json and every other endpoint here
-        // working fine with .json - low confidence, cheap to rule out. Revert to
-        // "/preview.json" if this doesn't clear the 406.
+        // Confirmed via live test: dropping the .json suffix produced the byte-
+        // identical 406 InvalidFormatError, same as every other header/URL
+        // variation tried. Reverted to match Clio's documented path - this
+        // endpoint appears unavailable for this app/account regardless of
+        // request shape; see Clio support before changing this call again.
         $response = Http::withToken($connection->access_token)
             ->withHeaders(['Accept' => 'application/json'])
             ->baseUrl(config('services.clio.api_base_url'))
-            ->get("/api/v4/bills/{$billId}/preview");
+            ->get("/api/v4/bills/{$billId}/preview.json");
 
         if ($response->failed()) {
             Log::warning('Clio bill preview fetch failed.', [
                 'bill_id' => $billId,
-                'url' => config('services.clio.api_base_url')."/api/v4/bills/{$billId}/preview",
+                'url' => config('services.clio.api_base_url')."/api/v4/bills/{$billId}/preview.json",
                 'request_headers' => $requestHeaders,
                 'status' => $response->status(),
                 'response_content_type' => $response->header('Content-Type'),
