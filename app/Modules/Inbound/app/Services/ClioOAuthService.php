@@ -3,9 +3,11 @@
 namespace Modules\Inbound\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClioConnection;
 use RuntimeException;
+use Throwable;
 
 class ClioOAuthService
 {
@@ -86,6 +88,39 @@ class ClioOAuthService
     public function validateState(?string $state): array
     {
         return $this->state->validate($state);
+    }
+
+    /**
+     * Per Clio's docs: POST /oauth/revoke on the separate auth.api.clio.com host,
+     * Basic-auth'd with base64(client_id:client_secret), one "token" param per call.
+     * Only the access token is documented, but revoking the refresh token too is
+     * standard OAuth cleanup practice - each call is independent/best-effort so a
+     * failure on one doesn't skip the other.
+     */
+    public function revokeToken(ClioConnection $connection): void
+    {
+        foreach (['access_token', 'refresh_token'] as $field) {
+            $token = $connection->{$field};
+
+            if (! $token) {
+                continue;
+            }
+
+            try {
+                Http::asForm()
+                    ->withBasicAuth($this->clientId(), $this->clientSecret())
+                    ->post('https://auth.api.clio.com/oauth/revoke', [
+                        'token' => $token,
+                    ])
+                    ->throw();
+            } catch (Throwable $e) {
+                Log::warning('Clio: failed to revoke token.', [
+                    'pms_client_id' => $connection->pms_client_id,
+                    'token_field'   => $field,
+                    'error'         => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
     private function persistTokens(array $payload, ?ClioConnection $connection = null, ?string $pmsClientId = null): ClioConnection

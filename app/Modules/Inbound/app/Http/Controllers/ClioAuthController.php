@@ -66,7 +66,7 @@ class ClioAuthController extends Controller
         }
     }
 
-    public function disconnect(Request $request, ClioApiClient $api): RedirectResponse
+    public function disconnect(Request $request, ClioApiClient $api, ClioOAuthService $oauth): RedirectResponse
     {
         $pmsClientId = $request->validate([
             'pms_client_id' => ['required', 'string'],
@@ -89,6 +89,8 @@ class ClioAuthController extends Controller
                     ]);
                 }
             }
+
+            $oauth->revokeToken($connection);
 
             $connection->delete();
         }
