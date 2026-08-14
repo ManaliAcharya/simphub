@@ -27,11 +27,15 @@ class InvoicePdfService
 
             $logoUrl = null;
             if ($client?->logo_path && Storage::disk('public')->exists($client->logo_path)) {
-                $logoUrl = rtrim(config('app.url'), '/').'/storage/'.$client->logo_path;
+                $logoUrl = $this->dataUri(
+                    Storage::disk('public')->get($client->logo_path),
+                    Storage::disk('public')->mimeType($client->logo_path) ?: 'image/png',
+                );
             }
 
             $html = view('payment::pdf.invoice', [
                 'logoUrl'       => $logoUrl,
+                'faviconUri'    => $this->dataUri(file_get_contents(public_path('images/logo/simphub-favicon.jpeg')), 'image/jpeg'),
                 'merchantName'  => $client?->client_name,
                 'customerName'  => (string) ($invoice->customer['name'] ?? ''),
                 'invoiceNumber' => (string) ($invoice->invoice_number ?? $invoice->external_invoice_id ?? ''),
@@ -51,6 +55,16 @@ class InvoicePdfService
 
             return null;
         }
+    }
+
+    /**
+     * dompdf needs isRemoteEnabled to fetch images by URL, which is both an
+     * extra security surface and a needless network round-trip for assets we
+     * already have locally - embed them as data URIs instead.
+     */
+    private function dataUri(string $contents, string $mimeType): string
+    {
+        return 'data:'.$mimeType.';base64,'.base64_encode($contents);
     }
 
     private function resolveDueDate(Invoice $invoice): ?string

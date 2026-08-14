@@ -3,28 +3,30 @@
 <head>
 <meta charset="utf-8">
 <style>
-    body { font-family: Georgia, 'Times New Roman', serif; color: #1f2937; font-size: 13px; }
+    body { font-family: Georgia, 'Times New Roman', serif; color: #0c2242; font-size: 13px; }
     .logo { text-align: center; margin-bottom: 18px; }
     .logo img { max-height: 56px; max-width: 220px; }
-    .title { font-size: 28px; letter-spacing: 0.1em; font-weight: bold; text-align: center; margin-bottom: 4px; color: #1f2937; }
+    .title { font-size: 28px; letter-spacing: 0.1em; font-weight: bold; text-align: center; margin-bottom: 10px; color: #0c2242; }
+    .title-rule { width: 60px; height: 3px; background: #90d7c1; margin: 0 auto 14px; }
     .subtitle { text-align: center; color: #6b7280; font-size: 11px; margin-bottom: 28px; letter-spacing: 0.05em; }
     table.parties { width: 100%; margin-bottom: 24px; }
     table.parties td { vertical-align: top; width: 50%; font-size: 12px; line-height: 1.6; }
     table.parties .heading { font-weight: bold; text-transform: uppercase; font-size: 10px; color: #6b7280; letter-spacing: 0.05em; padding-bottom: 4px; }
     table.items { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
-    table.items th { background: #1f2937; color: #ffffff; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+    table.items th { background: #0c2242; color: #ffffff; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
     table.items td { padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
     table.items td.amt, table.items th.amt { text-align: right; }
     table.totals { width: 100%; margin-top: 4px; }
     table.totals td { padding: 5px 10px; font-size: 12px; }
     table.totals td.amt { text-align: right; }
-    table.totals tr.grand td { border-top: 2px solid #1f2937; font-weight: bold; font-size: 15px; padding-top: 10px; }
-    .pay-panel { margin-top: 26px; border: 1px solid #d1d5db; padding: 16px 20px; text-align: center; }
+    table.totals tr.grand td { border-top: 2px solid #0c2242; font-weight: bold; font-size: 15px; padding-top: 10px; color: #0c2242; }
+    .pay-panel { margin-top: 26px; border: 1px solid #d1d5db; border-top: 3px solid #90d7c1; padding: 16px 20px; text-align: center; }
     .pay-panel .note { font-size: 11px; color: #6b7280; margin-bottom: 10px; }
-    .pay-button { display: inline-block; background: #1f2937; color: #ffffff; padding: 10px 26px; text-decoration: none; font-size: 13px; font-weight: bold; }
+    .pay-button { display: inline-block; background: #0c2242; color: #ffffff; padding: 10px 26px; text-decoration: none; font-size: 13px; font-weight: bold; }
     .pay-link { color: #6b7280; font-size: 10px; margin-top: 8px; }
     .footer { margin-top: 40px; text-align: center; color: #9ca3af; font-size: 9px; }
     .footer img { height: 11px; vertical-align: middle; }
+    .footer strong { color: #0c2242; }
 </style>
 </head>
 <body>
@@ -33,6 +35,7 @@
     @endif
 
     <div class="title">INVOICE</div>
+    <div class="title-rule"></div>
     <div class="subtitle">
         #{{ $invoiceNumber }}
         @if(!empty($issueDate)) &nbsp;&bull;&nbsp; Issued {{ $issueDate }} @endif
@@ -60,6 +63,10 @@
         <div class="pay-link">{{ $paymentUrl }}</div>
     </div>
 
-    <div class="footer">Powered by SimpHub</div>
+    <div class="footer">
+        Powered by
+        <img src="{{ $faviconUri }}" alt="">
+        <strong>SimpHub</strong>
+    </div>
 </body>
 </html>
