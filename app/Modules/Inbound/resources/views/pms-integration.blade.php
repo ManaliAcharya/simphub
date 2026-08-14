@@ -617,6 +617,31 @@
                             </div>
                         @endif
                     </div>
+
+                    {{-- Payment-link PDF source --}}
+                    <div class="cc-card">
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                            <div>
+                                <div class="cc-card-title" style="margin-bottom:2px;">Payment-Link PDF</div>
+                                <div class="cc-card-desc" style="margin:0;">
+                                    Which PDF gets attached to the payment-link email: QuickBooks' own invoice
+                                    export, or the PDF SimpHub generates from the invoice data.
+                                </div>
+                            </div>
+                            <form method="POST" action="{{ route('inbound.quickbooks.pdf-source-toggle') }}"
+                                id="qb-pdf-source-toggle-form">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <input type="hidden" name="qb_use_native_pdf" id="qb-pdf-source-val"
+                                    value="{{ $client->qb_use_native_pdf ? '1' : '0' }}">
+                                <button type="button" onclick="qbPdfSourceToggle()" id="qb-pdf-source-btn"
+                                    class="button {{ $client->qb_use_native_pdf ? 'primary' : 'secondary' }}"
+                                    style="white-space:nowrap;font-size:13px;min-width:110px;">
+                                    {{ $client->qb_use_native_pdf ? 'QB PDF' : 'SimpHub PDF' }}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
                 @endif
 
                 {{-- Wave Surcharge Split (toggle + account selector) --}}
@@ -1384,6 +1409,17 @@
                             btn.textContent = next ? 'ON' : 'OFF';
                             btn.className = next ? 'button primary' : 'button secondary';
                             document.getElementById('qb-surcharge-toggle-form').submit();
+                        }
+
+                        function qbPdfSourceToggle() {
+                            var inp = document.getElementById('qb-pdf-source-val');
+                            var btn = document.getElementById('qb-pdf-source-btn');
+                            var current = inp.value === '1';
+                            var next = !current;
+                            inp.value = next ? '1' : '0';
+                            btn.textContent = next ? 'QB PDF' : 'SimpHub PDF';
+                            btn.className = next ? 'button primary' : 'button secondary';
+                            document.getElementById('qb-pdf-source-toggle-form').submit();
                         }
                     </script>
                 @endif

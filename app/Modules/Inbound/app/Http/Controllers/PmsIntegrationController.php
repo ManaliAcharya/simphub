@@ -351,6 +351,24 @@ class PmsIntegrationController extends Controller
         return redirect()->back()->with('success', 'Surcharge split ' . ($validated['qb_surcharge_enabled'] ? 'enabled' : 'disabled') . '.');
     }
 
+    public function saveQbPdfSourceToggle(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'pms_client_id'      => ['required', 'string'],
+            'qb_use_native_pdf'  => ['required', 'boolean'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'QUICKBOOKS', 422, 'PDF source toggle is only for QuickBooks clients.');
+
+        $client->forceFill(['qb_use_native_pdf' => (bool) $validated['qb_use_native_pdf']])->save();
+
+        return redirect()->back()->with('success', 'Payment-link PDF will now use ' . ($validated['qb_use_native_pdf'] ? 'the QuickBooks invoice PDF' : 'the SimpHub-generated PDF') . '.');
+    }
+
     public function saveAutoResendToggle(Request $request): RedirectResponse
     {
         $validated = $request->validate([
