@@ -31,65 +31,6 @@ class ClioApiClient
         return $this->authenticatedRequest($connection)->post('/api/v4/webhooks', $payload);
     }
 
-    /**
-     * Clio has no raw PDF export for bills - this returns the same pre-rendered,
-     * themed HTML (with embedded CSS) Clio's own UI shows, for converting to a
-     * PDF attachment ourselves. Returns null if Clio has nothing to preview yet
-     * (e.g. a brand new draft) rather than throwing, since a missing PDF should
-     * never block the payment-link email.
-     */
-    public function fetchBillPreviewHtml(ClioConnection $connection, string $billId): ?string
-    {
-        // Two prior guesses at the Accept/Content-Type headers both still 406'd,
-        // and Clio's own docs confirm this returns a JSON object (not raw HTML)
-        // and don't list 406 as an expected response at all for this endpoint -
-        // so log everything we actually sent/received instead of guessing again.
-        $requestHeaders = [
-            'Authorization' => 'Bearer [redacted]',
-            'Accept'        => 'application/json',
-        ];
-
-        // Confirmed via live test: dropping the .json suffix produced the byte-
-        // identical 406 InvalidFormatError, same as every other header/URL
-        // variation tried. Reverted to match Clio's documented path - this
-        // endpoint appears unavailable for this app/account regardless of
-        // request shape; see Clio support before changing this call again.
-        $response = Http::withToken($connection->access_token)
-            ->withHeaders(['Accept' => 'application/json'])
-            ->baseUrl(config('services.clio.api_base_url'))
-            ->get("/api/v4/bills/{$billId}/preview.json");
-
-        if ($response->failed()) {
-            Log::warning('Clio bill preview fetch failed.', [
-                'bill_id' => $billId,
-                'url' => config('services.clio.api_base_url')."/api/v4/bills/{$billId}/preview.json",
-                'request_headers' => $requestHeaders,
-                'status' => $response->status(),
-                'response_content_type' => $response->header('Content-Type'),
-                'response_headers' => $response->headers(),
-                'response_body' => $response->body(),
-            ]);
-
-            return null;
-        }
-
-        // Clio's own docs describe this as returning a JSON "HTML object", matching
-        // the {"data": {...}} envelope every other v4 endpoint here uses - not raw
-        // HTML text.
-        $html = Arr::get($response->json(), 'data.html');
-
-        if (! is_string($html) || trim($html) === '') {
-            Log::warning('Clio bill preview succeeded but had no data.html field.', [
-                'bill_id' => $billId,
-                'response_body' => $response->body(),
-            ]);
-
-            return null;
-        }
-
-        return $html;
-    }
-
     public function fetchBill(ClioConnection $connection, string $externalInvoiceId): array
     {
         //"/api/v4/webhooks.json?fields=id,url,events,status"

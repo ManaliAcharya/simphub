@@ -18,9 +18,25 @@ use Modules\Payment\Mail\PaymentReminderMail;
 
 class PaymentLinkService
 {
+    public function __construct(
+        private readonly InvoicePdfService $invoicePdf,
+    ) {}
+
     public function urlForSession(PaymentSession $session): string
     {
         return $this->baseUrl().route('payment.page.show', ['session' => $session->hosted_url_token], false);
+    }
+
+    /**
+     * Callers pass an explicit $pdfContent when a PMS's own native PDF export
+     * should be used (e.g. QuickBooks, when the client has opted into it).
+     * Everyone else - and QuickBooks clients who opt out - gets a PDF we
+     * generate ourselves from our own invoice data, so every PMS ends up with
+     * a payment-link PDF attachment regardless of what that PMS's API offers.
+     */
+    private function resolvePdfContent(Invoice $invoice, string $paymentUrl, ?string $pdfContent): ?string
+    {
+        return $pdfContent ?? $this->invoicePdf->generate($invoice, $paymentUrl);
     }
 
     public function sendInvoiceLinkOnce(Invoice $invoice, PaymentSession $session, array $emails, ?string $pdfContent = null): int
@@ -93,6 +109,7 @@ class PaymentLinkService
         $paymentUrl  = $this->urlForSession($session);
         $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
         $fromName    = $this->resolveFromName($invoice, $client);
+        $pdfContent  = $this->resolvePdfContent($invoice, $paymentUrl, $pdfContent);
         $sent        = 0;
 
         foreach ($toCustomer as $email) {
@@ -139,6 +156,7 @@ class PaymentLinkService
         $paymentUrl  = $this->urlForSession($session);
         $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
         $fromName    = $this->resolveFromName($invoice, $client);
+        $pdfContent  = $this->resolvePdfContent($invoice, $paymentUrl, $pdfContent);
         $sent        = 0;
         $sentTo      = [];
         $failures    = [];
@@ -247,6 +265,7 @@ class PaymentLinkService
         $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
         $subject     = (string) ($client?->reminder_subject_template ?? config('reminders.default_subject_template', 'Reminder: Invoice {invoice_number} is awaiting payment'));
         $fromName    = $this->resolveFromName($invoice, $client);
+        $pdfContent  = $this->resolvePdfContent($invoice, $paymentUrl, $pdfContent);
         $sent        = 0;
 
         foreach ($toCustomer as $email) {

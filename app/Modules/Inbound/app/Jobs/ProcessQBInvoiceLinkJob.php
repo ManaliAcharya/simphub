@@ -177,9 +177,14 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         //     return;
         // }
 
-        // Clear stale PDF cache and fetch fresh PDF
-        $qbApi->clearPdfCache($connection, $this->entityId);
-        $pdf = $qbApi->fetchInvoicePdf($connection, $this->entityId);
+        // Clear stale PDF cache and fetch fresh PDF - unless the client has opted out
+        // of QuickBooks' own PDF export, in which case PaymentLinkService falls back
+        // to the PDF we generate ourselves.
+        $pdf = null;
+        if ($client?->qb_use_native_pdf ?? true) {
+            $qbApi->clearPdfCache($connection, $this->entityId);
+            $pdf = $qbApi->fetchInvoicePdf($connection, $this->entityId);
+        }
 
         // Record original amount on session before first resend
         if ($session->original_amount === null) {

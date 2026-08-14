@@ -783,8 +783,9 @@ class ClientConfigController extends Controller
                 ->firstOrFail();
 
             $pdf = null;
+            $useNativePdf = Client::query()->where('pms_client_id', $pms_client_id)->value('qb_use_native_pdf') ?? true;
 
-            if (method_exists($connector, 'fetchInvoicePdf')) {
+            if ($useNativePdf && method_exists($connector, 'fetchInvoicePdf')) {
                 $pdf = $connector->fetchInvoicePdf(
                     $connection,
                     $invoice->external_invoice_id
