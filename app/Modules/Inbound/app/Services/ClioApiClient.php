@@ -31,6 +31,11 @@ class ClioApiClient
         return $this->authenticatedRequest($connection)->post('/api/v4/webhooks', $payload);
     }
 
+    public function deleteWebhook(ClioConnection $connection, string $webhookId): Response
+    {
+        return $this->authenticatedRequest($connection)->delete("/api/v4/webhooks/{$webhookId}.json");
+    }
+
     public function fetchBill(ClioConnection $connection, string $externalInvoiceId): array
     {
         //"/api/v4/webhooks.json?fields=id,url,events,status"

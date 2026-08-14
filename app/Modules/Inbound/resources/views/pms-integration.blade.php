@@ -276,6 +276,19 @@
                                         </button>
                                     </form>
                                 @endif
+
+                                @if ($provider === 'clio' && $client)
+                                    <form method="POST" action="{{ route('inbound.clio.disconnect') }}"
+                                        onsubmit="return confirm('Disconnect Clio? The client will need to reconnect to resume invoice processing.');">
+                                        @csrf
+                                        <input type="hidden" name="pms_client_id"
+                                            value="{{ $client->pms_client_id }}">
+                                        <button type="submit" class="button secondary"
+                                            style="font-size:12px;padding:7px 16px;color:#dc2626;border-color:#dc2626;background:#fef2f2;">
+                                            Disconnect
+                                        </button>
+                                    </form>
+                                @endif
                             </div>
                         </div>
                         @php

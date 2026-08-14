@@ -6,6 +6,8 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Inbound\Models\Client;
+use Modules\Inbound\Models\ClioConnection;
+use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
 use Modules\Inbound\Services\ClioWebhookService;
 use Throwable;
@@ -62,5 +64,38 @@ class ClioAuthController extends Controller
                 'pms_client_id' => $pmsClientId,
             ]);
         }
+    }
+
+    public function disconnect(Request $request, ClioApiClient $api): RedirectResponse
+    {
+        $pmsClientId = $request->validate([
+            'pms_client_id' => ['required', 'string'],
+        ])['pms_client_id'];
+
+        $connection = ClioConnection::query()
+            ->where('provider', 'clio')
+            ->where('pms_client_id', $pmsClientId)
+            ->first();
+
+        if ($connection) {
+            if ($connection->webhook_id) {
+                try {
+                    $api->deleteWebhook($connection, (string) $connection->webhook_id);
+                } catch (Throwable $e) {
+                    logger()->warning('Clio: failed to delete webhook on disconnect', [
+                        'pms_client_id' => $pmsClientId,
+                        'webhook_id'    => $connection->webhook_id,
+                        'error'         => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            $connection->delete();
+        }
+
+        return redirect()->route('inbound.clio.page', [
+            'success'       => 'Clio disconnected. Click "Connect Clio" to reconnect.',
+            'pms_client_id' => $pmsClientId,
+        ]);
     }
 }
