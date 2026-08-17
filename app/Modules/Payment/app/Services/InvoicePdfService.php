@@ -37,7 +37,7 @@ class InvoicePdfService
                 'logoUrl'       => $logoUrl,
                 'faviconUri'    => $this->dataUri(file_get_contents(public_path('images/logo/simphub-favicon.jpeg')), 'image/jpeg'),
                 'merchantName'  => $client?->client_name,
-                'customerName'  => (string) ($invoice->customer['name'] ?? ''),
+                'customerName'  => $this->resolveCustomerName($invoice),
                 'invoiceNumber' => (string) ($invoice->invoice_number ?? $invoice->external_invoice_id ?? ''),
                 'issueDate'     => $invoice->created_at?->format('F j, Y'),
                 'dueDate'       => $this->resolveDueDate($invoice),
@@ -65,6 +65,33 @@ class InvoicePdfService
     private function dataUri(string $contents, string $mimeType): string
     {
         return 'data:'.$mimeType.';base64,'.base64_encode($contents);
+    }
+
+    /**
+     * $invoice->customer['name'] is only ever populated after payment (from the
+     * cardholder's name entered at checkout) - at payment-link time, before any
+     * payment exists, the real name lives in raw_payload with a different shape
+     * per PMS. Same sources PaymentLinkMail::extractCustomerName() already reads,
+     * plus the Clio/Zoho shapes that weren't covered there.
+     */
+    private function resolveCustomerName(Invoice $invoice): string
+    {
+        $fromColumn = (string) ($invoice->customer['name'] ?? '');
+
+        if ($fromColumn !== '') {
+            return $fromColumn;
+        }
+
+        $raw = $invoice->raw_payload ?? [];
+
+        $name = Arr::get($raw, 'invoice.data.client.name')       // Clio
+            ?? Arr::get($raw, 'customer.Customer.DisplayName')   // QuickBooks
+            ?? Arr::get($raw, 'invoice.Invoice.CustomerRef.name') // QuickBooks (fallback)
+            ?? Arr::get($raw, 'invoice.invoice.customer_name')   // Zoho
+            ?? Arr::get($raw, 'invoice.customer.name')           // Wave
+            ?? Arr::get($raw, 'customer.data.display_number');   // generic fallback
+
+        return is_string($name) ? $name : '';
     }
 
     private function resolveDueDate(Invoice $invoice): ?string
