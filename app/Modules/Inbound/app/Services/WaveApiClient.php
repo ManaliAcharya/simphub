@@ -758,4 +758,38 @@ class WaveApiClient
 
         return $invoice;
     }
+
+    /**
+     * Isolated on purpose - only for the PDF-generation line-item breakdown,
+     * never merged into findInvoiceByWebhookId()/fetchInvoice(). graphqlPost()
+     * throws on ANY invalid field in a query with no partial-fallback the way
+     * Clio's REST `fields` param has, so a wrong guess about the `items` shape
+     * here must only ever risk this one call, not core Wave ingestion.
+     */
+    public function fetchInvoiceLineItems(WaveConnection $connection, string $invoiceId): array
+    {
+        $businessId       = $this->fetchBusinessId($connection);
+        $graphqlInvoiceId = base64_encode('Invoice:' . $invoiceId);
+
+        $query = <<<'GQL'
+        query GetInvoiceItems($businessId: ID!, $invoiceId: ID!) {
+            business(id: $businessId) {
+                invoice(id: $invoiceId) {
+                    items {
+                        description
+                        product { name }
+                        total { value }
+                    }
+                }
+            }
+        }
+        GQL;
+
+        $data = $this->graphqlPost($connection, [
+            'query'     => $query,
+            'variables' => ['businessId' => $this->toBusinessRelayId($businessId), 'invoiceId' => $graphqlInvoiceId],
+        ], $connection->access_token);
+
+        return Arr::get($data, 'data.business.invoice.items', []);
+    }
 }

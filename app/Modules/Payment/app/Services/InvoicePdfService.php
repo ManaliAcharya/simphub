@@ -8,6 +8,12 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Modules\Billing\Models\Invoice;
 use Modules\Inbound\Models\Client;
+use Modules\Inbound\Models\ClioConnection;
+use Modules\Inbound\Models\WaveConnection;
+use Modules\Inbound\Services\ClioApiClient;
+use Modules\Inbound\Services\ClioOAuthService;
+use Modules\Inbound\Services\WaveApiClient;
+use Modules\Inbound\Services\WaveOAuthService;
 use Throwable;
 
 /**
@@ -18,6 +24,13 @@ use Throwable;
  */
 class InvoicePdfService
 {
+    public function __construct(
+        private readonly ClioApiClient $clioApi,
+        private readonly ClioOAuthService $clioOAuth,
+        private readonly WaveApiClient $waveApi,
+        private readonly WaveOAuthService $waveOAuth,
+    ) {}
+
     public function generate(Invoice $invoice, string $paymentUrl): ?string
     {
         try {
@@ -96,12 +109,13 @@ class InvoicePdfService
     }
 
     /**
-     * Real itemized breakdown where it's already sitting in raw_payload (no extra
-     * API calls, which is the whole point of this being one generator for every
-     * PMS): QuickBooks' Line[] and Zoho's line_items[] both carry it. Clio/Wave/
-     * Lawcus don't capture line items during ingestion at all (fetching them
-     * would mean a live per-PMS API call from inside PDF generation), so those
-     * fall back to a single line for the invoice as a whole - same as before.
+     * Real itemized breakdown, preferring whatever's already sitting in
+     * raw_payload (no extra API call): QuickBooks' Line[] and Zoho's
+     * line_items[] both carry it there already. Clio and Wave don't capture
+     * line items during ingestion, so those fall back to one live API call
+     * each - isolated in their own try/catch so a failure there degrades to
+     * the single invoice-total line rather than losing the PDF entirely.
+     * Lawcus has neither a raw_payload shape nor a confirmed API for this yet.
      */
     private function resolveLineItems(Invoice $invoice): array
     {
@@ -138,10 +152,102 @@ class InvoicePdfService
             }
         }
 
+        $pmsSource = strtolower((string) $invoice->pms_source);
+
+        if ($pmsSource === 'clio' && $invoice->external_invoice_id) {
+            $items = $this->fetchClioLineItems($invoice);
+            if ($items !== []) {
+                return $items;
+            }
+        }
+
+        if ($pmsSource === 'wave' && $invoice->external_invoice_id) {
+            $items = $this->fetchWaveLineItems($invoice);
+            if ($items !== []) {
+                return $items;
+            }
+        }
+
         return [[
             'description' => 'Invoice #'.((string) ($invoice->invoice_number ?? $invoice->external_invoice_id ?? '')),
             'amount'      => $invoice->amount_cents / 100,
         ]];
+    }
+
+    private function fetchClioLineItems(Invoice $invoice): array
+    {
+        try {
+            $connection = ClioConnection::query()
+                ->where('provider', 'clio')
+                ->where('pms_client_id', $invoice->pms_client_id)
+                ->first();
+
+            if (! $connection) {
+                return [];
+            }
+
+            $connection = $this->clioOAuth->ensureValidAccessToken($connection);
+            $lineItems  = $this->clioApi->fetchLineItems($connection, (string) $invoice->external_invoice_id);
+
+            $items = [];
+            foreach ($lineItems as $line) {
+                $total = (float) ($line['total'] ?? 0);
+                if ($total <= 0) {
+                    continue;
+                }
+                $items[] = [
+                    'description' => (string) ($line['description'] ?: ($line['type'] ?? 'Line item')),
+                    'amount'      => $total,
+                ];
+            }
+
+            return $items;
+        } catch (Throwable $e) {
+            Log::warning('Clio line item fetch for PDF failed, falling back to a single line.', [
+                'invoice_id' => $invoice->id,
+                'error'      => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    private function fetchWaveLineItems(Invoice $invoice): array
+    {
+        try {
+            $connection = WaveConnection::query()
+                ->where('provider', 'wave')
+                ->where('pms_client_id', $invoice->pms_client_id)
+                ->first();
+
+            if (! $connection) {
+                return [];
+            }
+
+            $connection = $this->waveOAuth->ensureValidAccessToken($connection);
+            $lineItems  = $this->waveApi->fetchInvoiceLineItems($connection, (string) $invoice->external_invoice_id);
+
+            $items = [];
+            foreach ($lineItems as $line) {
+                $total = (float) Arr::get($line, 'total.value', 0);
+                if ($total <= 0) {
+                    continue;
+                }
+                $items[] = [
+                    'description' => (string) ($line['description'] ?: Arr::get($line, 'product.name', 'Item')),
+                    'amount'      => $total,
+                ];
+            }
+
+            return $items;
+        } catch (Throwable $e) {
+            Log::warning('Wave line item fetch for PDF failed, falling back to a single line.', [
+                'invoice_id' => $invoice->id,
+                'error'      => $e->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     private function resolveDueDate(Invoice $invoice): ?string
