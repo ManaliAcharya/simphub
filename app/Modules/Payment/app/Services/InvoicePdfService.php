@@ -228,7 +228,7 @@ class InvoicePdfService
                     continue;
                 }
                 $items[] = [
-                    'description'    => (string) ($line['description'] ?: ($line['type'] ?? 'Line item')),
+                    'description'    => (string) ($line['description'] ?: $this->clioLineItemTypeLabel((string) ($line['type'] ?? ''))),
                     'subDescription' => null,
                     'qty'            => 1.0,
                     'rate'           => $total,
@@ -245,6 +245,22 @@ class InvoicePdfService
 
             return [];
         }
+    }
+
+    /**
+     * Clio line items very often have description === null (confirmed on a
+     * real invoice) - "ActivityLineItem" as a customer-facing label reads as
+     * an internal type name, not a description of what was billed. Only the
+     * two types Clio's bill model actually uses are covered; anything else
+     * falls back to a generic "Line item".
+     */
+    private function clioLineItemTypeLabel(string $type): string
+    {
+        return match ($type) {
+            'ActivityLineItem' => 'Professional services',
+            'ExpenseLineItem'  => 'Expense',
+            default            => 'Line item',
+        };
     }
 
     private function fetchWaveLineItems(Invoice $invoice): array
