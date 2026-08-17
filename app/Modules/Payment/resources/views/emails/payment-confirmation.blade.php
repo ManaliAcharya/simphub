@@ -79,8 +79,7 @@
         {{-- Clio: record/approve the payment --}}
         @if($clioBillUrl)
         <div style="margin-top:20px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:13px;color:#1e3a8a;">
-            Clio only allows moving a bill to <strong>awaiting approval</strong> via API — open the bill below to
-            approve/record the payment and finish closing it out.
+            Open the bill below to record the payment and finish closing it out.
         </div>
         <div style="margin-top:14px;text-align:center;">
             <a href="{{ $clioBillUrl }}"
