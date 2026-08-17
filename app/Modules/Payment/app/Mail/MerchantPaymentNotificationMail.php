@@ -61,20 +61,13 @@ class MerchantPaymentNotificationMail extends Mailable
             ? $transaction->created_at->format('m/d/Y g:i A') . ' UTC'
             : now()->format('m/d/Y g:i A') . ' UTC';
 
-        // Clio's API can only push a bill to "awaiting_approval" - fully recording/
-        // approving the payment still requires a human in Clio's own UI, so point
-        // the firm straight at the bill.
-        $clioBillUrl = strtolower((string) $invoice->pms_source) === 'clio' && $invoice->external_invoice_id
-            ? 'https://app.clio.com/nc/#/bills/' . $invoice->external_invoice_id
-            : null;
-
         return new Content(
             view: 'payment::emails.payment-merchant-notification',
             with: compact(
                 'logoUrl', 'merchantName', 'customerName', 'customerEmail',
                 'invoiceRef', 'currency', 'pmsSource',
                 'invoiceAmount', 'feeAmount', 'feeCents', 'totalAmount',
-                'paymentMethod', 'authorizationId', 'paidDate', 'clioBillUrl',
+                'paymentMethod', 'authorizationId', 'paidDate',
             ),
         );
     }

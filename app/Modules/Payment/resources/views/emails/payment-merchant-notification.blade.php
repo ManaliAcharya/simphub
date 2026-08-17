@@ -81,23 +81,9 @@
             </tr>
         </table>
 
-        @if($clioBillUrl)
-        <div style="margin-top:24px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:13px;color:#1e3a8a;">
-            &#10003;&nbsp; Payment recorded against the bill in Clio. Clio only allows moving a bill to
-            <strong>awaiting approval</strong> via API — please open the bill and approve/record the payment
-            to finish closing it out.
-        </div>
-        <div style="margin-top:14px;text-align:center;">
-            <a href="{{ $clioBillUrl }}"
-               style="display:inline-block;padding:11px 22px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:13px;">
-                Open bill in Clio
-            </a>
-        </div>
-        @else
         <div style="margin-top:24px;padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:13px;color:#166534;">
             &#10003;&nbsp; The invoice has been automatically marked as paid in {{ $pmsSource }}.
         </div>
-        @endif
 
     </div>
 

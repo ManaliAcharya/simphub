@@ -76,6 +76,20 @@
             @endif
         </table>
 
+        {{-- Clio: record/approve the payment --}}
+        @if($clioBillUrl)
+        <div style="margin-top:20px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:13px;color:#1e3a8a;">
+            Clio only allows moving a bill to <strong>awaiting approval</strong> via API — open the bill below to
+            approve/record the payment and finish closing it out.
+        </div>
+        <div style="margin-top:14px;text-align:center;">
+            <a href="{{ $clioBillUrl }}"
+               style="display:inline-block;padding:11px 22px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:13px;">
+                Open bill in Clio
+            </a>
+        </div>
+        @endif
+
         {{-- Merchant contact --}}
         @if($merchantEmail || $merchantName)
         <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0 18px;">
