@@ -14,6 +14,7 @@ use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
 use Modules\Inbound\Services\WaveApiClient;
 use Modules\Inbound\Services\WaveOAuthService;
+use Modules\Inbound\Models\EmailConfiguration;
 use Throwable;
 
 /**
@@ -46,18 +47,32 @@ class InvoicePdfService
                 );
             }
 
+            $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
+            $lineItems   = $this->resolveLineItems($invoice);
+            $tax         = $this->resolveTax($invoice);
+            $totalAmount = $invoice->amount_cents / 100;
+            $taxAmount   = $tax['amount'];
+            $subtotal    = $taxAmount !== null ? $totalAmount - $taxAmount : $totalAmount;
+
             $html = view('payment::pdf.invoice', [
-                'logoUrl'       => $logoUrl,
-                'faviconUri'    => $this->dataUri(file_get_contents(public_path('images/logo/simphub-favicon.jpeg')), 'image/jpeg'),
-                'merchantName'  => $client?->client_name,
-                'customerName'  => $this->resolveCustomerName($invoice),
-                'invoiceNumber' => (string) ($invoice->invoice_number ?? $invoice->external_invoice_id ?? ''),
-                'issueDate'     => $invoice->created_at?->format('F j, Y'),
-                'dueDate'       => $this->resolveDueDate($invoice),
-                'currency'      => $invoice->currency ?? 'USD',
-                'amount'        => number_format($invoice->amount_cents / 100, 2),
-                'lineItems'     => $this->resolveLineItems($invoice),
-                'paymentUrl'    => $paymentUrl,
+                'logoUrl'          => $logoUrl,
+                'faviconUri'       => $this->dataUri(file_get_contents(public_path('images/logo/simphub-favicon.jpeg')), 'image/jpeg'),
+                'merchantName'     => $client?->client_name,
+                'merchantAddress'  => $this->resolveMerchantAddress($client),
+                'merchantContact'  => $this->resolveMerchantContact($client, $emailConfig),
+                'customerName'     => $this->resolveCustomerName($invoice),
+                'customerEmail'    => $this->resolveCustomerEmail($invoice),
+                'invoiceNumber'    => (string) ($invoice->invoice_number ?? $invoice->external_invoice_id ?? ''),
+                'issueDate'        => $invoice->created_at?->format('F j, Y'),
+                'dueDate'          => $this->resolveDueDate($invoice),
+                'terms'            => $this->resolveTerms($invoice),
+                'currency'         => $invoice->currency ?? 'USD',
+                'lineItems'        => $lineItems,
+                'subtotal'         => number_format($subtotal, 2),
+                'taxLabel'         => $tax['label'],
+                'taxAmount'        => $taxAmount !== null ? number_format($taxAmount, 2) : null,
+                'totalAmount'      => number_format($totalAmount, 2),
+                'paymentUrl'       => $paymentUrl,
             ])->render();
 
             return Pdf::loadHTML($html)->output();
@@ -128,9 +143,15 @@ class InvoicePdfService
                 if (($line['DetailType'] ?? null) !== 'SalesItemLineDetail') {
                     continue;
                 }
+                $amount = (float) ($line['Amount'] ?? 0);
+                $qty    = Arr::get($line, 'SalesItemLineDetail.Qty');
+                $rate   = Arr::get($line, 'SalesItemLineDetail.UnitPrice');
                 $items[] = [
-                    'description' => (string) ($line['Description'] ?? Arr::get($line, 'SalesItemLineDetail.ItemRef.name') ?? 'Item'),
-                    'amount'      => (float) ($line['Amount'] ?? 0),
+                    'description'    => (string) ($line['Description'] ?? Arr::get($line, 'SalesItemLineDetail.ItemRef.name') ?? 'Item'),
+                    'subDescription' => null,
+                    'qty'            => $qty !== null ? (float) $qty : 1.0,
+                    'rate'           => $rate !== null ? (float) $rate : $amount,
+                    'amount'         => $amount,
                 ];
             }
             if ($items !== []) {
@@ -142,9 +163,15 @@ class InvoicePdfService
         if (is_array($zohoLines) && $zohoLines !== []) {
             $items = [];
             foreach ($zohoLines as $line) {
+                $amount = (float) ($line['item_total'] ?? 0);
+                $qty    = $line['quantity'] ?? null;
+                $rate   = $line['rate'] ?? null;
                 $items[] = [
-                    'description' => (string) ($line['name'] ?? $line['description'] ?? 'Item'),
-                    'amount'      => (float) ($line['item_total'] ?? 0),
+                    'description'    => (string) ($line['name'] ?? $line['description'] ?? 'Item'),
+                    'subDescription' => null,
+                    'qty'            => $qty !== null ? (float) $qty : 1.0,
+                    'rate'           => $rate !== null ? (float) $rate : $amount,
+                    'amount'         => $amount,
                 ];
             }
             if ($items !== []) {
@@ -168,9 +195,14 @@ class InvoicePdfService
             }
         }
 
+        $fallbackAmount = $invoice->amount_cents / 100;
+
         return [[
-            'description' => 'Invoice #'.((string) ($invoice->invoice_number ?? $invoice->external_invoice_id ?? '')),
-            'amount'      => $invoice->amount_cents / 100,
+            'description'    => 'Invoice #'.((string) ($invoice->invoice_number ?? $invoice->external_invoice_id ?? '')),
+            'subDescription' => null,
+            'qty'            => 1.0,
+            'rate'           => $fallbackAmount,
+            'amount'         => $fallbackAmount,
         ]];
     }
 
@@ -196,8 +228,11 @@ class InvoicePdfService
                     continue;
                 }
                 $items[] = [
-                    'description' => (string) ($line['description'] ?: ($line['type'] ?? 'Line item')),
-                    'amount'      => $total,
+                    'description'    => (string) ($line['description'] ?: ($line['type'] ?? 'Line item')),
+                    'subDescription' => null,
+                    'qty'            => 1.0,
+                    'rate'           => $total,
+                    'amount'         => $total,
                 ];
             }
 
@@ -234,8 +269,11 @@ class InvoicePdfService
                     continue;
                 }
                 $items[] = [
-                    'description' => (string) ($line['description'] ?: Arr::get($line, 'product.name', 'Item')),
-                    'amount'      => $total,
+                    'description'    => (string) ($line['description'] ?: Arr::get($line, 'product.name', 'Item')),
+                    'subDescription' => null,
+                    'qty'            => 1.0,
+                    'rate'           => $total,
+                    'amount'         => $total,
                 ];
             }
 
@@ -260,5 +298,102 @@ class InvoicePdfService
             ?? Arr::get($raw, 'trigger.data.due_date');
 
         return is_string($dueDate) && trim($dueDate) !== '' ? $dueDate : null;
+    }
+
+    /**
+     * There's no dedicated merchant address field anywhere on Client - the only
+     * place a merchant's address/phone/email ever get captured is
+     * cash_discount_details (the "pay by cash/check" instructions a client fills
+     * in), which is opt-in and often unset. Returns null (omit the block
+     * entirely) rather than show a half-empty address.
+     */
+    private function resolveMerchantAddress(?Client $client): ?array
+    {
+        $details = $client?->cash_discount_details;
+
+        if (! is_array($details)) {
+            return null;
+        }
+
+        $line1 = trim((string) ($details['address'] ?? ''));
+        $line2 = trim(implode(', ', array_filter([
+            trim((string) ($details['city'] ?? '')),
+            trim(implode(' ', array_filter([
+                trim((string) ($details['state'] ?? '')),
+                trim((string) ($details['zip'] ?? '')),
+            ]))),
+        ])));
+
+        $lines = array_filter([$line1, $line2]);
+
+        return $lines !== [] ? array_values($lines) : null;
+    }
+
+    private function resolveMerchantContact(?Client $client, ?EmailConfiguration $emailConfig): ?string
+    {
+        $details = $client?->cash_discount_details;
+
+        $email = trim((string) (
+            $emailConfig?->reply_to_email
+            ?? (is_array($details) ? ($details['email'] ?? '') : '')
+        ));
+        $phone = trim((string) (is_array($details) ? ($details['phone'] ?? '') : ''));
+
+        $parts = array_filter([$email, $phone]);
+
+        return $parts !== [] ? implode(' • ', $parts) : null;
+    }
+
+    /**
+     * recipient_emails is populated by every PMS ingestion service specifically
+     * so the payment-link email has somewhere to send to - reliable at
+     * payment-link time, unlike $invoice->customer['email'] which (like the
+     * customer name) only gets set after payment.
+     */
+    private function resolveCustomerEmail(Invoice $invoice): ?string
+    {
+        $email = $invoice->recipient_emails[0] ?? ($invoice->customer['email'] ?? null);
+
+        return is_string($email) && trim($email) !== '' ? trim($email) : null;
+    }
+
+    /**
+     * Payment terms (e.g. "Net 30") - only confirmed available for QuickBooks
+     * (SalesTermRef.name). Zoho has a `terms` field in the same shape but it
+     * was empty on the one real invoice checked - included as a best-effort
+     * read, not confirmed populated.
+     */
+    private function resolveTerms(Invoice $invoice): ?string
+    {
+        $raw = $invoice->raw_payload ?? [];
+
+        $terms = Arr::get($raw, 'invoice.Invoice.SalesTermRef.name')
+            ?? Arr::get($raw, 'invoice.invoice.terms');
+
+        return is_string($terms) && trim($terms) !== '' ? trim($terms) : null;
+    }
+
+    /**
+     * Real tax breakdown - only confirmed available for QuickBooks
+     * (TxnTaxDetail). Everyone else (Clio, Wave, Lawcus, and Zoho invoices with
+     * no tax applied) omits the tax row entirely rather than show a fabricated
+     * "0%" that might just mean "we don't know", not "there is no tax".
+     */
+    private function resolveTax(Invoice $invoice): array
+    {
+        $raw = $invoice->raw_payload ?? [];
+
+        $totalTax = Arr::get($raw, 'invoice.Invoice.TxnTaxDetail.TotalTax');
+        $percent  = Arr::get($raw, 'invoice.Invoice.TxnTaxDetail.TaxLine.0.TaxLineDetail.TaxPercent');
+
+        if ($totalTax === null || (float) $totalTax <= 0) {
+            return ['amount' => null, 'label' => null];
+        }
+
+        $label = $percent !== null
+            ? 'Sales Tax ('.rtrim(rtrim(number_format((float) $percent, 2), '0'), '.').'%)'
+            : 'Sales Tax';
+
+        return ['amount' => (float) $totalTax, 'label' => $label];
     }
 }

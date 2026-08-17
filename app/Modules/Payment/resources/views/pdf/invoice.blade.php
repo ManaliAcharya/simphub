@@ -3,72 +3,146 @@
 <head>
 <meta charset="utf-8">
 <style>
-    body { font-family: Georgia, 'Times New Roman', serif; color: #0c2242; font-size: 13px; }
-    .logo { text-align: center; margin-bottom: 18px; }
-    .logo img { max-height: 56px; max-width: 220px; }
-    .title { font-size: 28px; letter-spacing: 0.1em; font-weight: bold; text-align: center; margin-bottom: 10px; color: #0c2242; }
-    .title-rule { width: 60px; height: 3px; background: #90d7c1; margin: 0 auto 14px; }
-    .subtitle { text-align: center; color: #6b7280; font-size: 11px; margin-bottom: 28px; letter-spacing: 0.05em; }
+    body { font-family: Georgia, 'Times New Roman', serif; color: #1c2530; font-size: 13px; background: #ffffff; margin: 0; }
+    .sheet { background: #ffffff; padding: 8px 12px; }
+
+    .title { text-align: center; letter-spacing: 0.28em; font-size: 26px; color: #16243d; margin: 0; font-weight: bold; }
+    .title-rule { width: 60px; height: 3px; background: #2f8f7d; margin: 14px auto 10px; }
+    .meta { text-align: center; color: #5b6675; font-size: 12px; margin-bottom: 26px; }
+    .meta strong { color: #1c2530; }
+
     table.parties { width: 100%; margin-bottom: 24px; }
-    table.parties td { vertical-align: top; width: 50%; font-size: 12px; line-height: 1.6; }
-    table.parties .heading { font-weight: bold; text-transform: uppercase; font-size: 10px; color: #6b7280; letter-spacing: 0.05em; padding-bottom: 4px; }
+    table.parties td { vertical-align: top; width: 50%; font-size: 12px; line-height: 1.55; }
+    table.parties .label { font-family: Arial, sans-serif; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #5b6675; font-weight: bold; padding-bottom: 6px; }
+    table.parties .name { font-size: 14px; font-weight: bold; margin-bottom: 3px; }
+    table.parties .detail { color: #5b6675; }
+
     table.items { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
-    table.items th { background: #0c2242; color: #ffffff; text-align: left; padding: 8px 10px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
-    table.items td { padding: 10px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
-    table.items td.amt, table.items th.amt { text-align: right; }
+    table.items th { background: #16243d; color: #ffffff; text-align: left; font-family: Arial, sans-serif; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 9px 10px; font-weight: bold; }
+    table.items th.num { text-align: right; }
+    table.items td { padding: 9px 10px; font-size: 12.5px; border-bottom: 1px solid #e2e6ec; }
+    table.items td.num { text-align: right; white-space: nowrap; }
+    table.items .sub { display: block; font-size: 11px; color: #5b6675; margin-top: 2px; }
+
     table.totals { width: 100%; margin-top: 4px; }
-    table.totals td { padding: 5px 10px; font-size: 12px; }
-    table.totals td.amt { text-align: right; }
-    table.totals tr.grand td { border-top: 2px solid #0c2242; font-weight: bold; font-size: 15px; padding-top: 10px; color: #0c2242; }
-    .pay-panel { margin-top: 26px; border: 1px solid #d1d5db; border-top: 3px solid #90d7c1; padding: 16px 20px; text-align: center; }
-    .pay-panel .note { font-size: 11px; color: #6b7280; margin-bottom: 10px; }
-    .pay-button { display: inline-block; background: #0c2242; color: #ffffff; padding: 10px 26px; text-decoration: none; font-size: 13px; font-weight: bold; }
-    .pay-link { color: #6b7280; font-size: 10px; margin-top: 8px; }
-    .footer { margin-top: 40px; text-align: center; color: #9ca3af; font-size: 9px; }
-    .footer img { height: 11px; vertical-align: middle; }
-    .footer strong { color: #0c2242; }
+    table.totals td { padding: 6px 10px; font-size: 12.5px; }
+    table.totals td.lbl { text-align: right; color: #5b6675; }
+    table.totals td.val { text-align: right; white-space: nowrap; width: 130px; }
+    table.totals tr.grand td { border-top: 2px solid #16243d; font-size: 15px; font-weight: bold; color: #16243d; padding-top: 10px; }
+
+    .payblock { margin-top: 24px; border: 1px solid #e2e6ec; border-top: 3px solid #2f8f7d; text-align: center; padding: 20px 16px; background: #fcfdfe; }
+    .payblock p { margin: 0 0 14px; color: #5b6675; font-size: 12px; }
+    .pay-button { display: inline-block; background: #16243d; color: #ffffff; text-decoration: none; font-family: Arial, sans-serif; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: bold; padding: 12px 26px; }
+    .pay-link { display: block; margin-top: 12px; font-size: 10px; color: #5b6675; }
+
+    .notes { margin-top: 22px; font-size: 11.5px; color: #5b6675; line-height: 1.6; }
+    .notes .label { font-family: Arial, sans-serif; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; font-weight: bold; margin-bottom: 5px; }
+
+    .footer { text-align: center; margin-top: 26px; padding-top: 14px; font-family: Arial, sans-serif; font-size: 11px; color: #9ca3af; }
+    .footer img { height: 12px; vertical-align: middle; }
+    .footer strong { color: #16243d; }
 </style>
 </head>
 <body>
+<div class="sheet">
+
     @if(!empty($logoUrl))
-    <div class="logo"><img src="{{ $logoUrl }}" alt="{{ $merchantName }}"></div>
+    <div style="text-align:center;margin-bottom:18px;"><img src="{{ $logoUrl }}" alt="{{ $merchantName }}" style="max-height:56px;max-width:220px;"></div>
     @endif
 
     <div class="title">INVOICE</div>
     <div class="title-rule"></div>
-    <div class="subtitle">
-        #{{ $invoiceNumber }}
+    <div class="meta">
+        <strong>#{{ $invoiceNumber }}</strong>
         @if(!empty($issueDate)) &nbsp;&bull;&nbsp; Issued {{ $issueDate }} @endif
-        @if(!empty($dueDate)) &nbsp;&bull;&nbsp; Due {{ $dueDate }} @endif
+        @if(!empty($dueDate)) &nbsp;&bull;&nbsp; <strong>Due {{ $dueDate }}</strong> @endif
+        @if(!empty($terms)) ({{ $terms }}) @endif
     </div>
 
     <table class="parties">
-        <tr><td class="heading">From</td><td class="heading">Bill To</td></tr>
-        <tr><td>{{ $merchantName ?: 'Your Merchant' }}</td><td>{{ $customerName ?: 'Customer' }}</td></tr>
+        <tr>
+            <td class="label">From</td>
+            <td class="label">Bill To</td>
+        </tr>
+        <tr>
+            <td>
+                <div class="name">{{ $merchantName ?: 'Your Merchant' }}</div>
+                @if(!empty($merchantAddress))
+                <div class="detail">
+                    @foreach($merchantAddress as $line){{ $line }}@if(!$loop->last)<br>@endif @endforeach
+                </div>
+                @endif
+                @if(!empty($merchantContact))
+                <div class="detail">{{ $merchantContact }}</div>
+                @endif
+            </td>
+            <td>
+                <div class="name">{{ $customerName ?: 'Customer' }}</div>
+                @if(!empty($customerEmail))
+                <div class="detail">{{ $customerEmail }}</div>
+                @endif
+            </td>
+        </tr>
     </table>
 
     <table class="items">
-        <tr><th>Description</th><th class="amt">Amount</th></tr>
+        <tr>
+            <th>Description</th>
+            <th class="num">Qty</th>
+            <th class="num">Rate</th>
+            <th class="num">Amount</th>
+        </tr>
         @foreach ($lineItems as $item)
-        <tr><td>{{ $item['description'] }}</td><td class="amt">{{ $currency }} {{ number_format($item['amount'], 2) }}</td></tr>
+        <tr>
+            <td>
+                {{ $item['description'] }}
+                @if(!empty($item['subDescription']))
+                <span class="sub">{{ $item['subDescription'] }}</span>
+                @endif
+            </td>
+            <td class="num">{{ rtrim(rtrim(number_format($item['qty'], 2), '0'), '.') }}</td>
+            <td class="num">{{ $currency }} {{ number_format($item['rate'], 2) }}</td>
+            <td class="num">{{ $currency }} {{ number_format($item['amount'], 2) }}</td>
+        </tr>
         @endforeach
     </table>
 
     <table class="totals">
-        <tr><td>Subtotal</td><td class="amt">{{ $currency }} {{ $amount }}</td></tr>
-        <tr class="grand"><td>Total Due</td><td class="amt">{{ $currency }} {{ $amount }}</td></tr>
+        <tr>
+            <td class="lbl">Subtotal</td>
+            <td class="val">{{ $currency }} {{ $subtotal }}</td>
+        </tr>
+        @if(!empty($taxAmount))
+        <tr>
+            <td class="lbl">{{ $taxLabel }}</td>
+            <td class="val">{{ $currency }} {{ $taxAmount }}</td>
+        </tr>
+        @endif
+        <tr class="grand">
+            <td class="lbl">Total Due</td>
+            <td class="val">{{ $currency }} {{ $totalAmount }}</td>
+        </tr>
     </table>
 
-    <div class="pay-panel">
-        <div class="note">This invoice can be paid securely online.</div>
-        <a href="{{ $paymentUrl }}" class="pay-button">PAY THIS INVOICE</a>
-        <div class="pay-link">{{ $paymentUrl }}</div>
+    <div class="payblock">
+        <p>This invoice can be paid securely online.</p>
+        <a href="{{ $paymentUrl }}" class="pay-button">Pay This Invoice</a>
+        <span class="pay-link">{{ $paymentUrl }}</span>
     </div>
+
+    @if(!empty($merchantContact))
+    <div class="notes">
+        <div class="label">Notes</div>
+        Payment is due by the date shown above. Questions about this invoice? Contact {{ $merchantContact }}.
+    </div>
+    @endif
 
     <div class="footer">
         Powered by
         <img src="{{ $faviconUri }}" alt="">
         <strong>SimpHub</strong>
     </div>
+
+</div>
 </body>
 </html>
