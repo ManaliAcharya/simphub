@@ -49,7 +49,9 @@
 
     <table class="items">
         <tr><th>Description</th><th class="amt">Amount</th></tr>
-        <tr><td>Invoice #{{ $invoiceNumber }}</td><td class="amt">{{ $currency }} {{ $amount }}</td></tr>
+        @foreach ($lineItems as $item)
+        <tr><td>{{ $item['description'] }}</td><td class="amt">{{ $currency }} {{ number_format($item['amount'], 2) }}</td></tr>
+        @endforeach
     </table>
 
     <table class="totals">

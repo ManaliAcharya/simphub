@@ -43,6 +43,7 @@ class InvoicePdfService
                 'dueDate'       => $this->resolveDueDate($invoice),
                 'currency'      => $invoice->currency ?? 'USD',
                 'amount'        => number_format($invoice->amount_cents / 100, 2),
+                'lineItems'     => $this->resolveLineItems($invoice),
                 'paymentUrl'    => $paymentUrl,
             ])->render();
 
@@ -92,6 +93,55 @@ class InvoicePdfService
             ?? Arr::get($raw, 'customer.data.display_number');   // generic fallback
 
         return is_string($name) ? $name : '';
+    }
+
+    /**
+     * Real itemized breakdown where it's already sitting in raw_payload (no extra
+     * API calls, which is the whole point of this being one generator for every
+     * PMS): QuickBooks' Line[] and Zoho's line_items[] both carry it. Clio/Wave/
+     * Lawcus don't capture line items during ingestion at all (fetching them
+     * would mean a live per-PMS API call from inside PDF generation), so those
+     * fall back to a single line for the invoice as a whole - same as before.
+     */
+    private function resolveLineItems(Invoice $invoice): array
+    {
+        $raw = $invoice->raw_payload ?? [];
+
+        $qbLines = Arr::get($raw, 'invoice.Invoice.Line');
+        if (is_array($qbLines)) {
+            $items = [];
+            foreach ($qbLines as $line) {
+                if (($line['DetailType'] ?? null) !== 'SalesItemLineDetail') {
+                    continue;
+                }
+                $items[] = [
+                    'description' => (string) ($line['Description'] ?? Arr::get($line, 'SalesItemLineDetail.ItemRef.name') ?? 'Item'),
+                    'amount'      => (float) ($line['Amount'] ?? 0),
+                ];
+            }
+            if ($items !== []) {
+                return $items;
+            }
+        }
+
+        $zohoLines = Arr::get($raw, 'invoice.invoice.line_items');
+        if (is_array($zohoLines) && $zohoLines !== []) {
+            $items = [];
+            foreach ($zohoLines as $line) {
+                $items[] = [
+                    'description' => (string) ($line['name'] ?? $line['description'] ?? 'Item'),
+                    'amount'      => (float) ($line['item_total'] ?? 0),
+                ];
+            }
+            if ($items !== []) {
+                return $items;
+            }
+        }
+
+        return [[
+            'description' => 'Invoice #'.((string) ($invoice->invoice_number ?? $invoice->external_invoice_id ?? '')),
+            'amount'      => $invoice->amount_cents / 100,
+        ]];
     }
 
     private function resolveDueDate(Invoice $invoice): ?string
