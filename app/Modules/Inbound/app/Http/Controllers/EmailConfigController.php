@@ -32,6 +32,7 @@ class EmailConfigController extends Controller
             'primary_color'            => ['sometimes', 'string', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'reply_to_email'           => 'sometimes|nullable|email|max:255',
             'reply_to_name'            => 'sometimes|nullable|string|max:255',
+            'from_name'                => 'sometimes|nullable|string|max:255',
             'attach_pdf'               => 'sometimes|boolean',
         ]);
 
@@ -75,6 +76,7 @@ class EmailConfigController extends Controller
             'primary_color'            => $config?->primary_color             ?? '#2196F3',
             'reply_to_email'           => $config?->reply_to_email,
             'reply_to_name'            => $config?->reply_to_name,
+            'from_name'                => $config?->from_name,
             'attach_pdf'               => $config?->attach_pdf               ?? true,
         ];
     }

@@ -1676,6 +1676,22 @@
                         </script>
                     </div>
 
+                    @if ($provider !== 'quickbooks')
+                        {{-- From name --}}
+                        <div class="cc-card">
+                            <div class="cc-card-title">Sender Name</div>
+                            <div class="cc-card-desc">The name customers see as the sender of payment emails
+                                (e.g. "{{ $client?->client_name }}"). Leave blank to use the system default.</div>
+
+                            <div class="cc-field" style="margin-bottom:0;">
+                                <label>From name</label>
+                                <input type="text" name="from_name" maxlength="255"
+                                    value="{{ old('from_name', $emailConfig?->from_name ?? '') }}"
+                                    placeholder="{{ $client?->client_name ?? 'Your Company Name' }}">
+                            </div>
+                        </div>
+                    @endif
+
                     {{-- Reply-to --}}
                     <div class="cc-card">
                         <div class="cc-card-title">Reply-To Address</div>

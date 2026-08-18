@@ -108,7 +108,7 @@ class PaymentLinkService
         // stays set; an admin can null-out payment_link_sent_at to trigger a resend.
         $paymentUrl  = $this->urlForSession($session);
         $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
-        $fromName    = $this->resolveFromName($invoice, $client);
+        $fromName    = $this->resolveFromName($invoice, $client, $emailConfig);
         $pdfContent  = $this->resolvePdfContent($invoice, $paymentUrl, $pdfContent);
         $sent        = 0;
 
@@ -155,7 +155,7 @@ class PaymentLinkService
 
         $paymentUrl  = $this->urlForSession($session);
         $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
-        $fromName    = $this->resolveFromName($invoice, $client);
+        $fromName    = $this->resolveFromName($invoice, $client, $emailConfig);
         $pdfContent  = $this->resolvePdfContent($invoice, $paymentUrl, $pdfContent);
         $sent        = 0;
         $sentTo      = [];
@@ -264,7 +264,7 @@ class PaymentLinkService
         $paymentUrl  = $this->urlForSession($session);
         $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
         $subject     = (string) ($client?->reminder_subject_template ?? config('reminders.default_subject_template', 'Reminder: Invoice {invoice_number} is awaiting payment'));
-        $fromName    = $this->resolveFromName($invoice, $client);
+        $fromName    = $this->resolveFromName($invoice, $client, $emailConfig);
         $pdfContent  = $this->resolvePdfContent($invoice, $paymentUrl, $pdfContent);
         $sent        = 0;
 
@@ -286,18 +286,24 @@ class PaymentLinkService
         return rtrim((string) config('services.payment.host_url', config('app.url')), '/');
     }
 
-    private function resolveFromName(Invoice $invoice, ?Client $client): ?string
+    private function resolveFromName(Invoice $invoice, ?Client $client, ?EmailConfiguration $emailConfig = null): ?string
     {
-        if ((string) $invoice->pms_source !== 'quickbooks' || $client === null) {
+        if ($client === null) {
             return null;
         }
 
-        $connection = QuickBooksConnection::query()
-            ->where('provider', 'quickbooks')
-            ->where('pms_client_id', $client->pms_client_id)
-            ->first();
+        if ((string) $invoice->pms_source === 'quickbooks') {
+            $connection = QuickBooksConnection::query()
+                ->where('provider', 'quickbooks')
+                ->where('pms_client_id', $client->pms_client_id)
+                ->first();
 
-        $name = $connection?->companyName() ?? '';
+            $name = $connection?->companyName() ?? '';
+
+            return $name !== '' ? $name : null;
+        }
+
+        $name = (string) ($emailConfig?->from_name ?? '');
 
         return $name !== '' ? $name : null;
     }

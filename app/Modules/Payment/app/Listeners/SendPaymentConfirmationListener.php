@@ -33,7 +33,7 @@ class SendPaymentConfirmationListener
             ? EmailConfiguration::where('client_id', $client->id)->first()
             : null;
 
-        $fromName = $this->resolveFromName($invoice, $client);
+        $fromName = $this->resolveFromName($invoice, $client, $emailConfig);
 
         // ── Customer confirmation ─────────────────────────────────────────────
         $customerEmail = trim((string) ($invoice->customer['email'] ?? ''));
@@ -76,18 +76,24 @@ class SendPaymentConfirmationListener
         }
     }
 
-    private function resolveFromName(Invoice $invoice, ?Client $client): ?string
+    private function resolveFromName(Invoice $invoice, ?Client $client, ?EmailConfiguration $emailConfig = null): ?string
     {
-        if ((string) $invoice->pms_source !== 'quickbooks' || $client === null) {
+        if ($client === null) {
             return null;
         }
 
-        $connection = QuickBooksConnection::query()
-            ->where('provider', 'quickbooks')
-            ->where('pms_client_id', $client->pms_client_id)
-            ->first();
+        if ((string) $invoice->pms_source === 'quickbooks') {
+            $connection = QuickBooksConnection::query()
+                ->where('provider', 'quickbooks')
+                ->where('pms_client_id', $client->pms_client_id)
+                ->first();
 
-        $name = $connection?->companyName() ?? '';
+            $name = $connection?->companyName() ?? '';
+
+            return $name !== '' ? $name : null;
+        }
+
+        $name = (string) ($emailConfig?->from_name ?? '');
 
         return $name !== '' ? $name : null;
     }
