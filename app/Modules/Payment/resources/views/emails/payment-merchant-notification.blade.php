@@ -89,7 +89,7 @@
 
     {{-- Footer --}}
     <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;font-size:11px;color:#9ca3af;text-align:center;line-height:1.6;">
-        This is an automated notification. Do not reply to this email.
+        Please don't reply to this email. If you need any help regarding this message, please contact your support representative.
         <div style="margin-top:8px;">
             Powered by <img src="{{ rtrim(config('app.url'), '/') }}/images/logo/simphub-favicon.jpeg" alt="SimpHub" width="16" height="16" style="height:16px;width:16px;border-radius:3px;vertical-align:middle;"> <strong>SimpHub</strong>
         </div>
