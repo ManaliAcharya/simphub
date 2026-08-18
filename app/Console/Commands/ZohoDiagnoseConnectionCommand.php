@@ -104,10 +104,23 @@ class ZohoDiagnoseConnectionCommand extends Command
         $this->line('webhook_auto_setup: '.($meta['webhook_auto_setup'] ?? 'unknown'));
         $this->line('webhook_auto_setup_error: '.($meta['webhook_auto_setup_error'] ?? 'none'));
 
-        if ($organizationId === '' || $workflowId === '') {
-            $this->components->warn('Cannot query Zoho for workflow status — missing organization_id or workflow_id in stored meta.');
+        if ($organizationId === '') {
+            $this->components->warn('Cannot query Zoho at all — missing organization_id in stored meta.');
 
             return self::SUCCESS;
+        }
+
+        if ($workflowId === '') {
+            $this->components->warn('No workflow_id was ever stored for this connection — this looks like it was connected before automatic webhook/workflow setup existed, or auto-setup silently never ran. Checking Zoho directly for ANYTHING registered, regardless of what we remember:');
+        }
+
+        try {
+            $webhooks = $api->fetchWebhooks($working, $organizationId);
+            $this->newLine();
+            $this->line('All webhooks currently registered in this Zoho org:');
+            $this->line(json_encode($webhooks, JSON_PRETTY_PRINT));
+        } catch (Throwable $e) {
+            $this->components->warn('Could not list webhooks: '.$e->getMessage());
         }
 
         try {
@@ -119,16 +132,21 @@ class ZohoDiagnoseConnectionCommand extends Command
             $this->components->warn('Could not list workflows: '.$e->getMessage());
         }
 
-        try {
-            $workflow = $api->fetchWorkflow($working, $workflowId, $organizationId);
-            $this->newLine();
-            $this->line('Our specific workflow rule (id '.$workflowId.'):');
-            $this->line(json_encode($workflow, JSON_PRETTY_PRINT));
-            $this->components->info('If this call succeeded but the workflow is missing/disabled above, the client (or someone in their Zoho account) removed or deactivated it — that fully explains no emails arriving with a perfectly healthy token.');
-        } catch (Throwable $e) {
-            $this->components->error('Our workflow rule could not be fetched: '.$e->getMessage());
-            $this->components->error('=> Likely deleted from the client\'s Zoho account — this is why no invoices have been reaching us.');
+        if ($workflowId !== '') {
+            try {
+                $workflow = $api->fetchWorkflow($working, $workflowId, $organizationId);
+                $this->newLine();
+                $this->line('Our specific workflow rule (id '.$workflowId.'):');
+                $this->line(json_encode($workflow, JSON_PRETTY_PRINT));
+                $this->components->info('If this call succeeded but the workflow is missing/disabled above, the client (or someone in their Zoho account) removed or deactivated it — that fully explains no emails arriving with a perfectly healthy token.');
+            } catch (Throwable $e) {
+                $this->components->error('Our workflow rule could not be fetched: '.$e->getMessage());
+                $this->components->error('=> Likely deleted from the client\'s Zoho account — this is why no invoices have been reaching us.');
+            }
         }
+
+        $this->newLine();
+        $this->components->info('Look at the two lists above: is there a webhook pointed at our callback URL ('.config('services.zoho.webhook_callback_url').'), and a workflow rule referencing it, that is actually active/enabled? If neither list contains one, no invoice event has anywhere to go — that alone fully explains no payment-link emails, independent of the token.');
 
         return self::SUCCESS;
     }

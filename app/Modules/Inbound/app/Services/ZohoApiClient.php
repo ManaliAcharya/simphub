@@ -65,6 +65,16 @@ class ZohoApiClient
             ->json();
     }
 
+    public function fetchWebhooks(PmsConnection $connection, string $organizationId): array
+    {
+        return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
+            ->get('/settings/webhooks', [
+                'organization_id' => $organizationId,
+            ])
+            ->throw()
+            ->json();
+    }
+
     public function fetchWorkflows(PmsConnection $connection, string $organizationId): array
     {
         return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
