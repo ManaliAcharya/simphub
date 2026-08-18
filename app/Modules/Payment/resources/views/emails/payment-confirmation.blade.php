@@ -89,20 +89,11 @@
         </div>
         @endif
 
-        {{-- Merchant contact --}}
-        @if($merchantEmail || $merchantName)
+        {{-- Contact notice --}}
         <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0 18px;">
-        <p style="margin:0 0 10px;font-size:12px;color:#9ca3af;">
-            Please don't reply to this email. If you need any help regarding this message, please contact the business directly.
+        <p style="margin:0;font-size:12px;color:#9ca3af;">
+            Please don't reply to this email. If you need any help regarding this message, please contact your support representative.
         </p>
-        <p style="margin:0 0 12px;font-size:13px;color:#374151;">Thank you,</p>
-        @if($merchantName)
-        <p style="margin:0 0 2px;font-size:14px;font-weight:600;color:#111827;">{{ $merchantName }}</p>
-        @endif
-        @if($merchantEmail)
-        <p style="margin:0;font-size:13px;color:#374151;">{{ $merchantEmail }}</p>
-        @endif
-        @endif
 
     </div>
 

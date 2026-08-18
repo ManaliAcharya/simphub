@@ -30,7 +30,7 @@ class PaymentConfirmationMail extends Mailable
     public function envelope(): Envelope
     {
         $invoiceRef = $this->invoice->invoice_number ?? $this->invoice->external_invoice_id;
-        $subject    = "Payment Confirmed — Invoice #{$invoiceRef}";
+        $subject    = "Invoice #{$invoiceRef} has been paid!";
 
         $from = $this->fromName
             ? new Address((string) config('mail.from.address'), $this->fromName)
