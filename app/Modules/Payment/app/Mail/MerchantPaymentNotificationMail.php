@@ -27,7 +27,7 @@ class MerchantPaymentNotificationMail extends Mailable
     {
         $invoiceRef = $this->invoice->invoice_number ?? $this->invoice->external_invoice_id;
 
-        return new Envelope(subject: "Invoice #{$invoiceRef} has been paid!");
+        return new Envelope(subject: "You Got Paid! 💰 Invoice #{$invoiceRef} is Confirmed");
     }
 
     public function content(): Content
