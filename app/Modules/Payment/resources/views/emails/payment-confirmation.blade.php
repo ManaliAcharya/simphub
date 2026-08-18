@@ -20,12 +20,9 @@
     <div style="padding:28px 32px 32px;">
 
         {{-- Amount heading --}}
-        <h1 style="margin:0 0 6px;font-size:26px;font-weight:700;color:#111827;line-height:1.2;">
+        <h1 style="margin:0 0 24px;font-size:26px;font-weight:700;color:#111827;line-height:1.2;">
             You paid {{ $currency }} {{ $invoiceAmount }}
         </h1>
-        <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">
-            @if($merchantName)to <strong style="color:#111827;">{{ $merchantName }}</strong> on @endif{{ $paidDate }}
-        </p>
 
         <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px;">
 
