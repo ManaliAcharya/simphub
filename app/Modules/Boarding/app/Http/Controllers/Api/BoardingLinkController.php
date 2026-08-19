@@ -51,8 +51,7 @@ class BoardingLinkController extends Controller
                     'tier'          => $data['tier'],
                     'agent_ref'     => $data['agent_ref'],
                     'merchant_ref'  => $data['merchant_ref'],
-                    'merchant_name' => $data['merchant_info']['name'],
-                    'merchant_zip'  => $data['merchant_info']['zip'] ?? null,
+                    'merchant_info' => $data['merchant_info'],
                     'created_by'    => $data['created_by'] ?? null,
                     'token'         => Str::random(48),
                     'status'        => 'link_generated',
@@ -71,8 +70,7 @@ class BoardingLinkController extends Controller
                 $merchant->forceFill([
                     'tier'          => $data['tier'],
                     'agent_ref'     => $data['agent_ref'],
-                    'merchant_name' => $data['merchant_info']['name'],
-                    'merchant_zip'  => $data['merchant_info']['zip'] ?? null,
+                    'merchant_info' => $data['merchant_info'],
                     'created_by'    => $data['created_by'] ?? null,
                     'token'         => Str::random(48),
                     'status'        => 'link_generated',
@@ -101,8 +99,7 @@ class BoardingLinkController extends Controller
             $merchant->forceFill([
                 'tier'          => $data['tier'],
                 'agent_ref'     => $data['agent_ref'],
-                'merchant_name' => $data['merchant_info']['name'],
-                'merchant_zip'  => $data['merchant_info']['zip'] ?? null,
+                'merchant_info' => $data['merchant_info'],
                 'created_by'    => $data['created_by'] ?? null,
                 'token'         => Str::random(48),
                 'status'        => 'link_generated',
@@ -130,8 +127,7 @@ class BoardingLinkController extends Controller
 
         return response()->json([
             'merchant_ref'  => $merchant->merchant_ref,
-            'merchant_name' => $merchant->merchant_name,
-            'merchant_zip'  => $merchant->merchant_zip,
+            'merchant_info' => $merchant->merchant_info,
             'agent_ref'     => $merchant->agent_ref,
             'processor'     => $merchant->processor,
             'scope'         => $merchant->scope,

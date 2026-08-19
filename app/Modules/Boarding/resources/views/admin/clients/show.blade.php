@@ -168,7 +168,7 @@
                 <tbody>
                     @foreach($client->merchants as $merchant)
                     <tr>
-                        <td><strong>{{ $merchant->merchant_name }}</strong></td>
+                        <td><strong>{{ $merchant->merchant_info['name'] ?? '' }}</strong></td>
                         <td><code style="font-size:.78rem;">{{ $merchant->merchant_ref }}</code></td>
                         <td style="color:#6b7280;">{{ $merchant->agent_ref }}</td>
                         <td>{{ str_replace('_', ' ', $merchant->tier) }}</td>

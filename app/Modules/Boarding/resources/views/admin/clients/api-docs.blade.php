@@ -289,8 +289,7 @@ Authorization: Bearer {{ $client->client_api_key }}</pre>
                     <button class="copy-code" onclick="copyCode(this)">Copy</button>
                     <pre>{
   "merchant_ref": "MER-10552",
-  "merchant_name": "Acme Coffee LLC",
-  "merchant_zip": "75201",
+  "merchant_info": { "name": "Acme Coffee LLC", "zip": "75201" },
   "agent_ref": "AGT-2291",
   "processor": "square",
   "scope": "merchant",
