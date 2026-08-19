@@ -10,6 +10,7 @@ use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
 use Modules\Inbound\Services\ClioWebhookService;
+use RuntimeException;
 use Throwable;
 
 class ClioConnector implements PmsConnectorInterface
@@ -37,7 +38,37 @@ class ClioConnector implements PmsConnectorInterface
 
     public function completeAuthorization(string $code, string $pmsClientId): PmsCallbackResult
     {
+        $existedBefore = ClioConnection::query()
+            ->where('provider', 'clio')
+            ->where('pms_client_id', $pmsClientId)
+            ->exists();
+
         $connection = $this->oauth->exchangeCode($code, $pmsClientId);
+
+        // Fetch and store the Clio firm's account_id immediately so we can detect the
+        // same firm being connected to more than one client (mirrors WaveConnector's
+        // business_id check).
+        $accountId = $this->api->fetchAccountId($connection);
+
+        $connectedToAnotherClient = ClioConnection::query()
+            ->where('provider', 'clio')
+            ->where('pms_client_id', '!=', $pmsClientId)
+            ->whereJsonContains('meta->account_id', $accountId)
+            ->exists();
+
+        if ($connectedToAnotherClient) {
+            // Only a brand-new connection is safe to delete outright — if this client already had
+            // a (different) Clio connection before this attempt, leave the row as-is rather than
+            // risk destroying prior state we didn't snapshot.
+            if (! $existedBefore) {
+                $connection->delete();
+            }
+
+            throw new RuntimeException(
+                'This Clio account is already connected to a different client. Each Clio account can only be connected to one client — disconnect it there first, or connect a different Clio login.'
+            );
+        }
+
         $webhook = $this->webhooks->registerInvoiceCreatedWebhook($connection);
 
         return new PmsCallbackResult(

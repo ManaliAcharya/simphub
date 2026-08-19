@@ -5,6 +5,7 @@ use Modules\Boarding\Http\Controllers\Admin\ClientController as BoardingAdminCli
 use Modules\Boarding\Http\Controllers\Portal\ClientPortalController as BoardingClientPortalController;
 use Modules\Inbound\Http\Controllers\AdvancedMdIntegrationController;
 use Modules\Inbound\Http\Controllers\ClientConfigController;
+use Modules\Inbound\Http\Controllers\ClioAuthController;
 use Modules\Inbound\Http\Controllers\MindbodyController;
 use Modules\Inbound\Http\Controllers\PmsAuthController;
 use Modules\Inbound\Http\Controllers\PmsFeatureSettingsController;
@@ -97,6 +98,9 @@ Route::middleware('web')->group(function (): void {
 
         Route::post('/inbound/quickbooks/surcharge-toggle', [PmsIntegrationController::class, 'saveQbSurchargeToggle'])
             ->name('inbound.quickbooks.surcharge-toggle');
+
+        Route::post('/inbound/quickbooks/pdf-mode', [PmsIntegrationController::class, 'saveQbPdfMode'])
+            ->name('inbound.quickbooks.pdf-mode');
 
         Route::post('/inbound/lawcus/default-bank-account', [PmsIntegrationController::class, 'saveLawcusDefaultBankAccount'])
             ->name('inbound.lawcus.default-bank-account');
@@ -202,5 +206,11 @@ Route::middleware('web')->group(function (): void {
     Route::prefix('inbound/wave')->name('inbound.wave.')->middleware(['merchant.auth', 'no-cache'])->group(function (): void {
 
         Route::post('/disconnect', [PmsAuthController::class, 'disconnect'])->name('disconnect');
+    });
+
+    // Separate Clio routes
+    Route::prefix('inbound/clio')->name('inbound.clio.')->middleware(['merchant.auth', 'no-cache'])->group(function (): void {
+
+        Route::post('/disconnect', [ClioAuthController::class, 'disconnect'])->name('disconnect');
     });
 });

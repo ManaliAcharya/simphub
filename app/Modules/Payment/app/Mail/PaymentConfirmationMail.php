@@ -30,7 +30,7 @@ class PaymentConfirmationMail extends Mailable
     public function envelope(): Envelope
     {
         $invoiceRef = $this->invoice->invoice_number ?? $this->invoice->external_invoice_id;
-        $subject    = "Payment Confirmed — Invoice #{$invoiceRef}";
+        $subject    = "Invoice #{$invoiceRef} has been paid!";
 
         $from = $this->fromName
             ? new Address((string) config('mail.from.address'), $this->fromName)
@@ -71,13 +71,20 @@ class PaymentConfirmationMail extends Mailable
             ? $transaction->created_at->format('m/d/Y')
             : now()->format('m/d/Y');
 
+        // Clio's API can only push a bill to "awaiting_approval" - fully recording/
+        // approving the payment still requires a human in Clio's own UI, so point
+        // the firm straight at the bill.
+        $clioBillUrl = strtolower((string) $invoice->pms_source) === 'clio' && $invoice->external_invoice_id
+            ? 'https://app.clio.com/nc/#/bills/' . $invoice->external_invoice_id
+            : null;
+
         return new Content(
             view: 'payment::emails.payment-confirmation',
             with: compact(
                 'logoUrl', 'merchantName', 'merchantEmail', 'primaryColor',
                 'customerName', 'invoiceRef', 'currency',
                 'invoiceAmount', 'feeAmount', 'feeCents', 'totalAmount',
-                'paymentMethod', 'authorizationId', 'paidDate',
+                'paymentMethod', 'authorizationId', 'paidDate', 'clioBillUrl',
             ),
         );
     }

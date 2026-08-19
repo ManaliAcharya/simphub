@@ -20,12 +20,9 @@
     <div style="padding:28px 32px 32px;">
 
         {{-- Amount heading --}}
-        <h1 style="margin:0 0 6px;font-size:26px;font-weight:700;color:#111827;line-height:1.2;">
+        <h1 style="margin:0 0 24px;font-size:26px;font-weight:700;color:#111827;line-height:1.2;">
             You paid {{ $currency }} {{ $invoiceAmount }}
         </h1>
-        <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">
-            @if($merchantName)to <strong style="color:#111827;">{{ $merchantName }}</strong> on @endif{{ $paidDate }}
-        </p>
 
         <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px;">
 
@@ -76,20 +73,24 @@
             @endif
         </table>
 
-        {{-- Merchant contact --}}
-        @if($merchantEmail || $merchantName)
+        {{-- Clio: record/approve the payment --}}
+        @if($clioBillUrl)
+        <div style="margin-top:20px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:13px;color:#1e3a8a;">
+            Open the bill below to record the payment and finish closing it out.
+        </div>
+        <div style="margin-top:14px;text-align:center;">
+            <a href="{{ $clioBillUrl }}"
+               style="display:inline-block;padding:11px 22px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:13px;">
+                Open bill in Clio
+            </a>
+        </div>
+        @endif
+
+        {{-- Contact notice --}}
         <hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0 18px;">
-        <p style="margin:0 0 10px;font-size:12px;color:#9ca3af;">
-            Please don't reply to this email. If you need any help regarding this message, please contact the business directly.
+        <p style="margin:0;font-size:12px;color:#9ca3af;">
+            Please don't reply to this email. If you need any help regarding this message, please contact your support representative.
         </p>
-        <p style="margin:0 0 12px;font-size:13px;color:#374151;">Thank you,</p>
-        @if($merchantName)
-        <p style="margin:0 0 2px;font-size:14px;font-weight:600;color:#111827;">{{ $merchantName }}</p>
-        @endif
-        @if($merchantEmail)
-        <p style="margin:0;font-size:13px;color:#374151;">{{ $merchantEmail }}</p>
-        @endif
-        @endif
 
     </div>
 

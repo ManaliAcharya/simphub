@@ -48,6 +48,7 @@ return [
         'webhook_events' => array_values(array_filter(array_map('trim', explode(',', env('CLIO_WEBHOOK_EVENTS', 'created,updated,deleted'))))),
         'webhook_fields' => array_values(array_filter(array_map('trim', explode(',', env('CLIO_WEBHOOK_FIELDS', 'id,number,total,balance,state,issued_at,created_at,updated_at'))))),
         'webhook_expiry_days' => (int) env('CLIO_WEBHOOK_EXPIRY_DAYS', 30),
+        'approved_bill_states' => array_values(array_filter(array_map('trim', array_map('strtoupper', explode(',', env('CLIO_APPROVED_BILL_STATES', 'approved')))))),
     ],
 
     'zoho' => [

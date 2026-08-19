@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Payment Received</title>
+    <title>Invoice Paid</title>
 </head>
 <body style="margin:0;padding:0;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 
@@ -27,10 +27,10 @@
         </div>
 
         <h1 style="margin:0 0 6px;font-size:22px;font-weight:700;color:#111827;line-height:1.2;">
-            Payment Received
+            Invoice #{{ $invoiceRef }} has been paid!
         </h1>
         <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">
-            A payment has been processed successfully via your {{ $pmsSource }} integration.
+            A customer just paid this invoice through your {{ $pmsSource }} integration.
         </p>
 
         <hr style="border:none;border-top:1px solid #e5e7eb;margin:0 0 20px;">
@@ -89,7 +89,7 @@
 
     {{-- Footer --}}
     <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 32px;font-size:11px;color:#9ca3af;text-align:center;line-height:1.6;">
-        This is an automated notification. Do not reply to this email.
+        Please don't reply to this email. If you need any help regarding this message, please contact your support representative.
         <div style="margin-top:8px;">
             Powered by <img src="{{ rtrim(config('app.url'), '/') }}/images/logo/simphub-favicon.jpeg" alt="SimpHub" width="16" height="16" style="height:16px;width:16px;border-radius:3px;vertical-align:middle;"> <strong>SimpHub</strong>
         </div>

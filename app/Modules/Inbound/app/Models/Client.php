@@ -37,6 +37,7 @@ class Client extends Model
             'qb_fee_override_enabled'        => 'boolean',
             'qb_multi_mid_enabled'           => 'boolean',
             'qb_surcharge_enabled'           => 'boolean',
+            'qb_use_native_pdf'              => 'boolean',
             'wave_surcharge_enabled'         => 'boolean',
             'payment_link_override_enabled'  => 'boolean',
             'reminders_enabled'              => 'boolean',

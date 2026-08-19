@@ -8,6 +8,7 @@ use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Services\PaymentSessionService;
+use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Payment\Services\PaymentLinkService;
 use RuntimeException;
@@ -88,7 +89,11 @@ class QuickBooksInvoiceIngestionService
             ];
         });
 
-        $pdf = $this->client->fetchInvoicePdf($connection, $externalInvoiceId);
+        // Clients can opt out of QuickBooks' own PDF export in favor of the PDF we
+        // generate ourselves from our invoice data (PaymentLinkService falls back to
+        // it automatically whenever $pdf is null) - default stays QB's native export.
+        $useNativePdf = Client::query()->where('pms_client_id', $pmsClientId)->value('qb_use_native_pdf') ?? true;
+        $pdf = $useNativePdf ? $this->client->fetchInvoicePdf($connection, $externalInvoiceId) : null;
 
         $emailsSent = $this->paymentLinks->sendInvoiceLinkOnce(
             $result['invoice'],

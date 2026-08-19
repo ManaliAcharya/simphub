@@ -703,6 +703,7 @@ class ClientConfigController extends Controller
             'primary_color'            => ['nullable', 'string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'reply_to_email'           => ['nullable', 'email', 'max:255'],
             'reply_to_name'            => ['nullable', 'string', 'max:255'],
+            'from_name'                => ['nullable', 'string', 'max:255'],
             'attach_pdf'               => ['nullable', 'in:0,1'],
         ]);
 
@@ -716,6 +717,7 @@ class ClientConfigController extends Controller
                 'primary_color'            => $validated['primary_color'] ?? '#2196F3',
                 'reply_to_email'           => $validated['reply_to_email'] ?: null,
                 'reply_to_name'            => $validated['reply_to_name'] ?: null,
+                'from_name'                => $validated['from_name'] ?: null,
                 'attach_pdf'               => ($validated['attach_pdf'] ?? '1') === '1',
             ]
         );
@@ -783,8 +785,9 @@ class ClientConfigController extends Controller
                 ->firstOrFail();
 
             $pdf = null;
+            $useNativePdf = Client::query()->where('pms_client_id', $pms_client_id)->value('qb_use_native_pdf') ?? true;
 
-            if (method_exists($connector, 'fetchInvoicePdf')) {
+            if ($useNativePdf && method_exists($connector, 'fetchInvoicePdf')) {
                 $pdf = $connector->fetchInvoicePdf(
                     $connection,
                     $invoice->external_invoice_id

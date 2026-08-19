@@ -8,6 +8,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Modules\Inbound\Models\ClioConnection;
+use RuntimeException;
 
 class ClioApiClient
 {
@@ -31,13 +32,55 @@ class ClioApiClient
         return $this->authenticatedRequest($connection)->post('/api/v4/webhooks', $payload);
     }
 
+    public function deleteWebhook(ClioConnection $connection, string $webhookId): Response
+    {
+        return $this->authenticatedRequest($connection)->delete("/api/v4/webhooks/{$webhookId}.json");
+    }
+
+    /**
+     * Identifies which Clio firm/account this connection belongs to, so
+     * ClioConnector can block the same firm being connected to more than one
+     * client (mirrors WaveApiClient::fetchBusinessId()'s caching-in-meta
+     * pattern). NOTE: /api/v4/users/who_am_i.json is not something we've
+     * confirmed against Clio's docs the way the other endpoints in this file
+     * were - verify against a live connect attempt before trusting this.
+     */
+    public function fetchAccountId(ClioConnection $connection): string
+    {
+        $cached = Arr::get($connection->meta ?? [], 'account_id');
+
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
+        $response = $this->authenticatedRequest($connection)
+            ->get('/api/v4/users/who_am_i.json', [
+                'fields' => 'id,name,account{id,name}',
+            ]);
+
+        if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
+            $response = $this->authenticatedRequest($connection)->get('/api/v4/users/who_am_i.json');
+        }
+
+        $data = $response->throw()->json();
+        $accountId = (string) Arr::get($data, 'data.account.id', '');
+
+        if ($accountId === '') {
+            throw new RuntimeException('Clio API did not return an account id for this connection.');
+        }
+
+        $connection->forceFill(['meta' => array_merge($connection->meta ?? [], ['account_id' => $accountId])])->save();
+
+        return $accountId;
+    }
+
     public function fetchBill(ClioConnection $connection, string $externalInvoiceId): array
     {
         //"/api/v4/webhooks.json?fields=id,url,events,status"
         //https://paymentmiddleware.myreporthub.dev/api/v1/inbound/webhooks/clio?pms_client_id=c50d4823-40c9-4167-a4a4-db44aa7deb21
         $response = $this->authenticatedRequest($connection)
             ->get("/api/v4/bills/{$externalInvoiceId}.json" , [
-                'fields' => 'id,number,total,balance,client{id,name,primary_email_address}'
+                'fields' => 'id,number,total,balance,state,client{id,name,primary_email_address}'
             ]);
 
         if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
@@ -133,6 +176,19 @@ class ClioApiClient
     {
         return $this->authenticatedRequest($connection)
             ->post('/api/v4/line_item_payments.json', ['data' => $payload])
+            ->throw()
+            ->json();
+    }
+
+    /**
+     * Records a bill-level payment via Clio's Payments API. `line_item_payments`
+     * (above) 404s — Clio's actual API has no such resource; a Payment record
+     * with a `bill_payments` array (bill id + amount) is the real mechanism.
+     */
+    public function recordPayment(ClioConnection $connection, array $payload): array
+    {
+        return $this->authenticatedRequest($connection)
+            ->post('/api/v4/payments.json', ['data' => $payload])
             ->throw()
             ->json();
     }

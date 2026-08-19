@@ -25,13 +25,9 @@ class MerchantPaymentNotificationMail extends Mailable
 
     public function envelope(): Envelope
     {
-        $invoiceRef   = $this->invoice->invoice_number ?? $this->invoice->external_invoice_id;
-        $customerName = (string) ($this->invoice->customer['name'] ?? '');
-        $subject      = $customerName !== ''
-            ? "Payment Received — Invoice #{$invoiceRef} from {$customerName}"
-            : "Payment Received — Invoice #{$invoiceRef}";
+        $invoiceRef = $this->invoice->invoice_number ?? $this->invoice->external_invoice_id;
 
-        return new Envelope(subject: $subject);
+        return new Envelope(subject: "You Got Paid! 💰 Invoice #{$invoiceRef} is Confirmed");
     }
 
     public function content(): Content

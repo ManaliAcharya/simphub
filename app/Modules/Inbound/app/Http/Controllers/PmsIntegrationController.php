@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
 use Modules\Inbound\Models\Client;
+use Modules\Inbound\Models\EmailConfiguration;
 use Modules\Inbound\Models\ClioConnection;
 use Modules\Inbound\Models\LawcusConnection;
 use Modules\Inbound\Models\PmsConnection;
@@ -349,6 +350,40 @@ class PmsIntegrationController extends Controller
         $client->forceFill(['qb_surcharge_enabled' => (bool) $validated['qb_surcharge_enabled']])->save();
 
         return redirect()->back()->with('success', 'Surcharge split ' . ($validated['qb_surcharge_enabled'] ? 'enabled' : 'disabled') . '.');
+    }
+
+    public function saveQbPdfMode(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'pms_client_id' => ['required', 'string'],
+            'qb_pdf_mode'   => ['required', 'in:disabled,native,simphub'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'QUICKBOOKS', 422, 'PDF mode is only for QuickBooks clients.');
+
+        $mode = $validated['qb_pdf_mode'];
+
+        // qb_use_native_pdf still decides QB-vs-SimpHub when a PDF is generated at all;
+        // attach_pdf (on EmailConfiguration) is the actual on/off switch PaymentLinkMail
+        // checks before attaching anything, which is what "disabled" hooks into.
+        $client->forceFill(['qb_use_native_pdf' => $mode === 'native'])->save();
+
+        EmailConfiguration::updateOrCreate(
+            ['client_id' => $client->id],
+            ['attach_pdf' => $mode !== 'disabled'],
+        );
+
+        $message = match ($mode) {
+            'disabled' => 'No PDF will be attached to payment-link emails.',
+            'native'   => 'Payment-link emails will now attach the QuickBooks invoice PDF.',
+            'simphub'  => 'Payment-link emails will now attach the SimpHub-generated PDF.',
+        };
+
+        return redirect()->back()->with('success', $message);
     }
 
     public function saveAutoResendToggle(Request $request): RedirectResponse

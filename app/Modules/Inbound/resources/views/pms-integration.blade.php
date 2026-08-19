@@ -276,6 +276,19 @@
                                         </button>
                                     </form>
                                 @endif
+
+                                @if ($provider === 'clio' && $client)
+                                    <form method="POST" action="{{ route('inbound.clio.disconnect') }}"
+                                        onsubmit="return confirm('Disconnect Clio? The client will need to reconnect to resume invoice processing.');">
+                                        @csrf
+                                        <input type="hidden" name="pms_client_id"
+                                            value="{{ $client->pms_client_id }}">
+                                        <button type="submit" class="button secondary"
+                                            style="font-size:12px;padding:7px 16px;color:#dc2626;border-color:#dc2626;background:#fef2f2;">
+                                            Disconnect
+                                        </button>
+                                    </form>
+                                @endif
                             </div>
                         </div>
                         @php
@@ -616,6 +629,49 @@
                                 @endif
                             </div>
                         @endif
+                    </div>
+
+                    {{-- Payment-link PDF mode --}}
+                    @php
+                        $qbEmailConfig = $client->emailConfiguration;
+                        $qbPdfMode = ($qbEmailConfig && ! $qbEmailConfig->attach_pdf)
+                            ? 'disabled'
+                            : ($client->qb_use_native_pdf ? 'native' : 'simphub');
+                    @endphp
+                    <div class="cc-card">
+                        <div class="cc-card-title" style="margin-bottom:2px;">Payment-Link PDF</div>
+                        <div class="cc-card-desc" style="margin:0 0 12px;">
+                            Whether a PDF is attached to the payment-link email at all, and if so, whether
+                            it's QuickBooks' own invoice export or the PDF SimpHub generates from the invoice
+                            data.
+                        </div>
+                        <form method="POST" action="{{ route('inbound.quickbooks.pdf-mode') }}"
+                            id="qb-pdf-mode-form">
+                            @csrf
+                            <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                            <input type="hidden" name="qb_pdf_mode" id="qb-pdf-mode-val" value="{{ $qbPdfMode }}">
+                            <div
+                                style="display:inline-flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700;">
+                                <button type="button" id="qb-pdf-mode-disabled" onclick="qbPdfModeSet('disabled')"
+                                    style="padding:6px 14px;border:none;cursor:pointer;font-family:inherit;{{ $qbPdfMode === 'disabled' ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">Disabled</button>
+                                <button type="button" id="qb-pdf-mode-native" onclick="qbPdfModeSet('native')"
+                                    style="padding:6px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $qbPdfMode === 'native' ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">QB PDF</button>
+                                <button type="button" id="qb-pdf-mode-simphub" onclick="qbPdfModeSet('simphub')"
+                                    style="padding:6px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $qbPdfMode === 'simphub' ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">SimpHub PDF</button>
+                            </div>
+                        </form>
+                        <script>
+                            function qbPdfModeSet(mode) {
+                                document.getElementById('qb-pdf-mode-val').value = mode;
+                                ['disabled', 'native', 'simphub'].forEach(function(m) {
+                                    var btn = document.getElementById('qb-pdf-mode-' + m);
+                                    var on = m === mode;
+                                    btn.style.background = on ? '#132238' : '#fff';
+                                    btn.style.color = on ? '#fff' : '#9ca3af';
+                                });
+                                document.getElementById('qb-pdf-mode-form').submit();
+                            }
+                        </script>
                     </div>
                 @endif
 
@@ -1385,6 +1441,7 @@
                             btn.className = next ? 'button primary' : 'button secondary';
                             document.getElementById('qb-surcharge-toggle-form').submit();
                         }
+
                     </script>
                 @endif
 
@@ -1627,6 +1684,22 @@
                         </script>
                     </div>
 
+                    @if ($provider !== 'quickbooks')
+                        {{-- From name --}}
+                        <div class="cc-card">
+                            <div class="cc-card-title">Sender Name</div>
+                            <div class="cc-card-desc">The name customers see as the sender of payment emails
+                                (e.g. "{{ $client?->client_name }}"). Leave blank to use the system default.</div>
+
+                            <div class="cc-field" style="margin-bottom:0;">
+                                <label>From name</label>
+                                <input type="text" name="from_name" maxlength="255"
+                                    value="{{ old('from_name', $emailConfig?->from_name ?? '') }}"
+                                    placeholder="{{ $client?->client_name ?? 'Your Company Name' }}">
+                            </div>
+                        </div>
+                    @endif
+
                     {{-- Reply-to --}}
                     <div class="cc-card">
                         <div class="cc-card-title">Reply-To Address</div>
@@ -1679,28 +1752,32 @@
                         </div>
                     </div>
 
-                    {{-- PDF attachment toggle --}}
-                    <div class="cc-card">
-                        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-                            <div>
-                                <div class="cc-card-title" style="margin-bottom:2px;">Attach Invoice PDF</div>
-                                <div style="font-size:13px;color:var(--cc-text-2);">When enabled, the invoice PDF is
-                                    attached to the payment link email.</div>
-                            </div>
-                            @php $attachPdf = $emailConfig ? $emailConfig->attach_pdf : true; @endphp
-                            <div
-                                style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700;">
-                                <input type="hidden" name="attach_pdf" id="attach-pdf-val"
-                                    value="{{ $attachPdf ? '1' : '0' }}">
-                                <button type="button" id="attach-pdf-on"
-                                    onclick="emailToggle('attach-pdf-val','attach-pdf-on','attach-pdf-off',true)"
-                                    style="padding:5px 14px;border:none;cursor:pointer;font-family:inherit;{{ $attachPdf ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">ON</button>
-                                <button type="button" id="attach-pdf-off"
-                                    onclick="emailToggle('attach-pdf-val','attach-pdf-on','attach-pdf-off',false)"
-                                    style="padding:5px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $attachPdf ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
+                    {{-- PDF attachment toggle — QuickBooks uses the merged Disabled/QB PDF/SimpHub PDF
+                         selector on the Connection tab instead, since "disabled" there needs to set
+                         this same attach_pdf flag alongside qb_use_native_pdf. --}}
+                    @if ($provider !== 'quickbooks')
+                        <div class="cc-card">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+                                <div>
+                                    <div class="cc-card-title" style="margin-bottom:2px;">Attach Invoice PDF</div>
+                                    <div style="font-size:13px;color:var(--cc-text-2);">When enabled, the invoice PDF is
+                                        attached to the payment link email.</div>
+                                </div>
+                                @php $attachPdf = $emailConfig ? $emailConfig->attach_pdf : true; @endphp
+                                <div
+                                    style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700;">
+                                    <input type="hidden" name="attach_pdf" id="attach-pdf-val"
+                                        value="{{ $attachPdf ? '1' : '0' }}">
+                                    <button type="button" id="attach-pdf-on"
+                                        onclick="emailToggle('attach-pdf-val','attach-pdf-on','attach-pdf-off',true)"
+                                        style="padding:5px 14px;border:none;cursor:pointer;font-family:inherit;{{ $attachPdf ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">ON</button>
+                                    <button type="button" id="attach-pdf-off"
+                                        onclick="emailToggle('attach-pdf-val','attach-pdf-on','attach-pdf-off',false)"
+                                        style="padding:5px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $attachPdf ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    @endif
 
                     {{-- <div style="display:flex;justify-content:flex-end;">
                         <button type="submit" class="button primary" style="font-size:13px;padding:9px 24px;">Save
