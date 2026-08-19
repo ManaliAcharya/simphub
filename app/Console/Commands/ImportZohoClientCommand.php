@@ -7,29 +7,35 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * TEMPORARY migration tool — companion to zoho:export-client. Reads the
- * JSON export and inserts the client, email config, PMS connection(s),
- * invoices, payment sessions, and transactions into THIS environment's
- * database.
+ * JSON export and inserts the client, email config, login account, PMS
+ * connection(s), invoices, payment sessions, and transactions into THIS
+ * environment's database.
  *
- * clients.id, invoices.id, payment_sessions.id, transactions.id are all
- * UUID primary keys, so rows are inserted with their original IDs intact
- * and every foreign key (invoice_id, payment_session_id) lines up
- * automatically — no remapping needed. pms_connections.id and
- * email_configurations.id are auto-increment and aren't referenced by
- * foreign key anywhere in the codebase, so those are dropped and
- * regenerated here.
+ * clients.id, invoices.id, payment_sessions.id, transactions.id, and
+ * client_accounts.id are all UUID primary keys, so rows are inserted
+ * with their original IDs intact and every foreign key (invoice_id,
+ * payment_session_id, owner_id) lines up automatically — no remapping
+ * needed. pms_connections.id and email_configurations.id are
+ * auto-increment and aren't referenced by foreign key anywhere in the
+ * codebase, so those are dropped and regenerated here.
  *
- * transactions.routing_rule_id is the one real exception: it's remapped
- * from the source environment's routing rule to an equivalent rule in
- * THIS environment, keyed by the transaction's own `gateway` column via
- * --gateway-rule-map (a JSON object of gateway => routing_rule_id).
+ * transactions.routing_rule_id is remapped from the source environment's
+ * routing rule to an equivalent rule in THIS environment, keyed by the
+ * transaction's own `gateway` column via --gateway-rule-map (a JSON
+ * object of gateway => routing_rule_id).
+ *
+ * client_mid_routes (per-client gateway MID overrides) carries an
+ * `environment` flag and encrypted credentials that are almost always
+ * sandbox/test values in a non-production source — these are exported
+ * but only written here if --include-mid-routes is passed explicitly,
+ * after you've confirmed they're safe to bring over as-is.
  *
  * The whole import runs in one DB transaction — any failure rolls back
  * completely rather than leaving a half-migrated client behind.
  */
 class ImportZohoClientCommand extends Command
 {
-    protected $signature = 'zoho:import-client {path} {--gateway-rule-map=} {--dry-run}';
+    protected $signature = 'zoho:import-client {path} {--gateway-rule-map=} {--include-mid-routes} {--dry-run}';
 
     protected $description = "TEMP: import a client's full data set from a zoho:export-client JSON file into this environment.";
 
@@ -72,18 +78,40 @@ class ImportZohoClientCommand extends Command
 
         $client           = $payload['client'];
         $emailConfig      = $payload['email_config'] ?? null;
+        $clientAccount    = $payload['client_account'] ?? null;
+        $midRoutes        = $payload['client_mid_routes'] ?? [];
         $connections      = $payload['pms_connections'] ?? [];
         $invoices         = $payload['invoices'] ?? [];
         $paymentSessions  = $payload['payment_sessions'] ?? [];
         $transactions     = $payload['transactions'] ?? [];
 
+        $includeMidRoutes = (bool) $this->option('include-mid-routes');
+
         $this->line('About to import:');
         $this->line('  Client: '.$client['client_name'].' ('.$pmsClientId.')');
         $this->line('  email_config: '.($emailConfig ? 1 : 0));
+        $this->line('  client_account (login): '.($clientAccount ? 1 : 0));
         $this->line('  pms_connections: '.count($connections));
         $this->line('  invoices: '.count($invoices));
         $this->line('  payment_sessions: '.count($paymentSessions));
         $this->line('  transactions: '.count($transactions));
+
+        if ($midRoutes !== []) {
+            if ($includeMidRoutes) {
+                $this->line('  client_mid_routes: '.count($midRoutes).' (will be imported — --include-mid-routes set)');
+            } else {
+                $this->components->warn(
+                    '  client_mid_routes: '.count($midRoutes).' found but SKIPPED — pass --include-mid-routes to '
+                    .'import them, only after confirming their credentials/environment are correct for this environment.'
+                );
+            }
+        }
+
+        if ($clientAccount && DB::table('client_accounts')->where('email_lower', $clientAccount['email_lower'])->exists()) {
+            $this->components->error("A client_accounts row with email [{$clientAccount['email_lower']}] already exists in this database — aborting.");
+
+            return self::FAILURE;
+        }
 
         foreach ($transactions as $t) {
             $gateway = (string) ($t['gateway'] ?? '');
@@ -105,12 +133,25 @@ class ImportZohoClientCommand extends Command
             return self::SUCCESS;
         }
 
-        DB::transaction(function () use ($client, $emailConfig, $connections, $invoices, $paymentSessions, $transactions, $gatewayRuleMap): void {
+        DB::transaction(function () use (
+            $client, $emailConfig, $clientAccount, $midRoutes, $includeMidRoutes,
+            $connections, $invoices, $paymentSessions, $transactions, $gatewayRuleMap
+        ): void {
             DB::table('clients')->insert($client);
 
             if ($emailConfig) {
                 unset($emailConfig['id']);
                 DB::table('email_configurations')->insert($emailConfig);
+            }
+
+            if ($clientAccount) {
+                DB::table('client_accounts')->insert($clientAccount);
+            }
+
+            if ($includeMidRoutes) {
+                foreach ($midRoutes as $route) {
+                    DB::table('client_mid_routes')->insert($route);
+                }
             }
 
             foreach ($connections as $connection) {
@@ -134,11 +175,16 @@ class ImportZohoClientCommand extends Command
 
         $this->components->info('Import complete.');
         $this->components->warn(
-            "Next: re-run Zoho webhook/workflow setup against THIS environment's callback URL — the copied "
-            .'connection still has meta pointing at the source environment\'s webhook_id/workflow_id, which POSTs '
-            .'to the source domain, not this one. The OAuth token was copied as raw ciphertext (same APP_KEY '
-            .'confirmed), so it should decrypt and work here without the client needing to reconnect via OAuth.'
+            'Next: have the client reconnect Zoho via the normal OAuth flow in this environment. The copied '
+            .'access_token/refresh_token were minted by the source environment\'s Zoho app registration — if this '
+            .'environment uses a different ZOHO_CLIENT_ID/SECRET, those tokens will not work here regardless of '
+            .'encryption. Reconnecting overwrites this same connection row in place (matched by pms_client_id) '
+            .'rather than creating a duplicate, and also registers a fresh webhook/workflow pointed at this '
+            .'environment\'s callback URL.'
         );
+        if ($clientAccount) {
+            $this->components->info('client_accounts row imported — the client can log in with their existing password once you send them the portal login link.');
+        }
 
         return self::SUCCESS;
     }
