@@ -109,7 +109,7 @@
                         <tbody>
                             @foreach($client->merchants as $merchant)
                             <tr>
-                                <td style="padding:10px;font-size:13px;border-bottom:1px solid var(--cc-border-light);"><strong>{{ $merchant->merchant_name }}</strong></td>
+                                <td style="padding:10px;font-size:13px;border-bottom:1px solid var(--cc-border-light);"><strong>{{ $merchant->merchant_info['name'] ?? '' }}</strong></td>
                                 <td style="padding:10px;font-size:12px;border-bottom:1px solid var(--cc-border-light);"><code style="font-size:11px;">{{ $merchant->merchant_ref }}</code></td>
                                 <td style="padding:10px;font-size:13px;color:var(--cc-text-2);border-bottom:1px solid var(--cc-border-light);">{{ $merchant->agent_ref }}</td>
                                 <td style="padding:10px;font-size:13px;border-bottom:1px solid var(--cc-border-light);">{{ str_replace('_', ' ', $merchant->tier) }}</td>

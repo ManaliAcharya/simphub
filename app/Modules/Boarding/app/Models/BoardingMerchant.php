@@ -18,8 +18,9 @@ class BoardingMerchant extends Model
     protected function casts(): array
     {
         return [
-            'clicked_at' => 'datetime',
-            'revoked_at' => 'datetime',
+            'clicked_at'    => 'datetime',
+            'revoked_at'    => 'datetime',
+            'merchant_info' => 'array',
         ];
     }
 

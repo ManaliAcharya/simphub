@@ -7,14 +7,16 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * TEMPORARY migration tool — exports a single client's full data set
- * (client row, email config, PMS connection(s), invoices, payment
- * sessions, transactions) to a JSON file for hand-carrying to another
- * environment via zoho:import-client.
+ * (client row, email config, login account, per-client MID routes, PMS
+ * connection(s), invoices, payment sessions, transactions) to a JSON
+ * file for hand-carrying to another environment via zoho:import-client.
  *
- * Uses the query builder throughout (never Eloquent), so encrypted
- * columns (clients.gateway_credentials, pms_connections.access_token/
- * refresh_token/webhook_secret) are read as their raw ciphertext —
- * never decrypted to plaintext, and never re-encrypted on the way out.
+ * Uses the query builder throughout (never Eloquent), so encrypted/
+ * hashed columns (clients.gateway_credentials, pms_connections.
+ * access_token/refresh_token/webhook_secret, client_accounts.
+ * password_hash, client_mid_routes.credentials) are read as their raw
+ * stored value — never decrypted to plaintext, and never re-encrypted
+ * on the way out.
  */
 class ExportZohoClientCommand extends Command
 {
@@ -39,6 +41,13 @@ class ExportZohoClientCommand extends Command
 
         $emailConfig = DB::table('email_configurations')->where('client_id', $client['id'])->first();
 
+        $clientAccount = DB::table('client_accounts')
+            ->where('owner_type', 'Modules\\Inbound\\Models\\Client')
+            ->where('owner_id', $client['id'])
+            ->first();
+
+        $midRoutes = DB::table('client_mid_routes')->where('client_id', $client['id'])->get();
+
         $connections = DB::table('pms_connections')
             ->where('pms_client_id', $pmsClientId)
             ->get();
@@ -58,6 +67,8 @@ class ExportZohoClientCommand extends Command
             'pms_client_id'    => $pmsClientId,
             'client'           => $client,
             'email_config'     => $emailConfig ? (array) $emailConfig : null,
+            'client_account'   => $clientAccount ? (array) $clientAccount : null,
+            'client_mid_routes' => $midRoutes->map(fn ($r) => (array) $r)->all(),
             'pms_connections'  => $connections->map(fn ($c) => (array) $c)->all(),
             'invoices'         => $invoices->map(fn ($i) => (array) $i)->all(),
             'payment_sessions' => $paymentSessions->map(fn ($s) => (array) $s)->all(),
@@ -69,13 +80,22 @@ class ExportZohoClientCommand extends Command
 
         $this->components->info('Exported to: '.$path);
         $this->line(
-            'Rows: 1 client, '.($emailConfig ? 1 : 0).' email_config, '.$connections->count().' pms_connections, '
+            'Rows: 1 client, '.($emailConfig ? 1 : 0).' email_config, '.($clientAccount ? 1 : 0).' client_account, '
+            .$midRoutes->count().' client_mid_routes, '.$connections->count().' pms_connections, '
             .$invoices->count().' invoices, '.$paymentSessions->count().' payment_sessions, '.$transactions->count().' transactions.'
         );
+        if ($midRoutes->count() > 0) {
+            $this->components->warn(
+                $midRoutes->count().' client_mid_routes row(s) found — these carry sandbox/test gateway credentials '
+                .'and an environment flag from THIS environment. zoho:import-client will not write them unless you '
+                .'pass --include-mid-routes, since blindly copying test MID credentials into production routing is '
+                .'dangerous. Review them in the export file first.'
+            );
+        }
         $this->components->warn(
-            'This file contains encrypted OAuth tokens/credentials as raw ciphertext (not plaintext), but treat it '
-            .'as sensitive anyway: copy it to the target server only over a secure channel (scp) and delete it from '
-            .'both servers once the import is confirmed working.'
+            'This file contains encrypted OAuth tokens/credentials (and a login password hash) as raw ciphertext, '
+            .'not plaintext, but treat it as sensitive anyway: copy it to the target server only over a secure '
+            .'channel (scp) and delete it from both servers once the import is confirmed working.'
         );
 
         return self::SUCCESS;
