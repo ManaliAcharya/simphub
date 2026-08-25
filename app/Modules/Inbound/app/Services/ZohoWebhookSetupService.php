@@ -21,16 +21,34 @@ class ZohoWebhookSetupService
 
         $webhookUrl = rtrim((string) config('services.zoho.webhook_callback_url'), '/');
 
-        // Step 1: Create the webhook.
-        $webhookResponse = $this->api->createWebhook($connection, $organizationId, [
-            'webhook_name' => 'Payment Middleware – Invoice Notify',
-            'description'  => 'Notifies the payment middleware when an invoice is created or updated.',
-            'url'          => $webhookUrl,
-            'method'       => 'POST',
-            'body_type'    => 'application/json',
-            'entity'       => 'invoice',
-            'raw_data'     => $this->rawBody($pmsClientId, 'invoice.created'),
+        logger()->info('Zoho webhook setup: starting', [
+            'pms_client_id' => $pmsClientId,
+            'connection_id' => $connection->id,
+            'organization_id' => $organizationId,
+            'webhook_url' => $webhookUrl,
         ]);
+
+        // Step 1: Create the webhook.
+        try {
+            $webhookResponse = $this->api->createWebhook($connection, $organizationId, [
+                'webhook_name' => 'Payment Middleware – Invoice Notify',
+                'description'  => 'Notifies the payment middleware when an invoice is created or updated.',
+                'url'          => $webhookUrl,
+                'method'       => 'POST',
+                'body_type'    => 'application/json',
+                'entity'       => 'invoice',
+                'raw_data'     => $this->rawBody($pmsClientId, 'invoice.created'),
+            ]);
+        } catch (\Throwable $e) {
+            logger()->error('Zoho webhook setup: createWebhook (create) call failed', [
+                'pms_client_id' => $pmsClientId,
+                'connection_id' => $connection->id,
+                'organization_id' => $organizationId,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
 
         $webhookId = (string) (
             data_get($webhookResponse, 'webhook.webhook_id')
@@ -39,8 +57,20 @@ class ZohoWebhookSetupService
         );
 
         if ($webhookId === '') {
+            logger()->error('Zoho webhook setup: createWebhook (create) returned no webhook id', [
+                'pms_client_id' => $pmsClientId,
+                'connection_id' => $connection->id,
+                'response' => $webhookResponse,
+            ]);
+
             throw new RuntimeException('Zoho did not return a webhook ID. Response: ' . json_encode($webhookResponse));
         }
+
+        logger()->info('Zoho webhook setup: create-webhook registered', [
+            'pms_client_id' => $pmsClientId,
+            'connection_id' => $connection->id,
+            'webhook_id' => $webhookId,
+        ]);
 
         // Step 2: Build the instant_action that references OUR webhook by its ID.
         // Fetch the reference workflow to learn the exact field names/structure
@@ -50,18 +80,36 @@ class ZohoWebhookSetupService
         $instantAction = $this->buildInstantAction($connection, $organizationId, $webhookId);
 
         // Step 3: Create the "created" workflow and bind our webhook to it.
-        $workflowResponse = $this->api->createWorkflow($connection, $organizationId, [
-            'workflow_name'   => 'Payment Middleware – Invoice Created',
-            'entity'          => 'invoice',
-            'rule_type'       => 'add',
-            'instant_actions' => [$instantAction],
-        ]);
+        try {
+            $workflowResponse = $this->api->createWorkflow($connection, $organizationId, [
+                'workflow_name'   => 'Payment Middleware – Invoice Created',
+                'entity'          => 'invoice',
+                'rule_type'       => 'add',
+                'instant_actions' => [$instantAction],
+            ]);
+        } catch (\Throwable $e) {
+            logger()->error('Zoho webhook setup: createWorkflow (create) call failed', [
+                'pms_client_id' => $pmsClientId,
+                'connection_id' => $connection->id,
+                'webhook_id' => $webhookId,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
 
         $workflowId = (string) (
             data_get($workflowResponse, 'workflow.workflow_id')
             ?? data_get($workflowResponse, 'workflow_id')
             ?? ''
         );
+
+        logger()->info('Zoho webhook setup: create-workflow registered', [
+            'pms_client_id' => $pmsClientId,
+            'connection_id' => $connection->id,
+            'webhook_id' => $webhookId,
+            'workflow_id' => $workflowId,
+        ]);
 
         // Step 4: Second workflow, same webhook, fired on edit — resend-on-update relies
         // on this to tell create and update apart (Zoho's payload carries no such field
@@ -102,13 +150,29 @@ class ZohoWebhookSetupService
                     ?? data_get($editWorkflowResponse, 'workflow_id')
                     ?? ''
                 );
+
+                logger()->info('Zoho webhook setup: update-webhook/workflow registered', [
+                    'pms_client_id' => $pmsClientId,
+                    'connection_id' => $connection->id,
+                    'edit_webhook_id' => $editWebhookId,
+                    'edit_workflow_id' => $editWorkflowId,
+                ]);
             }
         } catch (\Throwable $e) {
             logger()->warning('Zoho: failed to register the invoice-updated webhook/workflow — resend-on-update will not fire for this connection', [
                 'pms_client_id' => $pmsClientId,
+                'connection_id' => $connection->id,
                 'error'         => $e->getMessage(),
             ]);
         }
+
+        logger()->info('Zoho webhook setup: finished', [
+            'pms_client_id' => $pmsClientId,
+            'connection_id' => $connection->id,
+            'webhook_id' => $webhookId,
+            'workflow_id' => $workflowId,
+            'edit_workflow_id' => $editWorkflowId,
+        ]);
 
         return [
             'webhook_id'        => $webhookId,
