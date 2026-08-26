@@ -75,6 +75,17 @@ class ZohoApiClient
             ->json();
     }
 
+    public function updateWebhook(PmsConnection $connection, string $webhookId, string $organizationId, array $payload): array
+    {
+        return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
+            ->put("/settings/webhooks/{$webhookId}", [
+                ...$payload,
+                'organization_id' => $organizationId,
+            ])
+            ->throw()
+            ->json();
+    }
+
     public function fetchWorkflows(PmsConnection $connection, string $organizationId): array
     {
         return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
@@ -89,6 +100,17 @@ class ZohoApiClient
     {
         return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
             ->get("/settings/workflows/{$workflowId}", [
+                'organization_id' => $organizationId,
+            ])
+            ->throw()
+            ->json();
+    }
+
+    public function updateWorkflow(PmsConnection $connection, string $workflowId, string $organizationId, array $payload): array
+    {
+        return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
+            ->put("/settings/workflows/{$workflowId}", [
+                ...$payload,
                 'organization_id' => $organizationId,
             ])
             ->throw()
