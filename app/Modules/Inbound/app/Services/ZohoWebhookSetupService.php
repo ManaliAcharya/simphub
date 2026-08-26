@@ -21,26 +21,50 @@ class ZohoWebhookSetupService
 
         $webhookUrl = rtrim((string) config('services.zoho.webhook_callback_url'), '/');
 
-        // Step 1: Create the webhook.
-        $webhookResponse = $this->api->createWebhook($connection, $organizationId, [
-            'webhook_name' => 'Payment Middleware – Invoice Notify',
-            'description'  => 'Notifies the payment middleware when an invoice is created or updated.',
-            'url'          => $webhookUrl,
-            'method'       => 'POST',
-            'body_type'    => 'application/json',
-            'entity'       => 'invoice',
-            'raw_data'     => $this->rawBody($pmsClientId, 'invoice.created'),
+        logger()->info('Zoho webhook setup: starting', [
+            'pms_client_id' => $pmsClientId,
+            'connection_id' => $connection->id,
+            'organization_id' => $organizationId,
+            'webhook_url' => $webhookUrl,
         ]);
 
-        $webhookId = (string) (
-            data_get($webhookResponse, 'webhook.webhook_id')
-            ?? data_get($webhookResponse, 'webhook_id')
-            ?? ''
-        );
+        // Step 1: Create (or, on reconnect, update in place) the webhook.
+        try {
+            [$webhookId, $webhookAction] = $this->upsertWebhook($connection, $organizationId, [
+                'webhook_name' => 'Payment Middleware – Invoice Notify',
+                'description'  => 'Notifies the payment middleware when an invoice is created or updated.',
+                'url'          => $webhookUrl,
+                'method'       => 'POST',
+                'body_type'    => 'application/json',
+                'entity'       => 'invoice',
+                'raw_data'     => $this->rawBody($pmsClientId, 'invoice.created'),
+            ]);
+        } catch (\Throwable $e) {
+            logger()->error('Zoho webhook setup: create-webhook upsert failed', [
+                'pms_client_id' => $pmsClientId,
+                'connection_id' => $connection->id,
+                'organization_id' => $organizationId,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
 
         if ($webhookId === '') {
-            throw new RuntimeException('Zoho did not return a webhook ID. Response: ' . json_encode($webhookResponse));
+            logger()->error('Zoho webhook setup: create-webhook upsert returned no webhook id', [
+                'pms_client_id' => $pmsClientId,
+                'connection_id' => $connection->id,
+            ]);
+
+            throw new RuntimeException('Zoho did not return a webhook ID for the create-webhook.');
         }
+
+        logger()->info('Zoho webhook setup: create-webhook registered', [
+            'pms_client_id' => $pmsClientId,
+            'connection_id' => $connection->id,
+            'webhook_id' => $webhookId,
+            'action' => $webhookAction,
+        ]);
 
         // Step 2: Build the instant_action that references OUR webhook by its ID.
         // Fetch the reference workflow to learn the exact field names/structure
@@ -49,19 +73,32 @@ class ZohoWebhookSetupService
         // omitted so Zoho binds the existing webhook rather than creating a new one.
         $instantAction = $this->buildInstantAction($connection, $organizationId, $webhookId);
 
-        // Step 3: Create the "created" workflow and bind our webhook to it.
-        $workflowResponse = $this->api->createWorkflow($connection, $organizationId, [
-            'workflow_name'   => 'Payment Middleware – Invoice Created',
-            'entity'          => 'invoice',
-            'rule_type'       => 'add',
-            'instant_actions' => [$instantAction],
-        ]);
+        // Step 3: Create (or update in place) the "created" workflow and bind our webhook to it.
+        try {
+            [$workflowId, $workflowAction] = $this->upsertWorkflow($connection, $organizationId, [
+                'workflow_name'   => 'Payment Middleware – Invoice Created',
+                'entity'          => 'invoice',
+                'rule_type'       => 'add',
+                'instant_actions' => [$instantAction],
+            ]);
+        } catch (\Throwable $e) {
+            logger()->error('Zoho webhook setup: create-workflow upsert failed', [
+                'pms_client_id' => $pmsClientId,
+                'connection_id' => $connection->id,
+                'webhook_id' => $webhookId,
+                'error' => $e->getMessage(),
+            ]);
 
-        $workflowId = (string) (
-            data_get($workflowResponse, 'workflow.workflow_id')
-            ?? data_get($workflowResponse, 'workflow_id')
-            ?? ''
-        );
+            throw $e;
+        }
+
+        logger()->info('Zoho webhook setup: create-workflow registered', [
+            'pms_client_id' => $pmsClientId,
+            'connection_id' => $connection->id,
+            'webhook_id' => $webhookId,
+            'workflow_id' => $workflowId,
+            'action' => $workflowAction,
+        ]);
 
         // Step 4: Second workflow, same webhook, fired on edit — resend-on-update relies
         // on this to tell create and update apart (Zoho's payload carries no such field
@@ -71,7 +108,7 @@ class ZohoWebhookSetupService
         $editWorkflowId = '';
 
         try {
-            $editWebhookResponse = $this->api->createWebhook($connection, $organizationId, [
+            [$editWebhookId] = $this->upsertWebhook($connection, $organizationId, [
                 'webhook_name' => 'Payment Middleware – Invoice Update Notify',
                 'description'  => 'Notifies the payment middleware when an invoice is updated.',
                 'url'          => $webhookUrl,
@@ -81,40 +118,108 @@ class ZohoWebhookSetupService
                 'raw_data'     => $this->rawBody($pmsClientId, 'invoice.updated'),
             ]);
 
-            $editWebhookId = (string) (
-                data_get($editWebhookResponse, 'webhook.webhook_id')
-                ?? data_get($editWebhookResponse, 'webhook_id')
-                ?? ''
-            );
-
             if ($editWebhookId !== '') {
                 $editInstantAction = $this->buildInstantAction($connection, $organizationId, $editWebhookId);
 
-                $editWorkflowResponse = $this->api->createWorkflow($connection, $organizationId, [
+                [$editWorkflowId] = $this->upsertWorkflow($connection, $organizationId, [
                     'workflow_name'   => 'Payment Middleware – Invoice Updated',
                     'entity'          => 'invoice',
                     'rule_type'       => 'edit',
                     'instant_actions' => [$editInstantAction],
                 ]);
 
-                $editWorkflowId = (string) (
-                    data_get($editWorkflowResponse, 'workflow.workflow_id')
-                    ?? data_get($editWorkflowResponse, 'workflow_id')
-                    ?? ''
-                );
+                logger()->info('Zoho webhook setup: update-webhook/workflow registered', [
+                    'pms_client_id' => $pmsClientId,
+                    'connection_id' => $connection->id,
+                    'edit_webhook_id' => $editWebhookId,
+                    'edit_workflow_id' => $editWorkflowId,
+                ]);
             }
         } catch (\Throwable $e) {
             logger()->warning('Zoho: failed to register the invoice-updated webhook/workflow — resend-on-update will not fire for this connection', [
                 'pms_client_id' => $pmsClientId,
+                'connection_id' => $connection->id,
                 'error'         => $e->getMessage(),
             ]);
         }
+
+        logger()->info('Zoho webhook setup: finished', [
+            'pms_client_id' => $pmsClientId,
+            'connection_id' => $connection->id,
+            'webhook_id' => $webhookId,
+            'workflow_id' => $workflowId,
+            'edit_workflow_id' => $editWorkflowId,
+        ]);
 
         return [
             'webhook_id'        => $webhookId,
             'workflow_id'       => $workflowId,
             'edit_workflow_id'  => $editWorkflowId,
         ];
+    }
+
+    /**
+     * Creates a webhook by name, or — if one with that exact name already exists
+     * in the org (e.g. a prior connect/reconnect for this client) — updates it in
+     * place instead. Zoho rejects a second create with the same name (code 107051),
+     * so without this, every reconnect after the first would fail auto-setup.
+     *
+     * @return array{0: string, 1: 'created'|'updated'} [webhook_id, action]
+     */
+    private function upsertWebhook(PmsConnection $connection, string $organizationId, array $payload): array
+    {
+        $name = (string) $payload['webhook_name'];
+        $existingId = $this->findExistingByName(
+            (array) data_get($this->api->fetchWebhooks($connection, $organizationId), 'webhooks', []),
+            'webhook_name',
+            'webhook_id',
+            $name,
+        );
+
+        if ($existingId !== null) {
+            $this->api->updateWebhook($connection, $existingId, $organizationId, $payload);
+
+            return [$existingId, 'updated'];
+        }
+
+        $response = $this->api->createWebhook($connection, $organizationId, $payload);
+        $id = (string) (data_get($response, 'webhook.webhook_id') ?? data_get($response, 'webhook_id') ?? '');
+
+        return [$id, 'created'];
+    }
+
+    /** @return array{0: string, 1: 'created'|'updated'} [workflow_id, action] */
+    private function upsertWorkflow(PmsConnection $connection, string $organizationId, array $payload): array
+    {
+        $name = (string) $payload['workflow_name'];
+        $existingId = $this->findExistingByName(
+            (array) data_get($this->api->fetchWorkflows($connection, $organizationId), 'workflows', []),
+            'workflow_name',
+            'workflow_id',
+            $name,
+        );
+
+        if ($existingId !== null) {
+            $this->api->updateWorkflow($connection, $existingId, $organizationId, $payload);
+
+            return [$existingId, 'updated'];
+        }
+
+        $response = $this->api->createWorkflow($connection, $organizationId, $payload);
+        $id = (string) (data_get($response, 'workflow.workflow_id') ?? data_get($response, 'workflow_id') ?? '');
+
+        return [$id, 'created'];
+    }
+
+    private function findExistingByName(array $items, string $nameKey, string $idKey, string $name): ?string
+    {
+        foreach ($items as $item) {
+            if ((string) data_get($item, $nameKey) === $name) {
+                return (string) data_get($item, $idKey);
+            }
+        }
+
+        return null;
     }
 
     private function rawBody(string $pmsClientId, string $event): string

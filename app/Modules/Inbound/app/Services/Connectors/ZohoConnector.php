@@ -52,6 +52,13 @@ class ZohoConnector implements PmsConnectorInterface
                 ],
             ])->save();
 
+            logger()->info('Zoho reconnect: webhook auto-setup SUCCEEDED', [
+                'pms_client_id' => $pmsClientId,
+                'connection_id' => $connection->id,
+                'webhook_id' => $ids['webhook_id'],
+                'workflow_id' => $ids['workflow_id'],
+            ]);
+
             $successMessage = 'Zoho connected. Webhook and workflow rule configured automatically.';
         } catch (Throwable $e) {
             $connection->forceFill([
@@ -61,6 +68,12 @@ class ZohoConnector implements PmsConnectorInterface
                     'webhook_auto_setup_error' => $e->getMessage(),
                 ],
             ])->save();
+
+            logger()->error('Zoho reconnect: webhook auto-setup FAILED', [
+                'pms_client_id' => $pmsClientId,
+                'connection_id' => $connection->id,
+                'error' => $e->getMessage(),
+            ]);
 
             $successMessage = 'Zoho connected. Automatic webhook setup failed — please configure it manually using the instructions below.';
         }

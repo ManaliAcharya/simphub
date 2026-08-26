@@ -30,6 +30,11 @@ class ZohoOAuthService
 
     public function exchangeCode(string $code, string $pmsClientId): PmsConnection
     {
+        logger()->info('Zoho OAuth: exchanging authorization code', [
+            'pms_client_id' => $pmsClientId,
+            'redirect_uri' => $this->redirectUri(),
+        ]);
+
         $response = Http::asForm()
             ->acceptJson()
             ->post(rtrim($this->regions->accountsBaseUrlForClientId($pmsClientId), '/').'/oauth/v2/token', [
@@ -41,9 +46,24 @@ class ZohoOAuthService
             ])
             ->throw();
 
+        logger()->info('Zoho OAuth: code exchange succeeded, tokens received', [
+            'pms_client_id' => $pmsClientId,
+            'expires_in' => $response->json('expires_in'),
+            'has_refresh_token' => isset($response->json()['refresh_token']),
+        ]);
+
         $connection = $this->persistTokens($response->json(), pmsClientId: $pmsClientId);
+
         $organizationsPayload = $this->client->fetchOrganizations($connection);
         $organizations = $this->extractOrganizations($organizationsPayload);
+
+        logger()->info('Zoho OAuth: fetched organizations for connection', [
+            'pms_client_id' => $pmsClientId,
+            'connection_id' => $connection->id,
+            'organization_count' => count($organizations),
+            'organization_ids' => array_map(fn ($o) => data_get($o, 'organization_id'), $organizations),
+        ]);
+
         $defaultOrganization = $this->resolveDefaultOrganization($organizations);
         $defaultOrganizationId = (string) (
             data_get($defaultOrganization, 'organization_id')
@@ -74,6 +94,20 @@ class ZohoOAuthService
             ], static fn ($value) => $value !== null),
             'last_error' => $defaultOrganizationId === '' ? 'Zoho organization id could not be resolved during authentication.' : null,
         ])->save();
+
+        if ($defaultOrganizationId === '') {
+            logger()->warning('Zoho OAuth: could not resolve a default organization id', [
+                'pms_client_id' => $pmsClientId,
+                'connection_id' => $connection->id,
+            ]);
+        } else {
+            logger()->info('Zoho OAuth: resolved default organization', [
+                'pms_client_id' => $pmsClientId,
+                'connection_id' => $connection->id,
+                'organization_id' => $defaultOrganizationId,
+                'organization_name' => $defaultOrganizationName,
+            ]);
+        }
 
         return $connection->fresh();
     }
