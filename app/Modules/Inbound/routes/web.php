@@ -29,7 +29,7 @@ Route::middleware('web')->group(function (): void {
         ->name('inbound.setup.share');
 
     Route::prefix('inbound/clients')->name('inbound.clients.')->group(function (): void {
-        Route::middleware(['merchant.auth', 'no-cache'])->group(function (): void {
+        Route::middleware(['auth', 'no-cache'])->group(function (): void {
             Route::get('/', [ClientConfigController::class, 'index'])->name('index');
             Route::get('/create', [ClientConfigController::class, 'create'])->name('create');
             Route::post('/', [ClientConfigController::class, 'store'])->name('store');

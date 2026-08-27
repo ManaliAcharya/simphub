@@ -34,6 +34,10 @@ return Application::configure(basePath: dirname(__DIR__))
             'merchant.auth'   => MerchantSessionMiddleware::class,
             'reauth.required' => RequireReauthentication::class,
         ]);
+
+        // Internal admin auth (Laravel's built-in guard) redirects unauthenticated
+        // requests here — distinct from the merchant/client portal login above.
+        $middleware->redirectGuestsTo(fn () => route('admin.login'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
