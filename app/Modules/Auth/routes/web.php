@@ -1,12 +1,34 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Auth\Http\Controllers\AdminAuthController;
 use Modules\Auth\Http\Controllers\AuthController;
 use Modules\Auth\Http\Controllers\ForgotPasswordController;
 use Modules\Auth\Http\Controllers\InvitationController;
 use Modules\Auth\Http\Controllers\ReauthenticationController;
 
 Route::middleware(['web', 'throttle:global'])->group(function () {
+
+    /* Admin Routes (internal staff — separate from the client/merchant portal above) */
+
+    Route::prefix('admin')->name('admin.')->group(function () {
+
+        Route::middleware('guest')->group(function () {
+
+            Route::get('/login', [AdminAuthController::class, 'index'])
+                ->name('login');
+
+            Route::post('/login', [AdminAuthController::class, 'login'])
+                ->middleware('throttle:login')
+                ->name('login.submit');
+        });
+
+        Route::middleware('auth')->group(function () {
+
+            Route::post('/logout', [AdminAuthController::class, 'logout'])
+                ->name('logout');
+        });
+    });
 
     /* Guest Routes */
 

@@ -29,14 +29,16 @@ Route::middleware('web')->group(function (): void {
         ->name('inbound.setup.share');
 
     Route::prefix('inbound/clients')->name('inbound.clients.')->group(function (): void {
-        Route::get('/', [ClientConfigController::class, 'index'])->name('index');
-        Route::get('/create', [ClientConfigController::class, 'create'])->name('create');
-        Route::post('/', [ClientConfigController::class, 'store'])->name('store');
-        Route::get('/created', [ClientConfigController::class, 'created'])->name('created');
+        Route::middleware(['auth', 'no-cache'])->group(function (): void {
+            Route::get('/', [ClientConfigController::class, 'index'])->name('index');
+            Route::get('/create', [ClientConfigController::class, 'create'])->name('create');
+            Route::post('/', [ClientConfigController::class, 'store'])->name('store');
+            Route::get('/created', [ClientConfigController::class, 'created'])->name('created');
 
-        //New routes for delete &  inactivate client
-        Route::patch('/{client_id}',[ClientConfigController::class,'updateStatus'])->name('update-status');
-        Route::delete('/{client_id}',[ClientConfigController::class,'destroy'])->name('destroy');
+            //New routes for delete &  inactivate client
+            Route::patch('/{client_id}',[ClientConfigController::class,'updateStatus'])->name('update-status');
+            Route::delete('/{client_id}',[ClientConfigController::class,'destroy'])->name('destroy');
+        });
 
         // ── Boarding (ISO) client admin pages — additional to the shared flow above ──
         Route::prefix('boarding')->name('boarding.')->group(function (): void {
