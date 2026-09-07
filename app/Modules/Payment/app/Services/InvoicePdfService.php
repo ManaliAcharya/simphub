@@ -4,14 +4,18 @@ namespace Modules\Payment\Services;
 
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Modules\Billing\Models\Invoice;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClioConnection;
+use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Models\WaveConnection;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
+use Modules\Inbound\Services\QuickBooksApiClient;
+use Modules\Inbound\Services\QuickBooksOAuthService;
 use Modules\Inbound\Services\WaveApiClient;
 use Modules\Inbound\Services\WaveOAuthService;
 use Modules\Inbound\Models\EmailConfiguration;
@@ -30,6 +34,8 @@ class InvoicePdfService
         private readonly ClioOAuthService $clioOAuth,
         private readonly WaveApiClient $waveApi,
         private readonly WaveOAuthService $waveOAuth,
+        private readonly QuickBooksApiClient $qbApi,
+        private readonly QuickBooksOAuthService $qbOAuth,
     ) {}
 
     public function generate(Invoice $invoice, string $paymentUrl): ?string
@@ -57,15 +63,19 @@ class InvoicePdfService
             $html = view('payment::pdf.invoice', [
                 'logoUrl'          => $logoUrl,
                 'faviconUri'       => $this->dataUri(file_get_contents(public_path('images/logo/simphub-favicon.jpeg')), 'image/jpeg'),
+                'primaryColor'     => $emailConfig?->primary_color,
                 'merchantName'     => $client?->client_name,
-                'merchantAddress'  => $this->resolveMerchantAddress($client),
+                'merchantAddress'  => $this->resolveMerchantAddress($invoice, $client),
                 'merchantContact'  => $this->resolveMerchantContact($client, $emailConfig),
                 'customerName'     => $this->resolveCustomerName($invoice),
                 'customerEmail'    => $this->resolveCustomerEmail($invoice),
+                'customerAddress'  => $this->resolveBillingAddress($invoice),
+                'shippingAddress'  => $this->resolveShippingAddress($invoice),
                 'invoiceNumber'    => (string) ($invoice->invoice_number ?? $invoice->external_invoice_id ?? ''),
                 'issueDate'        => $invoice->created_at?->format('F j, Y'),
                 'dueDate'          => $this->resolveDueDate($invoice),
                 'terms'            => $this->resolveTerms($invoice),
+                'customerMemo'     => $this->resolveCustomerMemo($invoice),
                 'currency'         => $invoice->currency ?? 'USD',
                 'lineItems'        => $lineItems,
                 'subtotal'         => number_format($subtotal, 2),
@@ -143,15 +153,23 @@ class InvoicePdfService
                 if (($line['DetailType'] ?? null) !== 'SalesItemLineDetail') {
                     continue;
                 }
-                $amount = (float) ($line['Amount'] ?? 0);
-                $qty    = Arr::get($line, 'SalesItemLineDetail.Qty');
-                $rate   = Arr::get($line, 'SalesItemLineDetail.UnitPrice');
+                $amount           = (float) ($line['Amount'] ?? 0);
+                $qty              = Arr::get($line, 'SalesItemLineDetail.Qty');
+                $rate             = Arr::get($line, 'SalesItemLineDetail.UnitPrice');
+                $productOrService = (string) (Arr::get($line, 'SalesItemLineDetail.ItemRef.name') ?? '');
+                $description      = (string) ($line['Description'] ?? '');
+
+                if ($productOrService === '' && $description === '') {
+                    $description = 'Item';
+                }
+
                 $items[] = [
-                    'description'    => (string) ($line['Description'] ?? Arr::get($line, 'SalesItemLineDetail.ItemRef.name') ?? 'Item'),
-                    'subDescription' => null,
-                    'qty'            => $qty !== null ? (float) $qty : 1.0,
-                    'rate'           => $rate !== null ? (float) $rate : $amount,
-                    'amount'         => $amount,
+                    'productOrService' => $productOrService,
+                    'description'      => $description,
+                    'subDescription'   => null,
+                    'qty'              => $qty !== null ? (float) $qty : 1.0,
+                    'rate'             => $rate !== null ? (float) $rate : $amount,
+                    'amount'           => $amount,
                 ];
             }
             if ($items !== []) {
@@ -313,18 +331,32 @@ class InvoicePdfService
             ?? Arr::get($raw, 'invoice.data.dueDate')
             ?? Arr::get($raw, 'trigger.data.due_date');
 
-        return is_string($dueDate) && trim($dueDate) !== '' ? $dueDate : null;
+        if (! is_string($dueDate) || trim($dueDate) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($dueDate)->format('F j, Y');
+        } catch (Throwable) {
+            return $dueDate;
+        }
     }
 
     /**
-     * There's no dedicated merchant address field anywhere on Client - the only
-     * place a merchant's address/phone/email ever get captured is
-     * cash_discount_details (the "pay by cash/check" instructions a client fills
-     * in), which is opt-in and often unset. Returns null (omit the block
-     * entirely) rather than show a half-empty address.
+     * Prefers the merchant's registered QuickBooks address (CompanyInfo.CompanyAddr,
+     * fetched live) since it's authoritative and always up to date; falls back to
+     * cash_discount_details (the "pay by cash/check" instructions a client fills in
+     * manually) for non-QuickBooks clients, or if the QBO fetch fails.
      */
-    private function resolveMerchantAddress(?Client $client): ?array
+    private function resolveMerchantAddress(Invoice $invoice, ?Client $client): ?array
     {
+        if ($client && strtolower((string) $invoice->pms_source) === 'quickbooks') {
+            $qbAddress = $this->fetchQbCompanyAddress($client);
+            if ($qbAddress !== []) {
+                return $qbAddress;
+            }
+        }
+
         $details = $client?->cash_discount_details;
 
         if (! is_array($details)) {
@@ -343,6 +375,87 @@ class InvoicePdfService
         $lines = array_filter([$line1, $line2]);
 
         return $lines !== [] ? array_values($lines) : null;
+    }
+
+    private function fetchQbCompanyAddress(Client $client): array
+    {
+        try {
+            $connection = QuickBooksConnection::query()
+                ->where('provider', 'quickbooks')
+                ->where('pms_client_id', $client->pms_client_id)
+                ->first();
+
+            if (! $connection) {
+                return [];
+            }
+
+            $connection = $this->qbOAuth->ensureValidAccessToken($connection);
+            $info       = $this->qbApi->fetchCompanyInfo($connection);
+
+            return $this->qboAddressLines(Arr::get($info, 'CompanyInfo.CompanyAddr'));
+        } catch (Throwable $e) {
+            Log::warning('QuickBooks company address fetch for PDF failed.', [
+                'pms_client_id' => $client->pms_client_id,
+                'error'         => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Invoice.BillAddr - already present in raw_payload from ingestion, no extra
+     * API call needed (unlike the merchant's CompanyAddr, which isn't part of the
+     * Invoice payload).
+     */
+    private function resolveBillingAddress(Invoice $invoice): array
+    {
+        return $this->qboAddressLines(Arr::get($invoice->raw_payload ?? [], 'invoice.Invoice.BillAddr'));
+    }
+
+    /**
+     * Invoice.ShipAddr - shipping can differ from billing, so this is kept
+     * separate rather than falling back to the billing address.
+     */
+    private function resolveShippingAddress(Invoice $invoice): array
+    {
+        return $this->qboAddressLines(Arr::get($invoice->raw_payload ?? [], 'invoice.Invoice.ShipAddr'));
+    }
+
+    /**
+     * QuickBooks' PhysicalAddress shape (Line1/Line2/City/CountrySubDivisionCode/
+     * PostalCode/Country) into the same "array of display lines" format the rest
+     * of this file already uses for addresses.
+     */
+    private function qboAddressLines(mixed $addr): array
+    {
+        if (! is_array($addr)) {
+            return [];
+        }
+
+        $line1 = trim((string) ($addr['Line1'] ?? ''));
+        $line2 = trim((string) ($addr['Line2'] ?? ''));
+        $cityStateZip = trim(implode(', ', array_filter([
+            trim((string) ($addr['City'] ?? '')),
+            trim(implode(' ', array_filter([
+                trim((string) ($addr['CountrySubDivisionCode'] ?? '')),
+                trim((string) ($addr['PostalCode'] ?? '')),
+            ]))),
+        ])));
+        $country = trim((string) ($addr['Country'] ?? ''));
+
+        return array_values(array_filter([$line1, $line2, $cityStateZip, $country]));
+    }
+
+    /**
+     * Invoice.CustomerMemo.value - merchants use this for payment instructions,
+     * wire/Zelle details, etc. Shown separately from the generic static notes.
+     */
+    private function resolveCustomerMemo(Invoice $invoice): ?string
+    {
+        $memo = Arr::get($invoice->raw_payload ?? [], 'invoice.Invoice.CustomerMemo.value');
+
+        return is_string($memo) && trim($memo) !== '' ? trim($memo) : null;
     }
 
     private function resolveMerchantContact(?Client $client, ?EmailConfiguration $emailConfig): ?string
