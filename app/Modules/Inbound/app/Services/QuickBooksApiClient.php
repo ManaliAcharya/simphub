@@ -70,6 +70,32 @@ class QuickBooksApiClient
         }
     }
 
+    /**
+     * Full CompanyInfo (name, address, etc.) — used for the PDF's merchant
+     * address block. Cached since this rarely changes but generate() calls it
+     * on every payment-link email.
+     */
+    public function fetchCompanyInfo(QuickBooksConnection $connection): array
+    {
+        $cacheKey = "qb_company_info_{$connection->id}";
+
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $realmId = $connection->realmId();
+
+        $data = $this->request($connection)
+            ->get("/companyinfo/{$realmId}", $this->minorVersion())
+            ->throw()
+            ->json();
+
+        Cache::put($cacheKey, $data, now()->addHour());
+
+        return $data;
+    }
+
     public function fetchInvoice(QuickBooksConnection $connection, string $invoiceId): array
     {
         return $this->request($connection)
