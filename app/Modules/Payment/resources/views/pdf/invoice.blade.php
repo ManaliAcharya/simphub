@@ -35,15 +35,6 @@
 
     .payblock { margin-top: 24px; border: 1px solid #e2e6ec; border-top: 3px solid #2f8f7d; text-align: center; padding: 20px 16px; background: #fcfdfe; }
     .payblock p { margin: 0 0 14px; color: #5b6675; font-size: 12px; }
-    .ways-to-pay-label { font-family: Arial, sans-serif; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: bold; color: #2f8f7d; margin-bottom: 10px; }
-    .card-icons { margin-bottom: 14px; }
-    .card-badge { display: inline-block; font-family: Arial, sans-serif; font-size: 9px; font-weight: bold; letter-spacing: 0.03em; color: #ffffff; padding: 5px 8px; border-radius: 3px; margin: 0 3px; }
-    .card-badge.visa { background: #1a1f71; }
-    .card-badge.mc { background: #eb001b; }
-    .card-badge.amex { background: #2e77bc; }
-    .card-badge.disc { background: #f68121; }
-    .card-badge.bank { background: #4b5563; }
-    .payblock-divider { border-top: 1px solid #e2e6ec; margin: 14px 0; }
     .pay-button { display: inline-block; background: {{ $accentColor }}; color: #ffffff; text-decoration: none; font-family: Arial, sans-serif; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: bold; padding: 12px 26px; }
     .pay-link { display: block; margin-top: 12px; font-size: 10px; color: #5b6675; }
 
@@ -154,15 +145,6 @@
     </table>
 
     <div class="payblock">
-        <div class="ways-to-pay-label">Ways to Pay</div>
-        <div class="card-icons">
-            <span class="card-badge visa">VISA</span>
-            <span class="card-badge mc">MASTERCARD</span>
-            <span class="card-badge amex">AMEX</span>
-            <span class="card-badge disc">DISCOVER</span>
-            <span class="card-badge bank">BANK</span>
-        </div>
-        <div class="payblock-divider"></div>
         <p>This invoice can be paid securely online.</p>
         <a href="{{ $paymentUrl }}" class="pay-button">Pay This Invoice</a>
         <span class="pay-link">{{ $paymentUrl }}</span>
