@@ -406,16 +406,22 @@ class InvoicePdfService
     /**
      * Invoice.BillAddr - already present in raw_payload from ingestion, no extra
      * API call needed (unlike the merchant's CompanyAddr, which isn't part of the
-     * Invoice payload).
+     * Invoice payload). When a customer has no street address on file, QuickBooks
+     * defaults BillAddr.Line1 to the customer's own name instead of leaving it
+     * blank — drop it so we don't render a person's name as a mailing address.
      */
     private function resolveBillingAddress(Invoice $invoice): array
     {
-        return $this->qboAddressLines(Arr::get($invoice->raw_payload ?? [], 'invoice.Invoice.BillAddr'));
+        return $this->qboAddressLines(
+            Arr::get($invoice->raw_payload ?? [], 'invoice.Invoice.BillAddr'),
+            $this->resolveCustomerName($invoice),
+        );
     }
 
     /**
      * Invoice.ShipAddr - shipping can differ from billing, so this is kept
-     * separate rather than falling back to the billing address.
+     * separate rather than falling back to the billing address. Unlike BillAddr,
+     * ShipAddr isn't observed to get name-defaulted, so no name filtering here.
      */
     private function resolveShippingAddress(Invoice $invoice): array
     {
@@ -425,15 +431,20 @@ class InvoicePdfService
     /**
      * QuickBooks' PhysicalAddress shape (Line1/Line2/City/CountrySubDivisionCode/
      * PostalCode/Country) into the same "array of display lines" format the rest
-     * of this file already uses for addresses.
+     * of this file already uses for addresses. $skipLine1IfEquals drops Line1
+     * when it's just the customer's name (see resolveBillingAddress above).
      */
-    private function qboAddressLines(mixed $addr): array
+    private function qboAddressLines(mixed $addr, ?string $skipLine1IfEquals = null): array
     {
         if (! is_array($addr)) {
             return [];
         }
 
         $line1 = trim((string) ($addr['Line1'] ?? ''));
+        if ($skipLine1IfEquals !== null && $line1 !== '' && strcasecmp($line1, trim($skipLine1IfEquals)) === 0) {
+            $line1 = '';
+        }
+
         $line2 = trim((string) ($addr['Line2'] ?? ''));
         $cityStateZip = trim(implode(', ', array_filter([
             trim((string) ($addr['City'] ?? '')),

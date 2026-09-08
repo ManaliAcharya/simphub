@@ -46,27 +46,26 @@
                             <input id="cardholder-last-name" type="text" autocomplete="family-name" />
                         </div>
                     </div>
-                    <details style="margin-top:8px;">
-                        <summary class="muted" style="cursor:pointer;font-size:12px;">Add billing address (optional)</summary>
-                        <div class="field-plain" style="margin-top:8px;">
-                            <label>Address</label>
-                            <input id="cardholder-address1" type="text" autocomplete="billing address-line1" />
+                    <div style="margin-top:8px;">
+                        <div class="field-plain">
+                            <label>Billing address</label>
+                            <input id="cardholder-address1" type="text" autocomplete="billing address-line1" required />
                         </div>
                         <div class="field-row" style="margin-top:8px;">
                             <div class="field-plain">
                                 <label>City</label>
-                                <input id="cardholder-city" type="text" autocomplete="billing address-level2" />
+                                <input id="cardholder-city" type="text" autocomplete="billing address-level2" required />
                             </div>
                             <div class="field-plain">
                                 <label>State</label>
-                                <input id="cardholder-state" type="text" maxlength="2" autocomplete="billing address-level1" />
+                                <input id="cardholder-state" type="text" maxlength="2" autocomplete="billing address-level1" required />
                             </div>
                         </div>
                         <div class="field-plain" style="margin-top:8px;">
                             <label>ZIP</label>
-                            <input id="cardholder-zip" type="text" autocomplete="billing postal-code" />
+                            <input id="cardholder-zip" type="text" autocomplete="billing postal-code" required />
                         </div>
-                    </details>
+                    </div>
                 </div>
 
                 <div id="hosted-fields" class="hosted-fields hidden">
@@ -548,6 +547,16 @@
                 return;
             }
             state.details = details;
+
+            // Prefill the (editable) billing address from the invoice's billing
+            // address on file, if any — a customer's card billing address won't
+            // always match, so this is a starting point, not a lock.
+            const billingAddress = details.invoice.billing_address || {};
+            if (els.cardholderAddress1 && !els.cardholderAddress1.value) els.cardholderAddress1.value = billingAddress.address1 || '';
+            if (els.cardholderCity && !els.cardholderCity.value) els.cardholderCity.value = billingAddress.city || '';
+            if (els.cardholderState && !els.cardholderState.value) els.cardholderState.value = billingAddress.state || '';
+            if (els.cardholderZip && !els.cardholderZip.value) els.cardholderZip.value = billingAddress.zip || '';
+
             const amount = (details.invoice.amount_cents / 100).toFixed(2);
             els.title.textContent = details.invoice.invoice_number
                 ? `Invoice #${details.invoice.invoice_number}`
@@ -1012,14 +1021,24 @@
                     els.submitStatus.textContent = "Please enter the payer's first and last name.";
                     return;
                 }
+
+                const address1 = els.cardholderAddress1 ? els.cardholderAddress1.value.trim() : '';
+                const city     = els.cardholderCity      ? els.cardholderCity.value.trim()      : '';
+                const stateAbbr = els.cardholderState    ? els.cardholderState.value.trim()     : '';
+                const zip      = els.cardholderZip       ? els.cardholderZip.value.trim()       : '';
+                if (!address1 || !city || !stateAbbr || !zip) {
+                    els.submitStatus.textContent = 'Please enter the full billing address.';
+                    return;
+                }
+
                 state.cardholder = {
                     first_name: firstName,
                     last_name: lastName,
                     billing_address: {
-                        address1: els.cardholderAddress1 ? els.cardholderAddress1.value.trim() : '',
-                        city:     els.cardholderCity      ? els.cardholderCity.value.trim()      : '',
-                        state:    els.cardholderState     ? els.cardholderState.value.trim()     : '',
-                        zip:      els.cardholderZip       ? els.cardholderZip.value.trim()       : '',
+                        address1: address1,
+                        city:     city,
+                        state:    stateAbbr,
+                        zip:      zip,
                     },
                 };
             }

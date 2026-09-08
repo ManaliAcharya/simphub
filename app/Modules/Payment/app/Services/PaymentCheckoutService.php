@@ -83,6 +83,7 @@ class PaymentCheckoutService
                 'client_emails'        => array_values(array_filter((array) $invoice->recipient_emails)),
                 'success_redirect_url' => $invoice->success_redirect_url ?: null,
                 'cancel_redirect_url'  => $invoice->cancel_redirect_url ?: null,
+                'billing_address'      => $this->resolveBillingAddressPrefill($invoice),
             ],
             'payment_options' => $options->map(function ($decision) use ($invoice, $clientGwCreds, $commonEnv, $feeClient) {
                 $availability = strtolower((string) $decision->gateway) === 'paya'
@@ -122,6 +123,54 @@ class PaymentCheckoutService
                     'unavailable_reason' => $availability['reason'],
                 ];
             })->values()->all(),
+        ];
+    }
+
+    /**
+     * Prefill for the checkout page's (editable) billing address fields — reuses
+     * the same Invoice.BillAddr already stored in raw_payload for the PDF
+     * (InvoicePdfService::resolveBillingAddress). Only QuickBooks invoices have
+     * this shape in raw_payload; every other PMS falls through to blanks, same
+     * as the PDF does. Falls back field-by-field to ShipAddr for whichever of
+     * address1/city/state/zip BillAddr doesn't have — better a mostly-filled
+     * prefill than an empty one, since the customer can still edit any of it.
+     */
+    private function resolveBillingAddressPrefill(Invoice $invoice): array
+    {
+        $customerName = trim((string) data_get($invoice->raw_payload, 'invoice.Invoice.CustomerRef.name', ''));
+
+        $billAddr = $this->extractQboAddressFields(data_get($invoice->raw_payload, 'invoice.Invoice.BillAddr'), $customerName);
+        $shipAddr = $this->extractQboAddressFields(data_get($invoice->raw_payload, 'invoice.Invoice.ShipAddr'), $customerName);
+
+        return [
+            'address1' => $billAddr['address1'] !== '' ? $billAddr['address1'] : $shipAddr['address1'],
+            'city'     => $billAddr['city']     !== '' ? $billAddr['city']     : $shipAddr['city'],
+            'state'    => $billAddr['state']    !== '' ? $billAddr['state']    : $shipAddr['state'],
+            'zip'      => $billAddr['zip']      !== '' ? $billAddr['zip']      : $shipAddr['zip'],
+        ];
+    }
+
+    /**
+     * QuickBooks' PhysicalAddress shape into flat address1/city/state/zip.
+     * Skips Line1 when it's just the customer's own name — QuickBooks defaults
+     * it there when no street address is on file — falling back to Line2.
+     */
+    private function extractQboAddressFields(mixed $addr, string $customerName): array
+    {
+        if (! is_array($addr)) {
+            return ['address1' => '', 'city' => '', 'state' => '', 'zip' => ''];
+        }
+
+        $line1 = trim((string) ($addr['Line1'] ?? ''));
+        if ($line1 !== '' && $customerName !== '' && strcasecmp($line1, $customerName) === 0) {
+            $line1 = trim((string) ($addr['Line2'] ?? ''));
+        }
+
+        return [
+            'address1' => $line1,
+            'city'     => (string) ($addr['City'] ?? ''),
+            'state'    => (string) ($addr['CountrySubDivisionCode'] ?? ''),
+            'zip'      => (string) ($addr['PostalCode'] ?? ''),
         ];
     }
 
