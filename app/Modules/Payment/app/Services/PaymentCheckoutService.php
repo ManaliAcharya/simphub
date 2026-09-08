@@ -141,8 +141,18 @@ class PaymentCheckoutService
             return ['address1' => '', 'city' => '', 'state' => '', 'zip' => ''];
         }
 
+        $customerName = trim((string) data_get($invoice->raw_payload, 'invoice.Invoice.CustomerRef.name', ''));
+        $line1        = trim((string) ($addr['Line1'] ?? ''));
+
+        // QuickBooks defaults BillAddr.Line1 to the customer's own name when no
+        // street address is on file — fall back to Line2, or blank, rather than
+        // prefilling a person's name into the address field.
+        if ($line1 !== '' && $customerName !== '' && strcasecmp($line1, $customerName) === 0) {
+            $line1 = trim((string) ($addr['Line2'] ?? ''));
+        }
+
         return [
-            'address1' => (string) ($addr['Line1'] ?? ''),
+            'address1' => $line1,
             'city'     => (string) ($addr['City'] ?? ''),
             'state'    => (string) ($addr['CountrySubDivisionCode'] ?? ''),
             'zip'      => (string) ($addr['PostalCode'] ?? ''),
