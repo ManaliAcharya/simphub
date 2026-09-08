@@ -122,11 +122,11 @@ class PaymentSessionController extends Controller
             'paya_bank_token'        => ['nullable', 'string'],
             'first_name'             => ['required', 'string', 'max:100'],
             'last_name'              => ['required', 'string', 'max:100'],
-            'billing_address'        => ['nullable', 'array'],
-            'billing_address.address1' => ['nullable', 'string', 'max:255'],
-            'billing_address.city'     => ['nullable', 'string', 'max:100'],
-            'billing_address.state'    => ['nullable', 'string', 'max:2'],
-            'billing_address.zip'      => ['nullable', 'string', 'max:10'],
+            'billing_address'        => ['required', 'array'],
+            'billing_address.address1' => ['required', 'string', 'max:255'],
+            'billing_address.city'     => ['required', 'string', 'max:100'],
+            'billing_address.state'    => ['required', 'string', 'max:2'],
+            'billing_address.zip'      => ['required', 'string', 'max:10'],
         ]);
 
         $extraBilling = [];

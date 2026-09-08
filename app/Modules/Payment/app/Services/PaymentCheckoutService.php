@@ -83,6 +83,7 @@ class PaymentCheckoutService
                 'client_emails'        => array_values(array_filter((array) $invoice->recipient_emails)),
                 'success_redirect_url' => $invoice->success_redirect_url ?: null,
                 'cancel_redirect_url'  => $invoice->cancel_redirect_url ?: null,
+                'billing_address'      => $this->resolveBillingAddressPrefill($invoice),
             ],
             'payment_options' => $options->map(function ($decision) use ($invoice, $clientGwCreds, $commonEnv, $feeClient) {
                 $availability = strtolower((string) $decision->gateway) === 'paya'
@@ -122,6 +123,29 @@ class PaymentCheckoutService
                     'unavailable_reason' => $availability['reason'],
                 ];
             })->values()->all(),
+        ];
+    }
+
+    /**
+     * Prefill for the checkout page's (editable) billing address fields — reuses
+     * the same Invoice.BillAddr already stored in raw_payload for the PDF
+     * (InvoicePdfService::resolveBillingAddress). Only QuickBooks invoices have
+     * this shape in raw_payload; every other PMS falls through to blanks, same
+     * as the PDF does.
+     */
+    private function resolveBillingAddressPrefill(Invoice $invoice): array
+    {
+        $addr = data_get($invoice->raw_payload, 'invoice.Invoice.BillAddr');
+
+        if (! is_array($addr)) {
+            return ['address1' => '', 'city' => '', 'state' => '', 'zip' => ''];
+        }
+
+        return [
+            'address1' => (string) ($addr['Line1'] ?? ''),
+            'city'     => (string) ($addr['City'] ?? ''),
+            'state'    => (string) ($addr['CountrySubDivisionCode'] ?? ''),
+            'zip'      => (string) ($addr['PostalCode'] ?? ''),
         ];
     }
 
