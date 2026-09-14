@@ -1,0 +1,1626 @@
+openapi: 3.0.3
+info:
+  title: Payment Middleware API
+  version: "1.0.0"
+  description: |
+    API surface for the modules in this app that currently expose real, working
+    endpoints: Inbound, Payment, Outbound, BookSync, and Boarding.
+
+    **Not included**: Routing, Billing, Reconciliation, Audit, and TrustAccounting
+    modules each have a `routes/api.php` file (per the module-per-domain
+    convention documented in CLAUDE.md) but currently contain only placeholder
+    route groups with no endpoints registered inside them. The `Auth` module's
+    `/api/v1/auths` CRUD routes are also excluded — they're gated by
+    `auth:sanctum`, but `laravel/sanctum` is not installed in this project
+    (absent from composer.json/composer.lock), so that route currently errors
+    if hit and is not a usable API today.
+
+    **Authentication is not uniform across modules** — see the security scheme
+    descriptions below and the per-operation `security` blocks. Several
+    endpoint groups (Payment session endpoints, Outbound direct/terminal
+    endpoints) have no authentication middleware at all; security there relies
+    entirely on the unguessability of the token/ID in the URL.
+  contact:
+    name: Impact Techlab
+servers:
+  - url: https://simphub.io
+    description: Production
+  - url: https://staging.simphub.io
+    description: Staging (placeholder — replace with the actual staging host)
+
+tags:
+  - name: Inbound - Webhooks & Ingestion
+    description: PMS webhook receivers and raw invoice ingestion. Unauthenticated by design (PMS providers call these directly).
+  - name: Inbound - CRM API
+    description: Bearer-token-authenticated API for a CRM/ISO platform to create and manage invoices, transactions, and refunds directly (bypassing PMS webhooks).
+  - name: Payment
+    description: Public hosted-checkout endpoints, keyed by an opaque payment-session token. No authentication middleware.
+  - name: Outbound
+    description: Direct-charge and terminal endpoints keyed by merchant ID. No authentication middleware.
+  - name: BookSync
+    description: Client-API-key-authenticated merchant management, plus HMAC-signed transaction posting/refund/void endpoints.
+  - name: Boarding
+    description: Client-API-key-authenticated merchant boarding-link issuance.
+
+security: []
+
+paths:
+  # ─────────────────────────────────────────────────────────────────────────
+  # INBOUND — Webhooks & Ingestion (unauthenticated)
+  # ─────────────────────────────────────────────────────────────────────────
+  /api/v1/inbound/webhooks/{source}:
+    post:
+      tags: [Inbound - Webhooks & Ingestion]
+      summary: Receive a PMS webhook event
+      description: |
+        Dispatches to a per-PMS webhook service based on `{source}`. Each service
+        (Clio/Zoho/QuickBooks/Lawcus/Wave) owns its own request body shape and
+        signature verification — not modeled here since it varies per provider.
+        An unrecognized `source` value is accepted (202) but not processed.
+      security: []
+      parameters:
+        - name: source
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [clio, zoho, quickbooks, lawcus, wave]
+          description: Any other value is accepted but not dispatched to a handler.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Provider-specific webhook payload — shape varies per source.
+      responses:
+        "200":
+          description: Accepted and processed (exact shape depends on the provider's webhook service).
+        "202":
+          description: Accepted for an unrecognized source; not processed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted: { type: boolean, example: true }
+                  source: { type: string, example: "unknown-provider" }
+        "401":
+          description: Signature verification failed (provider-dependent).
+
+  /api/v1/inbound/webhooks/mindbody/{siteId}:
+    post:
+      tags: [Inbound - Webhooks & Ingestion]
+      summary: Receive a Mindbody webhook event
+      security: []
+      parameters:
+        - name: siteId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: Handled by MindbodyWebhookService — response shape is provider-specific.
+
+  /api/v1/inbound/invoices/{source}:
+    post:
+      tags: [Inbound - Webhooks & Ingestion]
+      summary: Ingest an invoice directly (non-webhook path)
+      description: |
+        Generic invoice-ingestion endpoint. For `source=custom`, this synchronously
+        runs the full routing + charge flow and returns a completed payment result;
+        for every other source, it creates the invoice/payment session and emails
+        a payment link asynchronously.
+      security: []
+      parameters:
+        - name: source
+          in: path
+          required: true
+          schema: { type: string }
+          example: quickbooks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: |
+                Must contain an invoice identifier under one of: `external_invoice_id`,
+                `invoice_id`, `bill_id`, `entity_id`, `id`, `invoice.id`, or
+                `bill.bill_id`, plus `pms_client_id`. All other fields are passed
+                through to the ingestion processor as-is.
+              required: [pms_client_id]
+              properties:
+                external_invoice_id: { type: string }
+                pms_client_id: { type: string }
+              additionalProperties: true
+            examples:
+              standard:
+                summary: Standard (async payment-link) ingestion
+                value: { external_invoice_id: "INV-1001", pms_client_id: "client_abc" }
+              custom:
+                summary: source=custom (synchronous charge)
+                value:
+                  external_invoice_id: "INV-1001"
+                  pms_client_id: "client_abc"
+                  routing_number: "123456789"
+                  account_number: "1234567890"
+                  account_type: checking
+                  amount_cents: 10000
+                  fund_type: OPERATING
+                  transaction_type: debit
+      responses:
+        "200":
+          description: Synchronous charge completed (source=custom only).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: APPROVED }
+                  transaction_id: { type: string, format: uuid }
+                  gateway_txn_id: { type: string }
+                  invoice_id: { type: string, format: uuid }
+                  invoice_status: { type: string, example: PAID }
+        "202":
+          description: Invoice/payment-session created; payment link emailed (all sources except custom).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  invoice_id: { type: string, format: uuid }
+                  external_invoice_id: { type: string }
+                  pms_client_id: { type: string }
+                  payment_session_id: { type: string, format: uuid }
+                  idempotency_key: { type: string }
+                  payment_link_token: { type: string }
+                  payment_link_url: { type: string, format: uri }
+                  emails_sent: { type: integer, example: 1 }
+        "422":
+          description: Missing required fields, or a RuntimeException from the routing/charge/validation pipeline (source=custom).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageError" }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # INBOUND — CRM API (CrmApiAuth bearer)
+  # ─────────────────────────────────────────────────────────────────────────
+  /api/v1/invoices:
+    post:
+      tags: [Inbound - CRM API]
+      summary: Create an invoice and get a payment link
+      security: [{ CrmApiAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount_cents, currency, invoice_number, customer, success_redirect_url, cancel_redirect_url]
+              properties:
+                amount_cents: { type: integer, minimum: 1 }
+                currency: { type: string, minLength: 3, maxLength: 3, example: USD }
+                invoice_number: { type: string, maxLength: 64 }
+                description: { type: string, maxLength: 500, nullable: true }
+                customer:
+                  type: object
+                  required: [name, email]
+                  properties:
+                    name: { type: string, maxLength: 255 }
+                    email: { type: string, format: email, maxLength: 255 }
+                    phone: { type: string, maxLength: 30, nullable: true }
+                success_redirect_url: { type: string, format: uri }
+                cancel_redirect_url: { type: string, format: uri }
+                metadata:
+                  type: object
+                  nullable: true
+                  description: Max 20 keys.
+      responses:
+        "201":
+          description: Invoice created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoice_id: { type: string, format: uuid }
+                  status: { type: string, example: pending }
+                  payment_url: { type: string, format: uri }
+                  expires_at: { type: string, format: date-time }
+        "400":
+          description: Ingestion failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmError" }
+        "401": { $ref: "#/components/responses/CrmUnauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/invoices/{invoice_id}:
+    get:
+      tags: [Inbound - CRM API]
+      summary: Get an invoice
+      description: Only returns invoices belonging to the authenticated client with `pms_source=custom`.
+      security: [{ CrmApiAuth: [] }]
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoice_id: { type: string, format: uuid }
+                  invoice_number: { type: string }
+                  status: { type: string, example: pending }
+                  amount_cents: { type: integer }
+                  currency: { type: string }
+                  description: { type: string, nullable: true }
+                  customer:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      email: { type: string }
+                      phone: { type: string, nullable: true }
+                  metadata: { type: object, nullable: true }
+                  payment_url: { type: string, format: uri, nullable: true }
+                  expires_at: { type: string, format: date-time, nullable: true }
+                  created_at: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/CrmUnauthorized" }
+        "404":
+          description: Not found (or not owned by this client / not a custom-source invoice).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmError" }
+
+  /api/v1/invoices/{invoice_id}/cancel:
+    post:
+      tags: [Inbound - CRM API]
+      summary: Cancel an invoice
+      security: [{ CrmApiAuth: [] }]
+      parameters:
+        - name: invoice_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Cancelled. Any pending/awaiting/processing payment sessions are set to FAILED; a webhook is dispatched if the client has one configured.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoice_id: { type: string, format: uuid }
+                  status: { type: string, example: cancelled }
+        "400":
+          description: Already cancelled, or has a captured transaction that must be voided instead via /v1/transactions/{transaction_id}/cancel.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmError" }
+        "401": { $ref: "#/components/responses/CrmUnauthorized" }
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmError" }
+
+  /api/v1/transactions:
+    get:
+      tags: [Inbound - CRM API]
+      summary: List transactions
+      security: [{ CrmApiAuth: [] }]
+      parameters:
+        - name: gateway
+          in: query
+          schema: { type: string }
+          description: Must be one of the client's allowed_payment_gateways, or a 400 is returned.
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: start_date
+          in: query
+          schema: { type: string, format: date }
+        - name: end_date
+          in: query
+          schema: { type: string, format: date }
+        - name: per_page
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        transaction_id: { type: string, format: uuid }
+                        gateway_txn_id: { type: string }
+                        invoice_id: { type: string, format: uuid }
+                        invoice_number: { type: string }
+                        gateway: { type: string }
+                        transaction_type: { type: string, example: debit }
+                        status: { type: string, example: CAPTURED }
+                        amount_cents: { type: integer }
+                        currency: { type: string }
+                        created_at: { type: string, format: date-time }
+                  meta:
+                    type: object
+                    properties:
+                      total: { type: integer }
+                      per_page: { type: integer }
+                      page: { type: integer }
+        "400":
+          description: Requested gateway is not in the client's allowed list.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmError" }
+        "401": { $ref: "#/components/responses/CrmUnauthorized" }
+
+  /api/v1/transactions/{transaction_id}/cancel:
+    post:
+      tags: [Inbound - CRM API]
+      summary: Void a captured transaction
+      security: [{ CrmApiAuth: [] }]
+      parameters:
+        - name: transaction_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Voided. Invoice set to CANCELLED, pending sessions set to FAILED.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transaction_id: { type: string, format: uuid }
+                  invoice_id: { type: string, format: uuid }
+                  status: { type: string, example: voided }
+        "400":
+          description: Not in a voidable state, invoice already cancelled, gateway void call failed, or gateway declined the void (already settled — use refund instead).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmError" }
+        "401": { $ref: "#/components/responses/CrmUnauthorized" }
+        "404":
+          description: Not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmError" }
+
+  /api/v1/refunds:
+    post:
+      tags: [Inbound - CRM API]
+      summary: Refund a transaction
+      security: [{ CrmApiAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transaction_id]
+              properties:
+                transaction_id: { type: string, format: uuid }
+                amount_cents:
+                  type: integer
+                  minimum: 1
+                  nullable: true
+                  description: Omit for a full refund.
+                reason: { type: string, maxLength: 500, nullable: true }
+      responses:
+        "201":
+          description: Refund processed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  refund_id: { type: string, format: uuid }
+                  original_transaction_id: { type: string, format: uuid }
+                  invoice_id: { type: string, format: uuid }
+                  invoice_number: { type: string }
+                  status: { type: string, example: CAPTURED }
+                  amount_cents: { type: integer }
+                  currency: { type: string }
+                  gateway: { type: string }
+                  gateway_txn_id: { type: string }
+                  created_at: { type: string, format: date-time }
+        "400":
+          description: Refund failed at the gateway or business-rule level.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmError" }
+        "401": { $ref: "#/components/responses/CrmUnauthorized" }
+        "404":
+          description: Transaction not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CrmError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/clients/{client_id}/email-config:
+    get:
+      tags: [Inbound - CRM API]
+      summary: Get payment-link email configuration
+      description: "`{client_id}` is accepted in the path but ignored — the client is always resolved from the bearer token."
+      security: [{ CrmApiAuth: [] }]
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK — defaults shown if no configuration row exists yet.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmailConfig" }
+        "401": { $ref: "#/components/responses/CrmUnauthorized" }
+    put:
+      tags: [Inbound - CRM API]
+      summary: Update payment-link email configuration
+      security: [{ CrmApiAuth: [] }]
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              description: All fields optional — only supplied fields are updated.
+              properties:
+                subject_template: { type: string, maxLength: 500 }
+                subject_template_updated: { type: string, maxLength: 500 }
+                body_header: { type: string, maxLength: 5000, nullable: true }
+                body_footer: { type: string, maxLength: 5000, nullable: true }
+                primary_color: { type: string, pattern: "^#[0-9A-Fa-f]{6}$", example: "#2196F3" }
+                reply_to_email: { type: string, format: email, nullable: true }
+                reply_to_name: { type: string, nullable: true }
+                from_name: { type: string, nullable: true }
+                attach_pdf: { type: boolean }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EmailConfig" }
+        "401": { $ref: "#/components/responses/CrmUnauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/clients/{client_id}/email-config/logo:
+    post:
+      tags: [Inbound - CRM API]
+      summary: Upload a logo for payment-link emails
+      security: [{ CrmApiAuth: [] }]
+      parameters:
+        - name: client_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [logo]
+              properties:
+                logo:
+                  type: string
+                  format: binary
+                  description: PNG, JPG, JPEG, or SVG. Max 512 KB.
+      responses:
+        "200":
+          description: Uploaded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logo_url: { type: string, format: uri }
+        "401": { $ref: "#/components/responses/CrmUnauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # PAYMENT (no auth — opaque session token in the URL)
+  # ─────────────────────────────────────────────────────────────────────────
+  /api/v1/payment/sessions/{session}:
+    get:
+      tags: [Payment]
+      summary: Get hosted-checkout session details
+      security: []
+      parameters:
+        - name: session
+          in: path
+          required: true
+          schema: { type: string }
+          description: The payment session's hosted_url_token (not its internal ID).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionDetails" }
+        "404":
+          description: No session found for this token (default Laravel model-not-found response).
+        "422":
+          description: Link is not currently payable (voided, disabled, already paid, expired) or no routing option is available.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageError" }
+
+  /api/v1/payment/sessions/{session}/paya-form-url:
+    get:
+      tags: [Payment]
+      summary: Get a hosted Paya bank-account-entry form URL
+      security: []
+      parameters:
+        - name: session
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: { type: string, format: uri }
+        "404":
+          description: Session not found.
+        "422":
+          description: Session not payable, no active Paya routing rule, corrupted MID credentials, or form-generation failure.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageError" }
+
+  /api/v1/payment/sessions/{session}/tokenize:
+    post:
+      tags: [Payment]
+      summary: Tokenize bank account details for Paya ACH
+      security: []
+      parameters:
+        - name: session
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [routing_number, account_number]
+              properties:
+                routing_number: { type: string, pattern: "^\\d{9}$" }
+                account_number: { type: string, pattern: "^\\d{4,17}$" }
+                account_type: { type: string, enum: [checking, savings], nullable: true }
+                first_name: { type: string, maxLength: 100, nullable: true }
+                last_name: { type: string, maxLength: 100, nullable: true }
+                address1: { type: string, maxLength: 255, nullable: true }
+                city: { type: string, maxLength: 100, nullable: true }
+                state: { type: string, maxLength: 2, nullable: true }
+                zip: { type: string, maxLength: 10, nullable: true }
+                phone_number: { type: string, maxLength: 20, nullable: true }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  account_type: { type: string, example: checking }
+                  last4: { type: string, example: "6789" }
+        "404":
+          description: Session not found.
+        "422":
+          description: Session not in a payable state, or validation failure.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageError" }
+
+  /api/v1/payment/sessions/{session}/submit:
+    post:
+      tags: [Payment]
+      summary: Submit payment for a hosted-checkout session
+      security: []
+      parameters:
+        - name: session
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, routing_rule_id, first_name, last_name, billing_address]
+              properties:
+                token: { type: string, description: "Gateway tokenizer token, or a sentinel like __DIRECT_PAY__/__paya_ach__ for those flows." }
+                payment_method: { type: string, nullable: true, example: CARD }
+                routing_rule_id: { type: string }
+                paya_bank_token: { type: string, nullable: true }
+                first_name: { type: string, maxLength: 100 }
+                last_name: { type: string, maxLength: 100 }
+                billing_address:
+                  type: object
+                  required: [address1, city, state, zip]
+                  properties:
+                    address1: { type: string, maxLength: 255 }
+                    city: { type: string, maxLength: 100 }
+                    state: { type: string, maxLength: 2 }
+                    zip: { type: string, maxLength: 10 }
+      responses:
+        "200":
+          description: Payment approved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: APPROVED }
+                  transaction_id: { type: string, format: uuid }
+                  gateway_txn_id: { type: string }
+                  invoice_status: { type: string, example: PAID }
+                  redirect_url: { type: string, format: uri, nullable: true }
+        "404":
+          description: Session not found.
+        "422":
+          description: |
+            Declined, or a configuration/validation problem. Example messages include:
+            "Payment token is required.", "Payment option selection is required.",
+            "Payer first and last name are required to process this payment.",
+            "FluidPay API key is not configured...", "Paya credentials are not
+            configured...", "NMI security key is not configured...",
+            "Payment could not be processed: ...", a gateway decline message, or a
+            link-state message ("This invoice has been voided...", "This payment
+            link has been disabled.", "This invoice has already been paid.",
+            "This payment link is no longer available.").
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessageError" }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # OUTBOUND (no auth)
+  # ─────────────────────────────────────────────────────────────────────────
+  /api/v1/payment/direct/{merchantId}/tokenize:
+    post:
+      tags: [Outbound]
+      summary: Tokenize bank details for a direct (non-checkout-session) Paya charge
+      security: []
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: string }
+          description: Matched against clients.pms_client_id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [routing_number, account_number]
+              properties:
+                routing_number: { type: string, pattern: "^\\d{9}$" }
+                account_number: { type: string, pattern: "^\\d{4,17}$" }
+                account_type: { type: string, enum: [checking, savings], nullable: true }
+                first_name: { type: string, maxLength: 100, nullable: true }
+                last_name: { type: string, maxLength: 100, nullable: true }
+                address1: { type: string, maxLength: 255, nullable: true }
+                city: { type: string, maxLength: 100, nullable: true }
+                state: { type: string, maxLength: 2, nullable: true }
+                zip: { type: string, maxLength: 10, nullable: true }
+                phone_number: { type: string, maxLength: 20, nullable: true }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  account_type: { type: string, example: checking }
+                  last4: { type: string, example: "6789" }
+        "404":
+          description: Merchant not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlatErrorObject" }
+        "422":
+          description: Tokenization failed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlatErrorObject" }
+
+  /api/v1/payment/direct/{merchantId}/charge:
+    post:
+      tags: [Outbound]
+      summary: Charge a merchant directly via Paya ACH
+      description: |
+        Always tokenizes with hardcoded test ACH details
+        (routing_number 490000018 / account_number 123456789) —
+        this endpoint does not accept real bank details from the caller.
+      security: []
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount_cents]
+              properties:
+                amount_cents: { type: integer, minimum: 1 }
+                payment_method: { type: string, enum: [ACH, CARD], default: ACH }
+                fund_type: { type: string, enum: [OPERATING, TRUST], default: OPERATING }
+                currency: { type: string, minLength: 3, maxLength: 3, default: USD }
+      responses:
+        "200":
+          description: Approved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: APPROVED }
+                  transaction_id: { type: string, format: uuid }
+                  gateway_txn_id: { type: string }
+                  gateway: { type: string, example: paya }
+                  amount_cents: { type: integer }
+                  currency: { type: string }
+                  payment_method: { type: string }
+        "404":
+          description: Merchant not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlatErrorObject" }
+        "422":
+          description: Routing decision failed, or gateway declined.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/FlatErrorObject"
+                  - type: object
+                    properties:
+                      status: { type: string, example: DECLINED }
+                      message: { type: string }
+                      gateway: { type: string, example: paya }
+        "502":
+          description: Tokenization or gateway charge call itself failed (not a decline — a transport/config error).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlatErrorObject" }
+
+  /api/v1/terminal/{merchantId}/charge:
+    post:
+      tags: [Outbound]
+      summary: Charge via a physical/virtual terminal
+      description: |
+        Uses the first entry in the merchant's allowed_terminals list — there is
+        no way to select a different terminal via this request. The request body
+        is passed through verbatim to the resolved terminal adapter, so its
+        contract is adapter-specific and not modeled here.
+      security: []
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Adapter-specific — passed through as-is.
+              additionalProperties: true
+      responses:
+        "200":
+          description: Adapter-specific response, passed through as-is.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        "422":
+          description: Merchant has no terminal configured, or no matching active TerminalConfiguration.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlatErrorObject" }
+        "404":
+          description: Merchant not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlatErrorObject" }
+        "502":
+          description: Terminal adapter threw an exception.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlatErrorObject" }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BOOKSYNC (client bearer key; sale/refund/void additionally HMAC-signed)
+  # ─────────────────────────────────────────────────────────────────────────
+  /booksync/api/v1/merchants:
+    get:
+      tags: [BookSync]
+      summary: List merchants
+      security: [{ BookSyncApiKey: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/BookSyncMerchant" }
+                  total: { type: integer }
+        "401": { $ref: "#/components/responses/BookSyncUnauthorized" }
+    post:
+      tags: [BookSync]
+      summary: Create a merchant
+      description: The response is the only time `signing_secret` and `merchant_token` are ever returned — store them immediately.
+      security: [{ BookSyncApiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [merchant_name]
+              properties:
+                merchant_name: { type: string, maxLength: 255 }
+                merchant_email: { type: string, format: email, maxLength: 255, nullable: true }
+                external_merchant_id: { type: string, maxLength: 100, nullable: true }
+                callback_url_success: { type: string, format: uri, maxLength: 2048, nullable: true }
+                callback_url_fail: { type: string, format: uri, maxLength: 2048, nullable: true }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/BookSyncMerchant"
+                  - type: object
+                    properties:
+                      merchant_token: { type: string, description: "One-time only — the setup_token, needed for the customer to complete QB OAuth." }
+                      signing_secret: { type: string, description: "One-time only — required to compute X-BookSync-Signature on sale/refund/void calls." }
+        "401": { $ref: "#/components/responses/BookSyncUnauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /booksync/api/v1/merchants/{merchantId}:
+    get:
+      tags: [BookSync]
+      summary: Get a merchant
+      security: [{ BookSyncApiKey: [] }]
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncMerchant" }
+        "401": { $ref: "#/components/responses/BookSyncUnauthorized" }
+        "404":
+          description: Not found (default Laravel model-not-found response).
+
+  /booksync/api/v1/merchants/{merchantId}/rotate-secret:
+    post:
+      tags: [BookSync]
+      summary: Rotate a merchant's HMAC signing secret
+      description: The old secret remains valid for a 30-minute grace period to avoid breaking in-flight signed requests.
+      security: [{ BookSyncApiKey: [] }]
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Rotated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  merchant_id: { type: string }
+                  signing_secret: { type: string }
+                  previous_secret_valid_until: { type: string, format: date-time }
+        "401": { $ref: "#/components/responses/BookSyncUnauthorized" }
+        "404":
+          description: Not found.
+
+  /booksync/api/v1/merchants/{merchantId}/disconnect:
+    post:
+      tags: [BookSync]
+      summary: Disconnect a merchant's QuickBooks connection
+      security: [{ BookSyncApiKey: [] }]
+      parameters:
+        - name: merchantId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Disconnected — merchant returns to pending_qb_connect.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  merchant_id: { type: string }
+                  status: { type: string, example: pending_qb_connect }
+                  message: { type: string }
+                  setup_link: { type: string, format: uri }
+        "401": { $ref: "#/components/responses/BookSyncUnauthorized" }
+        "404":
+          description: Not found.
+
+  /booksync/api/v1/batches/{batchId}:
+    get:
+      tags: [BookSync]
+      summary: Get a posting batch's status
+      security: [{ BookSyncApiKey: [] }]
+      parameters:
+        - name: batchId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncBatchResult" }
+        "401": { $ref: "#/components/responses/BookSyncUnauthorized" }
+        "404":
+          description: Batch not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlatErrorObject" }
+
+  /booksync/sale/{merchantToken}:
+    post:
+      tags: [BookSync]
+      summary: Post a batch of sale transactions
+      description: |
+        Authenticated by client bearer key (route middleware) AND per-request
+        HMAC signing (checked manually inside the controller) AND merchant
+        active-status. Request-body validation (via a FormRequest) runs before
+        the manual HMAC/status checks, so a malformed body returns 422 even with
+        a bad signature.
+      security: [{ BookSyncApiKey: [], BookSyncHmacTimestamp: [], BookSyncHmacSignature: [] }]
+      parameters:
+        - name: merchantToken
+          in: path
+          required: true
+          schema: { type: string }
+          description: The merchant's posting_token (not its merchant_id).
+        - $ref: "#/components/parameters/BookSyncTimestampHeader"
+        - $ref: "#/components/parameters/BookSyncSignatureHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [transactions]
+              properties:
+                batch_date: { type: string, format: date, nullable: true }
+                transactions:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [reference, amount]
+                    properties:
+                      reference: { type: string, maxLength: 100 }
+                      customer_name: { type: string, maxLength: 255, nullable: true }
+                      customer_email: { type: string, format: email, nullable: true }
+                      amount: { type: number, format: float, minimum: 0.01 }
+                      payment_method: { type: string, enum: [Cash, "Credit Card", "Debit Card", Check, Other], nullable: true }
+                      date: { type: string, format: date, nullable: true }
+                      memo: { type: string, maxLength: 500, nullable: true }
+                      surcharge: { type: number, format: float, minimum: 0, nullable: true }
+      responses:
+        "200":
+          description: Batch processed (at least one transaction was new).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncBatchResult" }
+        "409":
+          description: Every transaction in the batch was already posted/queued elsewhere (fully duplicate batch).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncBatchResult" }
+        "401":
+          description: Missing bearer token, invalid key, merchant has no signing secret, or HMAC timestamp/signature problem.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncAuthError" }
+        "403":
+          description: Merchant is not active (pending_qb_connect / qb_token_expired / disabled).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncAuthError" }
+        "404":
+          description: |
+            Merchant token not found. Note: the current implementation includes a
+            `_debug` object in this response (resolved_client_id, token counts) —
+            worth removing before this is client-facing in production.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncAuthError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /booksync/refund/{merchantToken}:
+    post:
+      tags: [BookSync]
+      summary: Post a batch of refunds
+      description: Same auth model as /booksync/sale/{merchantToken}. Per-item failures don't fail the whole request — always 200 with a per-item results array.
+      security: [{ BookSyncApiKey: [], BookSyncHmacTimestamp: [], BookSyncHmacSignature: [] }]
+      parameters:
+        - name: merchantToken
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/BookSyncTimestampHeader"
+        - $ref: "#/components/parameters/BookSyncSignatureHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refunds]
+              properties:
+                refunds:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [reference, amount]
+                    properties:
+                      reference: { type: string, maxLength: 100 }
+                      original_reference: { type: string, maxLength: 100, nullable: true }
+                      amount: { type: number, format: float, minimum: 0.01 }
+                      payment_method: { type: string, enum: [Cash, "Credit Card", "Debit Card", Check, Other], nullable: true }
+                      customer_name: { type: string, maxLength: 255, nullable: true }
+                      customer_email: { type: string, format: email, nullable: true }
+                      transaction_date: { type: string, format: date, nullable: true }
+                      memo: { type: string, maxLength: 500, nullable: true }
+      responses:
+        "200":
+          description: Always 200 — check `failed` count and per-item `results[].status`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  posted: { type: integer }
+                  skipped: { type: integer }
+                  failed: { type: integer }
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        status: { type: string, enum: [posted, already_posted, failed] }
+                        reference: { type: string }
+                        original_reference: { type: string, nullable: true }
+                        amount: { type: number, format: float }
+                        qb_refundreceipt_id: { type: string, nullable: true }
+                        posted_at: { type: string, format: date-time, nullable: true }
+                        error: { type: string, nullable: true }
+        "401":
+          description: Auth/HMAC failure.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncAuthError" }
+        "403":
+          description: Merchant not active.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncAuthError" }
+        "404":
+          description: Merchant token not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncAuthError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /booksync/void/{merchantToken}:
+    post:
+      tags: [BookSync]
+      summary: Void previously-posted sale transactions
+      description: Same auth model as /booksync/sale/{merchantToken}. Per-item failures don't fail the whole request.
+      security: [{ BookSyncApiKey: [], BookSyncHmacTimestamp: [], BookSyncHmacSignature: [] }]
+      parameters:
+        - name: merchantToken
+          in: path
+          required: true
+          schema: { type: string }
+        - $ref: "#/components/parameters/BookSyncTimestampHeader"
+        - $ref: "#/components/parameters/BookSyncSignatureHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [voids]
+              properties:
+                voids:
+                  type: array
+                  minItems: 1
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [original_reference]
+                    properties:
+                      original_reference: { type: string, maxLength: 100 }
+      responses:
+        "200":
+          description: Always 200 — check `failed` count and per-item `results[].status`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total: { type: integer }
+                  voided: { type: integer }
+                  skipped: { type: integer }
+                  failed: { type: integer }
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        status: { type: string, enum: [voided, already_voided, failed] }
+                        original_reference: { type: string }
+                        qb_salesreceipt_id: { type: string, nullable: true }
+                        voided_at: { type: string, format: date-time, nullable: true }
+                        error: { type: string, nullable: true }
+        "401":
+          description: Auth/HMAC failure.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncAuthError" }
+        "403":
+          description: Merchant not active.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncAuthError" }
+        "404":
+          description: Merchant token not found.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookSyncAuthError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # BOARDING (client bearer key)
+  # ─────────────────────────────────────────────────────────────────────────
+  /api/v1/boarding/boarding-links:
+    post:
+      tags: [Boarding]
+      summary: Create or reissue a merchant boarding link
+      description: |
+        Idempotent on (client, merchant_ref): a repeat call with the same tier is
+        a no-op replay (200); a different tier re-issues the link (200) unless the
+        existing link has already been clicked, in which case the tier is locked
+        (409); a revoked merchant is reissued fresh (200).
+      security: [{ BoardingApiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [processor, scope, tier, agent_ref, merchant_ref, merchant_info]
+              properties:
+                processor: { type: string, enum: [square] }
+                scope: { type: string, enum: [merchant] }
+                tier: { type: string, enum: [rack_rate, flat_rate] }
+                agent_ref: { type: string, maxLength: 100 }
+                merchant_ref: { type: string, maxLength: 100 }
+                merchant_info:
+                  type: object
+                  required: [name]
+                  properties:
+                    name: { type: string, maxLength: 255 }
+                    zip: { type: string, maxLength: 20, nullable: true }
+                created_by: { type: string, maxLength: 100, nullable: true }
+      responses:
+        "201":
+          description: New boarding link created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardingLink" }
+        "200":
+          description: Idempotent replay, reissue, or tier update on an existing (unclicked) merchant record.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardingLink" }
+        "401": { $ref: "#/components/responses/BoardingUnauthorized" }
+        "409":
+          description: Link already clicked — tier is locked and cannot be changed.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlatErrorObject" }
+        "422":
+          description: No master link configured for this processor/tier combination on this client, or validation failure.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlatErrorObject" }
+
+  /api/v1/boarding/boarding-links/revoke:
+    post:
+      tags: [Boarding]
+      summary: Revoke all non-revoked boarding links for an agent
+      security: [{ BoardingApiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent_ref]
+              properties:
+                agent_ref: { type: string, maxLength: 100 }
+      responses:
+        "200":
+          description: Revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent_ref: { type: string }
+                  revoked_count: { type: integer }
+                  merchant_refs:
+                    type: array
+                    items: { type: string }
+        "401": { $ref: "#/components/responses/BoardingUnauthorized" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/boarding/merchants/{merchant_ref}:
+    get:
+      tags: [Boarding]
+      summary: Get a merchant's boarding status
+      security: [{ BoardingApiKey: [] }]
+      parameters:
+        - name: merchant_ref
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  merchant_ref: { type: string }
+                  merchant_info:
+                    type: object
+                    properties:
+                      name: { type: string }
+                      zip: { type: string, nullable: true }
+                  agent_ref: { type: string }
+                  processor: { type: string }
+                  scope: { type: string }
+                  tier: { type: string }
+                  status: { type: string }
+                  boarding_link: { type: string, format: uri }
+                  created_by: { type: string, nullable: true }
+                  created_at: { type: string, format: date-time }
+                  clicked_at: { type: string, format: date-time, nullable: true }
+                  revoked_at: { type: string, format: date-time, nullable: true }
+        "401": { $ref: "#/components/responses/BoardingUnauthorized" }
+        "404":
+          description: No merchant found for this merchant_ref.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlatErrorObject" }
+
+components:
+  securitySchemes:
+    CrmApiAuth:
+      type: http
+      scheme: bearer
+      description: |
+        Bearer token IS the client's `pms_client_id` (plain string equality
+        lookup against the clients table — not a separate hashed API-key
+        column). Applies to all /api/v1/invoices*, /api/v1/transactions*,
+        /api/v1/refunds, and /api/v1/clients/{client_id}/email-config* routes.
+    BookSyncApiKey:
+      type: http
+      scheme: bearer
+      description: |
+        Bearer token is compared with hash_equals() against each active
+        BookSyncClient's client_api_key (full-table scan, not an indexed
+        lookup). Required on every BookSync endpoint.
+    BookSyncHmacTimestamp:
+      type: apiKey
+      in: header
+      name: X-BookSync-Timestamp
+      description: |
+        Current Unix timestamp in seconds. Request is rejected if the
+        timestamp differs from server time by more than 300 seconds.
+        Only required on /booksync/sale, /booksync/refund, /booksync/void.
+    BookSyncHmacSignature:
+      type: apiKey
+      in: header
+      name: X-BookSync-Signature
+      description: |
+        `sha256=<hex HMAC-SHA256("{timestamp}.{raw_request_body}", signing_secret)>`.
+        `signing_secret` is returned only once, at merchant creation (or after a
+        rotate-secret call). During the 30 minutes after a rotation, a signature
+        computed with the previous secret is also accepted.
+        Only required on /booksync/sale, /booksync/refund, /booksync/void.
+    BoardingApiKey:
+      type: http
+      scheme: bearer
+      description: |
+        Same pattern as BookSyncApiKey — hash_equals() bearer-token comparison
+        against active BoardingClient.client_api_key rows.
+
+  parameters:
+    BookSyncTimestampHeader:
+      name: X-BookSync-Timestamp
+      in: header
+      required: true
+      schema: { type: string }
+      description: Current Unix timestamp (seconds). Part of the HMAC signing scheme — see the BookSyncHmacTimestamp security scheme.
+    BookSyncSignatureHeader:
+      name: X-BookSync-Signature
+      in: header
+      required: true
+      schema: { type: string }
+      description: "sha256=<hex HMAC>. See the BookSyncHmacSignature security scheme."
+
+  responses:
+    CrmUnauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/CrmError" }
+    BookSyncUnauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/FlatErrorObject" }
+    BoardingUnauthorized:
+      description: Missing or invalid bearer token.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/FlatErrorObject" }
+    ValidationError:
+      description: Standard Laravel validation failure.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: { type: string, example: "The given data was invalid." }
+              errors:
+                type: object
+                additionalProperties:
+                  type: array
+                  items: { type: string }
+
+  schemas:
+    MessageError:
+      type: object
+      description: 'Used by the Payment module — `{"message": "..."}`.'
+      properties:
+        message: { type: string }
+
+    FlatErrorObject:
+      type: object
+      description: 'Used by Outbound/BookSync/Boarding — `{"error": "..."}`.'
+      properties:
+        error: { type: string }
+
+    CrmError:
+      type: object
+      description: 'Used by the Inbound CRM API — `{"error": {"code": ..., "message": ...}}`.'
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: validation_error }
+            message: { type: string }
+
+    BookSyncAuthError:
+      type: object
+      description: BookSync's sale/refund/void auth-failure shape — richer than the plain FlatErrorObject, with a machine-readable rejection_reason.
+      properties:
+        error: { type: string }
+        detail: { type: string, nullable: true }
+        rejection_reason:
+          type: string
+          enum:
+            - merchant_not_found
+            - no_signing_secret
+            - timestamp_missing
+            - timestamp_invalid
+            - timestamp_stale
+            - signature_missing
+            - signature_invalid
+            - merchant_not_active
+        status: { type: string, nullable: true, description: "Present on 403 merchant_not_active responses." }
+
+    EmailConfig:
+      type: object
+      properties:
+        client_id: { type: string }
+        subject_template: { type: string }
+        subject_template_updated: { type: string }
+        body_header: { type: string, nullable: true }
+        body_footer: { type: string, nullable: true }
+        logo_url: { type: string, format: uri, nullable: true }
+        primary_color: { type: string, example: "#2196F3" }
+        reply_to_email: { type: string, nullable: true }
+        reply_to_name: { type: string, nullable: true }
+        from_name: { type: string, nullable: true }
+        attach_pdf: { type: boolean }
+
+    SessionDetails:
+      type: object
+      properties:
+        session:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            token: { type: string }
+            status: { type: string, example: AWAITING_PAYMENT }
+            expires_at: { type: string, format: date-time, nullable: true }
+        invoice:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            external_invoice_id: { type: string, nullable: true }
+            invoice_number: { type: string, nullable: true }
+            amount_cents: { type: integer }
+            currency: { type: string }
+            fund_type: { type: string }
+            status: { type: string }
+            client_emails:
+              type: array
+              items: { type: string, format: email }
+            success_redirect_url: { type: string, format: uri, nullable: true }
+            cancel_redirect_url: { type: string, format: uri, nullable: true }
+            billing_address:
+              type: object
+              description: Prefill only — pulled from QuickBooks Invoice.BillAddr (falling back per-field to ShipAddr) when available; blank strings otherwise.
+              properties:
+                address1: { type: string }
+                city: { type: string }
+                state: { type: string }
+                zip: { type: string }
+        payment_options:
+          type: array
+          items:
+            type: object
+            properties:
+              routing_rule_id: { type: string, format: uuid }
+              gateway: { type: string }
+              display_name: { type: string }
+              mid: { type: string }
+              payment_method: { type: string }
+              rule_matches: { type: object, additionalProperties: true }
+              hosted_fields:
+                type: object
+                properties:
+                  gateway: { type: string }
+                  fields: { type: object, additionalProperties: true }
+                  metadata: { type: object, additionalProperties: true }
+              is_available: { type: boolean }
+              unavailable_reason: { type: string, nullable: true }
+
+    BookSyncMerchant:
+      type: object
+      properties:
+        merchant_id: { type: string }
+        merchant_name: { type: string }
+        external_merchant_id: { type: string, nullable: true }
+        status: { type: string, example: pending_qb_connect }
+        qb_connected: { type: boolean }
+        qb_company_name: { type: string, nullable: true }
+        deposit_account: { type: string, nullable: true }
+        default_item: { type: string, nullable: true }
+        default_customer: { type: string, nullable: true }
+        surcharge_enabled: { type: boolean }
+        surcharge_item: { type: string, nullable: true }
+        setup_link: { type: string, format: uri }
+        posting_url: { type: string, format: uri }
+        callback_url_success: { type: string, format: uri, nullable: true }
+        callback_url_fail: { type: string, format: uri, nullable: true }
+        created_at: { type: string, format: date-time }
+        qb_connected_at: { type: string, format: date-time, nullable: true }
+
+    BookSyncBatchResult:
+      type: object
+      properties:
+        batch_id: { type: string }
+        batch_date: { type: string, format: date }
+        merchant_id: { type: string }
+        total_transactions: { type: integer }
+        posted: { type: integer }
+        skipped: { type: integer }
+        failed: { type: integer }
+        queued: { type: integer }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              reference: { type: string }
+              status: { type: string, example: queued }
+              amount: { type: number, format: float }
+              qb_txn_id: { type: string, nullable: true }
+              doc_number: { type: string, nullable: true }
+              original_batch_id: { type: string, nullable: true }
+
+    BoardingLink:
+      type: object
+      properties:
+        merchant_ref: { type: string }
+        processor: { type: string }
+        tier: { type: string }
+        status: { type: string, example: link_generated }
+        boarding_link: { type: string, format: uri }
+        created_at: { type: string, format: date-time }
