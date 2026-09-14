@@ -20,13 +20,91 @@ info:
     endpoint groups (Payment session endpoints, Outbound direct/terminal
     endpoints) have no authentication middleware at all; security there relies
     entirely on the unguessability of the token/ID in the URL.
+
+    ## Authentication
+
+    Four different schemes are in use, by module — there is no single API key
+    that works everywhere.
+
+    ### Inbound CRM API
+    `/api/v1/invoices*`, `/api/v1/transactions*`, `/api/v1/refunds`,
+    `/api/v1/clients/{client_id}/email-config*`
+
+    ```
+    Authorization: Bearer <pms_client_id>
+    ```
+
+    The bearer token **is** the client's `pms_client_id` — there is no
+    separate API-key value to generate. `{client_id}` in the URL path is
+    accepted but ignored; the client is always resolved from this header.
+
+    ### BookSync — merchant management
+    `/booksync/api/v1/merchants*`, `/booksync/api/v1/batches/{batchId}`
+
+    ```
+    Authorization: Bearer <client_api_key>
+    ```
+
+    `client_api_key` is issued when your BookSync client account is created —
+    contact us if you don't have one yet.
+
+    ### BookSync — transaction posting (sale / refund / void)
+    `/booksync/sale/{merchantToken}`, `/booksync/refund/{merchantToken}`,
+    `/booksync/void/{merchantToken}`
+
+    Requires the **same** `Authorization: Bearer <client_api_key>` header as
+    above, **plus** two more headers to sign the request:
+
+    ```
+    X-BookSync-Timestamp: <current unix timestamp, seconds>
+    X-BookSync-Signature: sha256=<hex HMAC-SHA256("{timestamp}.{raw_request_body}", signing_secret)>
+    ```
+
+    Example (bash):
+    ```
+    TIMESTAMP=$(date +%s)
+    BODY='{"transactions":[{"reference":"TXN-1","amount":25.00}]}'
+    SIGNATURE=$(printf '%s.%s' "$TIMESTAMP" "$BODY" | openssl dgst -sha256 -hmac "$SIGNING_SECRET" | sed 's/^.* //')
+
+    curl -X POST "https://simphub.io/booksync/sale/$MERCHANT_TOKEN" \
+      -H "Authorization: Bearer $CLIENT_API_KEY" \
+      -H "X-BookSync-Timestamp: $TIMESTAMP" \
+      -H "X-BookSync-Signature: sha256=$SIGNATURE" \
+      -H "Content-Type: application/json" \
+      -d "$BODY"
+    ```
+
+    `signing_secret` is returned **only once** — in the response body when the
+    merchant is created (or after a rotate-secret call). Store it immediately;
+    there is no way to retrieve it again later, only rotate to a new one.
+    Requests with a timestamp more than 5 minutes off the server's clock are
+    rejected, as a replay-attack guard.
+
+    ### Boarding
+    `/api/v1/boarding/*`
+
+    ```
+    Authorization: Bearer <client_api_key>
+    ```
+
+    Same pattern as BookSync's merchant-management auth — no HMAC signing
+    needed here, just the bearer token.
+
+    ### Payment and Outbound — no authentication
+    `/api/v1/payment/sessions/*`, `/api/v1/payment/direct/*`,
+    `/api/v1/terminal/*`
+
+    These endpoints have no `Authorization` requirement at all. Security
+    relies entirely on the session token / merchant ID embedded in the URL
+    being unguessable — treat those URLs themselves as secrets, and don't log
+    or share them anywhere public.
   contact:
     name: Impact Techlab
 servers:
   - url: https://simphub.io
     description: Production
-  - url: https://staging.simphub.io
-    description: Staging (placeholder — replace with the actual staging host)
+  - url: https://paymentmiddleware.myreporthub.dev
+    description: Staging
 
 tags:
   - name: Inbound - Webhooks & Ingestion
