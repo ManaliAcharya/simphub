@@ -710,14 +710,14 @@ class ClientConfigController extends Controller
         EmailConfiguration::updateOrCreate(
             ['client_id' => $client->id],
             [
-                'subject_template'         => $validated['subject_template'] ?: 'Invoice #{invoice_number} – Payment Required',
-                'subject_template_updated' => $validated['subject_template_updated'] ?: 'Updated: Invoice #{invoice_number} – Payment Required',
-                'body_header'              => $validated['body_header'] ?: null,
-                'body_footer'              => $validated['body_footer'] ?: null,
+                'subject_template'         => ($validated['subject_template'] ?? null) ?: 'Invoice #{invoice_number} – Payment Required',
+                'subject_template_updated' => ($validated['subject_template_updated'] ?? null) ?: 'Updated: Invoice #{invoice_number} – Payment Required',
+                'body_header'              => ($validated['body_header'] ?? null) ?: null,
+                'body_footer'              => ($validated['body_footer'] ?? null) ?: null,
                 'primary_color'            => $validated['primary_color'] ?? '#2196F3',
-                'reply_to_email'           => $validated['reply_to_email'] ?: null,
-                'reply_to_name'            => $validated['reply_to_name'] ?: null,
-                'from_name'                => $validated['from_name'] ?: null,
+                'reply_to_email'           => ($validated['reply_to_email'] ?? null) ?: null,
+                'reply_to_name'            => ($validated['reply_to_name'] ?? null) ?: null,
+                'from_name'                => ($validated['from_name'] ?? null) ?: null,
                 'attach_pdf'               => ($validated['attach_pdf'] ?? '1') === '1',
             ]
         );
