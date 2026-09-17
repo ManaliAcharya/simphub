@@ -95,6 +95,7 @@
             </td>
             @if(!empty($shippingAddress))
             <td>
+                <div class="name">{{ $customerName ?: 'Customer' }}</div>
                 <div class="detail">
                     @foreach($shippingAddress as $line){{ $line }}@if(!$loop->last)<br>@endif @endforeach
                 </div>
@@ -159,7 +160,7 @@
 
     @if(!empty($merchantContact))
     <div class="notes">
-        <div class="label">Notes</div>
+        <div class="label">Invoice Details</div>
         Payment is due by the date shown above. Questions about this invoice? Contact {{ $merchantContact }}.
     </div>
     @endif
