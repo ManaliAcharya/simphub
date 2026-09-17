@@ -409,11 +409,19 @@ class InvoicePdfService
      * Invoice payload). When a customer has no street address on file, QuickBooks
      * defaults BillAddr.Line1 to the customer's own name instead of leaving it
      * blank — drop it so we don't render a person's name as a mailing address.
+     * Falls back to the customer's on-file BillAddr for any City/State/Zip/Country
+     * the invoice-level override left blank (QBO lets an invoice override just
+     * Line1 without touching the rest), so the PDF never shows a half address.
      */
     private function resolveBillingAddress(Invoice $invoice): array
     {
+        $raw = $invoice->raw_payload ?? [];
+
         return $this->qboAddressLines(
-            Arr::get($invoice->raw_payload ?? [], 'invoice.Invoice.BillAddr'),
+            $this->mergeQboAddress(
+                Arr::get($raw, 'invoice.Invoice.BillAddr'),
+                Arr::get($raw, 'customer.Customer.BillAddr'),
+            ),
             $this->resolveCustomerName($invoice),
         );
     }
@@ -422,10 +430,41 @@ class InvoicePdfService
      * Invoice.ShipAddr - shipping can differ from billing, so this is kept
      * separate rather than falling back to the billing address. Unlike BillAddr,
      * ShipAddr isn't observed to get name-defaulted, so no name filtering here.
+     * Same on-file fallback as billing for any missing City/State/Zip/Country.
      */
     private function resolveShippingAddress(Invoice $invoice): array
     {
-        return $this->qboAddressLines(Arr::get($invoice->raw_payload ?? [], 'invoice.Invoice.ShipAddr'));
+        $raw = $invoice->raw_payload ?? [];
+
+        return $this->qboAddressLines(
+            $this->mergeQboAddress(
+                Arr::get($raw, 'invoice.Invoice.ShipAddr'),
+                Arr::get($raw, 'customer.Customer.ShipAddr'),
+            ),
+        );
+    }
+
+    /**
+     * Fills blank City/CountrySubDivisionCode/PostalCode/Country/Line2 on an
+     * invoice-level address with the customer's on-file address, while always
+     * keeping the invoice's own Line1 (a merchant's per-invoice street override).
+     */
+    private function mergeQboAddress(mixed $addr, mixed $fallback): ?array
+    {
+        $addr     = is_array($addr) ? $addr : [];
+        $fallback = is_array($fallback) ? $fallback : [];
+
+        if ($addr === [] && $fallback === []) {
+            return null;
+        }
+
+        $merged = [];
+        foreach (['Line1', 'Line2', 'City', 'CountrySubDivisionCode', 'PostalCode', 'Country'] as $field) {
+            $value = trim((string) ($addr[$field] ?? ''));
+            $merged[$field] = $value !== '' ? $value : trim((string) ($fallback[$field] ?? ''));
+        }
+
+        return $merged;
     }
 
     /**
