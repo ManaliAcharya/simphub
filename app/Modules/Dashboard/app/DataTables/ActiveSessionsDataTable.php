@@ -101,6 +101,11 @@ class ActiveSessionsDataTable extends DataTable
                 $clientAccount->id
             )
             ->whereNull('revoked_at')
+            // Admin "view as client" (read-only, audited) sessions are an
+            // internal support tool, not a device the client signed into —
+            // keep them out of the client's own session list. They're still
+            // fully recorded in the audit log (IMPERSONATION_STARTED/ENDED).
+            ->where('is_impersonation', false)
             ->latest('created_at');
     }
 

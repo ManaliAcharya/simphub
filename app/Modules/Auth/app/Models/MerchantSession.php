@@ -28,7 +28,9 @@ class MerchantSession extends Model
         'reauthenticated_at',
         'browser',
         'platform',
-        'location'
+        'location',
+        'is_impersonation',
+        'impersonated_by_user_id',
     ];
 
     /**
@@ -39,6 +41,7 @@ class MerchantSession extends Model
         'absolute_expires_at' => 'datetime',
         'revoked_at' => 'datetime',
         'reauthenticated_at' => 'datetime',
+        'is_impersonation' => 'boolean',
     ];
 
     /**
@@ -60,5 +63,14 @@ class MerchantSession extends Model
             'client_account_id',
             'id'
         );
+    }
+
+    /**
+     * The admin (App\Models\User) who started this session as a read-only
+     * impersonation of the client, if any.
+     */
+    public function impersonatedByAdmin()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'impersonated_by_user_id');
     }
 }

@@ -569,6 +569,17 @@
                                 </td>
                                 <td style="text-align:right;">
                                     <a href="{{ $configUrl }}" class="action-btn">View config →</a>
+
+                                    @if ($client->account && auth()->user()?->is_super_admin)
+                                        <form action="{{ route('admin.impersonate.start', $client->account->id) }}" method="POST" style="display:inline;">
+                                            @csrf
+                                            <button type="submit" class="action-btn"
+                                                title="Opens a read-only, audited view of this client's portal — no client login needed.">
+                                                View as client →
+                                            </button>
+                                        </form>
+                                    @endif
+
                                     @if ($isBoarding)
                                         <a href="{{ route('inbound.clients.boarding.api-docs', $client->client_id) }}" class="action-btn">API Docs →</a>
                                     @endif

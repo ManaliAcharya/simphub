@@ -59,10 +59,23 @@ class MerchantSessionMiddleware
             );
         }
 
+        $isImpersonating = (bool) $session->is_impersonation;
+
+        // A super-admin's read-only "view as client" session: allow safe
+        // (GET/HEAD/OPTIONS) requests through so every existing portal
+        // screen renders normally, but block anything that would change
+        // data. See ImpersonationService for how these sessions are created.
+        if ($isImpersonating && ! $request->isMethodSafe()) {
+            abort(403, 'This is a read-only impersonated session — changes cannot be made while viewing as a client.');
+        }
+
         $request->attributes->set('merchant_session', $session);
         $request->attributes->set('client_account', $session->clientAccount);
+        $request->attributes->set('is_impersonating', $isImpersonating);
 
         View::share('clientAccount', $session->clientAccount);
+        View::share('isImpersonating', $isImpersonating);
+        View::share('impersonationAdmin', $isImpersonating ? $session->impersonatedByAdmin : null);
 
         $response = $next($request);
 
