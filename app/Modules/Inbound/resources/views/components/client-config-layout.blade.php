@@ -604,6 +604,21 @@ $activeTab — default active tab id (first tab if not set)
 
 <div class="cc-wrap">
 
+    @if ($isImpersonating ?? false)
+        <div style="position:sticky;top:0;z-index:1000;background:#78350f;color:#fef3c7;padding:10px 16px;font-size:13px;line-height:1.4;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;text-align:center;">
+            <span>
+                🔒 Viewing <strong>{{ $displayName }}</strong>'s account as an admin{{ isset($impersonationAdmin) && $impersonationAdmin ? ' (' . $impersonationAdmin->email . ')' : '' }}
+                — read-only, no changes can be made.
+            </span>
+            <form method="POST" action="{{ route('admin.impersonate.stop') }}" style="display:inline;margin:0;">
+                @csrf
+                <button type="submit" style="background:#fef3c7;color:#78350f;border:none;border-radius:4px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;">
+                    Exit
+                </button>
+            </form>
+        </div>
+    @endif
+
     {{-- ── Top nav ── --}}
     <nav class="cc-topnav">
 

@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Modules\Auth\Http\Controllers\AdminAuthController;
 use Modules\Auth\Http\Controllers\AuthController;
 use Modules\Auth\Http\Controllers\ForgotPasswordController;
+use Modules\Auth\Http\Controllers\ImpersonationController;
 use Modules\Auth\Http\Controllers\InvitationController;
 use Modules\Auth\Http\Controllers\ReauthenticationController;
 
@@ -27,6 +28,17 @@ Route::middleware(['web', 'throttle:global'])->group(function () {
 
             Route::post('/logout', [AdminAuthController::class, 'logout'])
                 ->name('logout');
+
+            Route::post('/impersonate/stop', [ImpersonationController::class, 'stop'])
+                ->name('impersonate.stop');
+        });
+
+        /* Impersonation ("view as client", read-only) — super-admins only */
+
+        Route::middleware(['auth', 'admin.super'])->group(function () {
+
+            Route::post('/impersonate/{clientAccount}', [ImpersonationController::class, 'start'])
+                ->name('impersonate.start');
         });
     });
 
