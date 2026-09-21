@@ -1505,7 +1505,16 @@
                                         var midInput = document.getElementById(select.dataset.midInput);
                                         if (!midInput) return;
 
+                                        // Live-fetch as the MID is typed, don't wait for blur/save.
+                                        var debounceTimer = null;
+                                        midInput.addEventListener('input', function() {
+                                            clearTimeout(debounceTimer);
+                                            debounceTimer = setTimeout(function() {
+                                                loadProcessors(select);
+                                            }, 400);
+                                        });
                                         midInput.addEventListener('change', function() {
+                                            clearTimeout(debounceTimer);
                                             loadProcessors(select);
                                         });
 
