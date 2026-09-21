@@ -1265,6 +1265,20 @@
                                                                             placeholder="e.g. {{ $gwUp }} Cash Discount">
                                                                     </div>
                                                                 </div>
+                                                                @if ($gw === 'fluidpay')
+                                                                    <div class="cc-field" style="margin:0 0 10px;">
+                                                                        <label>Processor ID</label>
+                                                                        <input type="text"
+                                                                            name="routes[{{ $idx }}][processor_id]"
+                                                                            value="{{ old("routes.$idx.processor_id", $existing?->processor_id) }}"
+                                                                            placeholder="e.g. proc_a1b2c3">
+                                                                        <div
+                                                                            style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">
+                                                                            FluidPay Processor ID for this MID —
+                                                                            found in FluidPay &rarr; Manage &rarr;
+                                                                            Processors ("ID" column).</div>
+                                                                    </div>
+                                                                @endif
                                                                 @php
                                                                     $gwEnv = $gwCredsAll['environment'] ?? 'sandbox';
                                                                     $gwEnvLabel =

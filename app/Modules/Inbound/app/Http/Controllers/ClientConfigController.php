@@ -529,6 +529,7 @@ class ClientConfigController extends Controller
             'routes.*.gateway'              => ['nullable', 'string', 'max:50'],
             'routes.*.mid_identifier'       => ['nullable', 'string', 'max:100'],
             'routes.*.mid_label'            => ['nullable', 'string', 'max:255'],
+            'routes.*.processor_id'         => ['nullable', 'string', 'max:100'],
             'routes.*.rate_percent'         => ['nullable', 'numeric', 'min:0', 'max:99.99'],
             'routes.*.environment'          => ['nullable', 'string', Rule::in(['sandbox', 'production'])],
             'routes.*.credentials'          => ['nullable', 'array'],
@@ -584,6 +585,36 @@ class ClientConfigController extends Controller
                 ->with('error', 'MID Identifier is required to save: ' . implode(', ', $incomplete) . '. Enter a MID Identifier for that row, or clear its other fields.');
         }
 
+        // FluidPay resolves the processor from a processor_id on the transaction, not from the
+        // API key (keys are account-scoped, not MID-scoped). When a client has more than one
+        // FluidPay MID configured, an omitted processor_id makes FluidPay silently fall back to
+        // the account's default processor — so require it on each FluidPay MID once there's more
+        // than one to disambiguate between.
+        $fluidpayMidCount = 0;
+        foreach ($routes as $route) {
+            if (strtolower((string) ($route['gateway'] ?? '')) === 'fluidpay' && ! empty($route['mid_identifier'])) {
+                $fluidpayMidCount++;
+            }
+        }
+
+        if ($fluidpayMidCount > 1) {
+            $missingProcessorId = [];
+            foreach ($routes as $route) {
+                if (strtolower((string) ($route['gateway'] ?? '')) !== 'fluidpay' || empty($route['mid_identifier'])) {
+                    continue;
+                }
+                if (empty($route['processor_id'])) {
+                    $missingProcessorId[] = ($route['route_type'] ?? '') === 'fees_on' ? 'Fees On' : 'Fees Off';
+                }
+            }
+
+            if (! empty($missingProcessorId)) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Processor ID is required for each FluidPay MID when more than one is configured: ' . implode(', ', $missingProcessorId) . '. Without it, FluidPay silently falls back to the default processor.');
+            }
+        }
+
         foreach ($routes as $route) {
             // Skip routes with no MID identifier filled in yet
             if (empty($route['mid_identifier'])) continue;
@@ -620,6 +651,7 @@ class ClientConfigController extends Controller
                 [
                     'mid_identifier' => $route['mid_identifier'],
                     'mid_label'      => $route['mid_label'] ?? null,
+                    'processor_id'   => $route['processor_id'] ?? null,
                     'rate_percent'   => $route['rate_percent'] ?? null,
                     'environment'    => $route['environment'] ?? 'sandbox',
                     'credentials'    => !empty($mergedCredentials) ? $mergedCredentials : null,

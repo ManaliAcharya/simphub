@@ -39,12 +39,18 @@ class FluidPayAdapter implements GatewayAdapterInterface
 
         $startedAt = microtime(true);
 
+        // Accounts with more than one FluidPay MID need processor_id to pick which processor
+        // the transaction runs on — the API key alone is account-scoped, not MID-scoped, and
+        // FluidPay silently falls back to the account's default processor without it.
+        $processorId = trim((string) ($request->midCredentials['processor_id'] ?? ''));
+
         \Log::debug('FluidPay charge attempt', [
             'environment'        => $isProduction ? 'production' : 'sandbox',
             'base_url'           => $baseUrl,
             'api_key_prefix'     => substr($apiKey, 0, 10).'...',
             'api_key_length'     => strlen($apiKey),
             'credential_source'  => $credSource,
+            'processor_id'       => $processorId !== '' ? $processorId : null,
             'amount_cents'       => $request->amountInCents,
             'currency'           => $request->currency ?: 'USD',
             'transaction_type'   => $request->transactionType,
@@ -62,6 +68,10 @@ class FluidPayAdapter implements GatewayAdapterInterface
                 'token' => $request->token,
             ],
         ];
+
+        if ($processorId !== '') {
+            $payload['processor_id'] = $processorId;
+        }
 
         // Cardholder name is required for FluidPay to fully process the sale.
         // Billing address is optional and only included when the customer supplied one.

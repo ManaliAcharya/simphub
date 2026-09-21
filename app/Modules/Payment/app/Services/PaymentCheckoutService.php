@@ -408,7 +408,11 @@ class PaymentCheckoutService
             $overrideCredentials = array_merge(
                 $decision->midCredentials,                       // base: routing rule defaults
                 array_filter((array) ($qbMidRoute->credentials ?? []), fn($v) => $v !== null && $v !== ''),
-                ['environment' => $qbMidRoute->environment ?? 'sandbox']
+                ['environment' => $qbMidRoute->environment ?? 'sandbox'],
+                // processor_id lives on the MID route itself (plain column, not the encrypted
+                // credentials blob) — required by FluidPay to pick the right processor when the
+                // account has more than one MID; omitted when the MID doesn't have one set.
+                $qbMidRoute->processor_id ? ['processor_id' => $qbMidRoute->processor_id] : [],
             );
             $decision = new \Modules\Routing\DTOs\RoutingDecision(
                 gateway:        $decision->gateway,
@@ -526,6 +530,7 @@ class PaymentCheckoutService
                 'routing_rule_id'       => $decision->routingRuleId,
                 'gateway'               => $decision->gateway,
                 'mid'                   => $decision->mid,
+                'processor_id'          => $decision->midCredentials['processor_id'] ?? null,
                 'gateway_txn_id'        => $response->transactionReference,
                 'gateway_token'         => (string) $response->gatewayToken,
                 'status'                => 'CAPTURED',
