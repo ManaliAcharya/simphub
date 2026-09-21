@@ -639,6 +639,11 @@ class ClientConfigController extends Controller
             }
         }
 
+        // Missing processor_id is surfaced as a warning, not a save-blocker — a client shouldn't
+        // lose their MID/label/credentials edits just because FluidPay's processor lookup is
+        // temporarily unavailable or hasn't been filled in yet. The charge-time behavior (silent
+        // fallback to the default processor when omitted) is the real safety net either way.
+        $missingProcessorIdWarning = null;
         if ($fluidpayMidCount > 1) {
             $missingProcessorId = [];
             foreach ($routes as $route) {
@@ -651,9 +656,7 @@ class ClientConfigController extends Controller
             }
 
             if (! empty($missingProcessorId)) {
-                return redirect()->back()
-                    ->withInput()
-                    ->with('error', 'Processor ID is required for each FluidPay MID when more than one is configured: ' . implode(', ', $missingProcessorId) . '. Without it, FluidPay silently falls back to the default processor.');
+                $missingProcessorIdWarning = 'Warning: Processor ID is not set for ' . implode(', ', $missingProcessorId) . '. FluidPay will silently fall back to the default processor for these MIDs until it is set.';
             }
         }
 
@@ -702,7 +705,12 @@ class ClientConfigController extends Controller
             );
         }
 
-        return redirect()->back()->with('success', 'MID routes saved successfully.');
+        $successMessage = 'MID routes saved successfully.';
+        if ($missingProcessorIdWarning) {
+            $successMessage .= ' ' . $missingProcessorIdWarning;
+        }
+
+        return redirect()->back()->with('success', $successMessage);
     }
 
     public function uploadLogo(Request $request, string $pmsClientId): RedirectResponse
