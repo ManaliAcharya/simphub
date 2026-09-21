@@ -1269,23 +1269,17 @@
                                                                 @if ($gw === 'fluidpay')
                                                                     <div class="cc-field" style="margin:0 0 10px;">
                                                                         <label>Processor ID</label>
-                                                                        <input type="text"
-                                                                            class="fluidpay-processor-input"
-                                                                            list="fluidpay-processors-{{ $idx }}"
+                                                                        @php $currentProcessorId = old("routes.$idx.processor_id", $existing?->processor_id); @endphp
+                                                                        <select
+                                                                            class="fluidpay-processor-select"
                                                                             data-mid-input="mid-identifier-{{ $idx }}"
-                                                                            name="routes[{{ $idx }}][processor_id]"
-                                                                            value="{{ old("routes.$idx.processor_id", $existing?->processor_id) }}"
-                                                                            placeholder="e.g. proc_a1b2c3"
-                                                                            autocomplete="off">
-                                                                        <datalist id="fluidpay-processors-{{ $idx }}" class="fluidpay-processor-datalist"></datalist>
-                                                                        <div class="fluidpay-processor-hint"
-                                                                            style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">
-                                                                            FluidPay Processor ID for this MID —
-                                                                            found in FluidPay &rarr; Manage &rarr;
-                                                                            Processors ("ID" column). Fill in the
-                                                                            MID Identifier above, then click here
-                                                                            to pick from the account's processors.
-                                                                        </div>
+                                                                            data-current="{{ $currentProcessorId }}"
+                                                                            name="routes[{{ $idx }}][processor_id]">
+                                                                            <option value="">Select processor…</option>
+                                                                            @if ($currentProcessorId)
+                                                                                <option value="{{ $currentProcessorId }}" selected>{{ $currentProcessorId }} (saved)</option>
+                                                                            @endif
+                                                                        </select>
                                                                     </div>
                                                                 @endif
                                                                 @php
@@ -1434,26 +1428,25 @@
                                 });
                             </script>
 
-                            {{-- Populate each row's Processor ID suggestions from FluidPay, keyed on that
+                            {{-- Populate each row's Processor ID dropdown from FluidPay, keyed on that
                                  row's own MID Identifier (MID = Merchant ID = FluidPay's merchant_id). --}}
                             <script>
                                 (function() {
-                                    var processorInputs = document.querySelectorAll('.fluidpay-processor-input');
-                                    if (!processorInputs.length) return;
+                                    var processorSelects = document.querySelectorAll(
+                                        '.fluidpay-processor-select');
+                                    if (!processorSelects.length) return;
 
                                     var baseUrl =
                                         '{{ route('inbound.clients.fluidpay-processors', $client->pms_client_id) }}';
                                     var cache = {};
 
-                                    function loadProcessors(processorInput) {
-                                        var midInput = document.getElementById(processorInput.dataset.midInput);
+                                    function loadProcessors(select) {
+                                        var midInput = document.getElementById(select.dataset.midInput);
                                         var merchantId = midInput ? midInput.value.trim() : '';
-                                        var datalist = document.getElementById(processorInput.getAttribute(
-                                            'list'));
-                                        if (!merchantId || !datalist) return;
+                                        if (!merchantId) return;
 
                                         if (cache[merchantId]) {
-                                            renderOptions(datalist, cache[merchantId]);
+                                            renderOptions(select, cache[merchantId]);
                                             return;
                                         }
 
@@ -1472,40 +1465,52 @@
                                                     return;
                                                 }
                                                 cache[merchantId] = data.processors || [];
-                                                renderOptions(datalist, cache[merchantId]);
+                                                renderOptions(select, cache[merchantId]);
                                             })
                                             .catch(function(err) {
                                                 console.warn('FluidPay processors fetch failed', err);
                                             });
                                     }
 
-                                    function renderOptions(datalist, processors) {
-                                        datalist.innerHTML = '';
+                                    function renderOptions(select, processors) {
+                                        var current = select.dataset.current || '';
+                                        var found = false;
+
+                                        select.innerHTML = '';
+
                                         processors.forEach(function(p) {
                                             var opt = document.createElement('option');
                                             opt.value = p.id;
                                             opt.textContent = p.name + (p.status ? ' (' + p.status + ')' :
                                                 '');
-                                            datalist.appendChild(opt);
+                                            if (p.id === current) {
+                                                opt.selected = true;
+                                                found = true;
+                                            }
+                                            select.appendChild(opt);
                                         });
+
+                                        // Keep an already-saved processor_id selectable even if it's not in
+                                        // the current processor list, so saving again doesn't silently drop it.
+                                        if (current && !found) {
+                                            var savedOpt = document.createElement('option');
+                                            savedOpt.value = current;
+                                            savedOpt.textContent = current + ' (saved)';
+                                            savedOpt.selected = true;
+                                            select.appendChild(savedOpt);
+                                        }
                                     }
 
-                                    processorInputs.forEach(function(processorInput) {
-                                        var midInput = document.getElementById(processorInput.dataset
-                                            .midInput);
+                                    processorSelects.forEach(function(select) {
+                                        var midInput = document.getElementById(select.dataset.midInput);
                                         if (!midInput) return;
 
-                                        // Fetch as soon as the field is focused/filled — covers both an
-                                        // already-saved MID (fetch immediately) and one just typed in.
-                                        processorInput.addEventListener('focus', function() {
-                                            loadProcessors(processorInput);
-                                        });
                                         midInput.addEventListener('change', function() {
-                                            loadProcessors(processorInput);
+                                            loadProcessors(select);
                                         });
 
                                         if (midInput.value.trim()) {
-                                            loadProcessors(processorInput);
+                                            loadProcessors(select);
                                         }
                                     });
                                 })();
