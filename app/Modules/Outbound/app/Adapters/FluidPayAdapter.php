@@ -238,10 +238,14 @@ class FluidPayAdapter implements GatewayAdapterInterface
     }
 
     /**
-     * List the processors configured on this FluidPay account (Manage → Processors),
-     * so admin UIs can offer processor_id as a picker instead of free text.
+     * List the processors configured on a FluidPay merchant account (Manage → Processors),
+     * so admin UIs can offer processor_id as a picker instead of free text. $merchantId is
+     * the MID itself — "MID" is short for Merchant ID, and FluidPay's own processors
+     * endpoint is keyed on merchant_id, so no separate self-lookup call is needed (and the
+     * per-merchant transaction key isn't authorized for account self-lookup anyway — only
+     * for /api/transaction*).
      */
-    public function listProcessors(array $midCredentials = []): array
+    public function listProcessors(array $midCredentials, string $merchantId): array
     {
         ['api_key' => $apiKey, 'base_url' => $baseUrl] = $this->resolveCredentials($midCredentials);
 
@@ -249,29 +253,20 @@ class FluidPayAdapter implements GatewayAdapterInterface
             return ['processors' => [], 'error' => 'FluidPay API key is not configured.'];
         }
 
+        if ($merchantId === '') {
+            return ['processors' => [], 'error' => 'Enter a MID Identifier first.'];
+        }
+
         try {
-            $merchantResponse = Http::withHeaders(['Authorization' => $apiKey])
+            $processorsResponse = Http::withHeaders(['Authorization' => $apiKey])
                 ->timeout(20)
-                ->get("{$baseUrl}/api/merchant");
+                ->get("{$baseUrl}/api/merchant/{$merchantId}/processors");
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
             return ['processors' => [], 'error' => 'Could not reach FluidPay: '.$e->getMessage()];
         }
 
-        if (! $merchantResponse->successful()) {
-            return ['processors' => [], 'error' => 'Could not look up the FluidPay merchant account (HTTP '.$merchantResponse->status().').'];
-        }
-
-        $merchantId = (string) ($merchantResponse->json('data.id') ?? '');
-        if ($merchantId === '') {
-            return ['processors' => [], 'error' => 'FluidPay did not return a merchant ID.'];
-        }
-
-        $processorsResponse = Http::withHeaders(['Authorization' => $apiKey])
-            ->timeout(20)
-            ->get("{$baseUrl}/api/merchant/{$merchantId}/processors");
-
         if (! $processorsResponse->successful()) {
-            return ['processors' => [], 'error' => 'Could not fetch processors (HTTP '.$processorsResponse->status().').'];
+            return ['processors' => [], 'error' => 'Could not fetch processors for MID "'.$merchantId.'" (HTTP '.$processorsResponse->status().').'];
         }
 
         $rows = (array) ($processorsResponse->json('data') ?? []);

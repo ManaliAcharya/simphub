@@ -1252,6 +1252,7 @@
                                                                     <div class="cc-field" style="margin:0;">
                                                                         <label>MID Identifier</label>
                                                                         <input type="text"
+                                                                            id="mid-identifier-{{ $idx }}"
                                                                             name="routes[{{ $idx }}][mid_identifier]"
                                                                             value="{{ old("routes.$idx.mid_identifier", $existing?->mid_identifier) }}"
                                                                             placeholder="e.g. MID_001">
@@ -1271,6 +1272,7 @@
                                                                         <input type="text"
                                                                             class="fluidpay-processor-input"
                                                                             list="fluidpay-processors-{{ $idx }}"
+                                                                            data-mid-input="mid-identifier-{{ $idx }}"
                                                                             name="routes[{{ $idx }}][processor_id]"
                                                                             value="{{ old("routes.$idx.processor_id", $existing?->processor_id) }}"
                                                                             placeholder="e.g. proc_a1b2c3"
@@ -1280,7 +1282,8 @@
                                                                             style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">
                                                                             FluidPay Processor ID for this MID —
                                                                             found in FluidPay &rarr; Manage &rarr;
-                                                                            Processors ("ID" column). Start typing
+                                                                            Processors ("ID" column). Fill in the
+                                                                            MID Identifier above, then click here
                                                                             to pick from the account's processors.
                                                                         </div>
                                                                     </div>
@@ -1431,39 +1434,80 @@
                                 });
                             </script>
 
-                            {{-- Populate the Processor ID suggestions from FluidPay's own processor list --}}
+                            {{-- Populate each row's Processor ID suggestions from FluidPay, keyed on that
+                                 row's own MID Identifier (MID = Merchant ID = FluidPay's merchant_id). --}}
                             <script>
                                 (function() {
-                                    var datalists = document.querySelectorAll('.fluidpay-processor-datalist');
-                                    if (!datalists.length) return;
+                                    var processorInputs = document.querySelectorAll('.fluidpay-processor-input');
+                                    if (!processorInputs.length) return;
 
-                                    fetch('{{ route('inbound.clients.fluidpay-processors', $client->pms_client_id) }}', {
-                                            headers: {
-                                                'Accept': 'application/json'
-                                            }
-                                        })
-                                        .then(function(r) {
-                                            return r.json();
-                                        })
-                                        .then(function(data) {
-                                            if (!data.success) {
-                                                console.warn('FluidPay processors: ' + (data.message ||
-                                                    'unknown error'));
-                                                return;
-                                            }
-                                            (data.processors || []).forEach(function(p) {
-                                                datalists.forEach(function(dl) {
-                                                    var opt = document.createElement('option');
-                                                    opt.value = p.id;
-                                                    opt.textContent = p.name + (p.status ? ' (' + p.status +
-                                                        ')' : '');
-                                                    dl.appendChild(opt);
-                                                });
+                                    var baseUrl =
+                                        '{{ route('inbound.clients.fluidpay-processors', $client->pms_client_id) }}';
+                                    var cache = {};
+
+                                    function loadProcessors(processorInput) {
+                                        var midInput = document.getElementById(processorInput.dataset.midInput);
+                                        var merchantId = midInput ? midInput.value.trim() : '';
+                                        var datalist = document.getElementById(processorInput.getAttribute(
+                                            'list'));
+                                        if (!merchantId || !datalist) return;
+
+                                        if (cache[merchantId]) {
+                                            renderOptions(datalist, cache[merchantId]);
+                                            return;
+                                        }
+
+                                        fetch(baseUrl + '?merchant_id=' + encodeURIComponent(merchantId), {
+                                                headers: {
+                                                    'Accept': 'application/json'
+                                                }
+                                            })
+                                            .then(function(r) {
+                                                return r.json();
+                                            })
+                                            .then(function(data) {
+                                                if (!data.success) {
+                                                    console.warn('FluidPay processors: ' + (data.message ||
+                                                        'unknown error'));
+                                                    return;
+                                                }
+                                                cache[merchantId] = data.processors || [];
+                                                renderOptions(datalist, cache[merchantId]);
+                                            })
+                                            .catch(function(err) {
+                                                console.warn('FluidPay processors fetch failed', err);
                                             });
-                                        })
-                                        .catch(function(err) {
-                                            console.warn('FluidPay processors fetch failed', err);
+                                    }
+
+                                    function renderOptions(datalist, processors) {
+                                        datalist.innerHTML = '';
+                                        processors.forEach(function(p) {
+                                            var opt = document.createElement('option');
+                                            opt.value = p.id;
+                                            opt.textContent = p.name + (p.status ? ' (' + p.status + ')' :
+                                                '');
+                                            datalist.appendChild(opt);
                                         });
+                                    }
+
+                                    processorInputs.forEach(function(processorInput) {
+                                        var midInput = document.getElementById(processorInput.dataset
+                                            .midInput);
+                                        if (!midInput) return;
+
+                                        // Fetch as soon as the field is focused/filled — covers both an
+                                        // already-saved MID (fetch immediately) and one just typed in.
+                                        processorInput.addEventListener('focus', function() {
+                                            loadProcessors(processorInput);
+                                        });
+                                        midInput.addEventListener('change', function() {
+                                            loadProcessors(processorInput);
+                                        });
+
+                                        if (midInput.value.trim()) {
+                                            loadProcessors(processorInput);
+                                        }
+                                    });
                                 })();
                             </script>
                         </div>

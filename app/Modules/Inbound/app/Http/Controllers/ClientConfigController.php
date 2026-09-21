@@ -517,14 +517,16 @@ class ClientConfigController extends Controller
     }
 
     /**
-     * List the processors on this client's FluidPay account, so the Multi-MID Routing UI
-     * can offer processor_id as a picker. All FluidPay MID rows for a client belong to the
-     * same FluidPay account (that's the premise of multi-processor routing), so this is
-     * resolved from whichever FluidPay credentials are configured for the client — it does
-     * not depend on a MID Identifier having been entered first.
+     * List the processors for a FluidPay MID, so the Multi-MID Routing UI can offer
+     * processor_id as a picker. "MID" is short for Merchant ID — FluidPay's processors
+     * endpoint is keyed on merchant_id, so the MID Identifier the admin already typed for
+     * that row is passed straight through as $merchantId; no separate lookup needed.
      */
-    public function fluidpayProcessors(string $pmsClientId): JsonResponse
+    public function fluidpayProcessors(Request $request, string $pmsClientId): JsonResponse
     {
+        $request->validate(['merchant_id' => ['required', 'string', 'max:100']]);
+        $merchantId = trim((string) $request->query('merchant_id'));
+
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
 
         $midRoute = ClientMidRoute::query()
@@ -545,7 +547,7 @@ class ClientConfigController extends Controller
             fn ($v) => $v !== null && $v !== '',
         );
 
-        $result = app(FluidPayAdapter::class)->listProcessors($midCredentials);
+        $result = app(FluidPayAdapter::class)->listProcessors($midCredentials, $merchantId);
 
         return response()->json([
             'success'    => $result['error'] === null,
