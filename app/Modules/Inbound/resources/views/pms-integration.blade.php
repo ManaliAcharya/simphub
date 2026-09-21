@@ -1269,14 +1269,20 @@
                                                                     <div class="cc-field" style="margin:0 0 10px;">
                                                                         <label>Processor ID</label>
                                                                         <input type="text"
+                                                                            class="fluidpay-processor-input"
+                                                                            list="fluidpay-processors-{{ $idx }}"
                                                                             name="routes[{{ $idx }}][processor_id]"
                                                                             value="{{ old("routes.$idx.processor_id", $existing?->processor_id) }}"
-                                                                            placeholder="e.g. proc_a1b2c3">
-                                                                        <div
+                                                                            placeholder="e.g. proc_a1b2c3"
+                                                                            autocomplete="off">
+                                                                        <datalist id="fluidpay-processors-{{ $idx }}" class="fluidpay-processor-datalist"></datalist>
+                                                                        <div class="fluidpay-processor-hint"
                                                                             style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">
                                                                             FluidPay Processor ID for this MID —
                                                                             found in FluidPay &rarr; Manage &rarr;
-                                                                            Processors ("ID" column).</div>
+                                                                            Processors ("ID" column). Start typing
+                                                                            to pick from the account's processors.
+                                                                        </div>
                                                                     </div>
                                                                 @endif
                                                                 @php
@@ -1423,6 +1429,42 @@
                                     this.querySelector('input[name=qb_multi_mid_enabled]').value =
                                         document.getElementById('qb-mid-val').value;
                                 });
+                            </script>
+
+                            {{-- Populate the Processor ID suggestions from FluidPay's own processor list --}}
+                            <script>
+                                (function() {
+                                    var datalists = document.querySelectorAll('.fluidpay-processor-datalist');
+                                    if (!datalists.length) return;
+
+                                    fetch('{{ route('inbound.clients.fluidpay-processors', $client->pms_client_id) }}', {
+                                            headers: {
+                                                'Accept': 'application/json'
+                                            }
+                                        })
+                                        .then(function(r) {
+                                            return r.json();
+                                        })
+                                        .then(function(data) {
+                                            if (!data.success) {
+                                                console.warn('FluidPay processors: ' + (data.message ||
+                                                    'unknown error'));
+                                                return;
+                                            }
+                                            (data.processors || []).forEach(function(p) {
+                                                datalists.forEach(function(dl) {
+                                                    var opt = document.createElement('option');
+                                                    opt.value = p.id;
+                                                    opt.textContent = p.name + (p.status ? ' (' + p.status +
+                                                        ')' : '');
+                                                    dl.appendChild(opt);
+                                                });
+                                            });
+                                        })
+                                        .catch(function(err) {
+                                            console.warn('FluidPay processors fetch failed', err);
+                                        });
+                                })();
                             </script>
                         </div>
                     </div>

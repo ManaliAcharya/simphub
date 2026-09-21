@@ -237,6 +237,54 @@ class FluidPayAdapter implements GatewayAdapterInterface
         );
     }
 
+    /**
+     * List the processors configured on this FluidPay account (Manage → Processors),
+     * so admin UIs can offer processor_id as a picker instead of free text.
+     */
+    public function listProcessors(array $midCredentials = []): array
+    {
+        ['api_key' => $apiKey, 'base_url' => $baseUrl] = $this->resolveCredentials($midCredentials);
+
+        if ($apiKey === '') {
+            return ['processors' => [], 'error' => 'FluidPay API key is not configured.'];
+        }
+
+        try {
+            $merchantResponse = Http::withHeaders(['Authorization' => $apiKey])
+                ->timeout(20)
+                ->get("{$baseUrl}/api/merchant");
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            return ['processors' => [], 'error' => 'Could not reach FluidPay: '.$e->getMessage()];
+        }
+
+        if (! $merchantResponse->successful()) {
+            return ['processors' => [], 'error' => 'Could not look up the FluidPay merchant account (HTTP '.$merchantResponse->status().').'];
+        }
+
+        $merchantId = (string) ($merchantResponse->json('data.id') ?? '');
+        if ($merchantId === '') {
+            return ['processors' => [], 'error' => 'FluidPay did not return a merchant ID.'];
+        }
+
+        $processorsResponse = Http::withHeaders(['Authorization' => $apiKey])
+            ->timeout(20)
+            ->get("{$baseUrl}/api/merchant/{$merchantId}/processors");
+
+        if (! $processorsResponse->successful()) {
+            return ['processors' => [], 'error' => 'Could not fetch processors (HTTP '.$processorsResponse->status().').'];
+        }
+
+        $rows = (array) ($processorsResponse->json('data') ?? []);
+
+        $processors = array_map(fn (array $p) => [
+            'id'     => (string) ($p['id']     ?? ''),
+            'name'   => (string) ($p['name']   ?? ''),
+            'status' => (string) ($p['status'] ?? ''),
+        ], $rows);
+
+        return ['processors' => $processors, 'error' => null];
+    }
+
     public function listTransactions(array $filters, array $midCredentials = []): array
     {
         ['api_key' => $apiKey, 'base_url' => $baseUrl] = $this->resolveCredentials($midCredentials);

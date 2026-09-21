@@ -3,6 +3,7 @@
 namespace Modules\Inbound\Http\Controllers;
 
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -28,6 +29,7 @@ use Modules\Payment\Services\PaymentLinkService;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Modules\Audit\Services\AuditLogger;
 use Illuminate\Support\Facades\Log;
+use Modules\Outbound\Adapters\FluidPayAdapter;
 use Throwable;
 
 class ClientConfigController extends Controller
@@ -512,6 +514,44 @@ class ClientConfigController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'Payment reminder settings saved.');
+    }
+
+    /**
+     * List the processors on this client's FluidPay account, so the Multi-MID Routing UI
+     * can offer processor_id as a picker. All FluidPay MID rows for a client belong to the
+     * same FluidPay account (that's the premise of multi-processor routing), so this is
+     * resolved from whichever FluidPay credentials are configured for the client — it does
+     * not depend on a MID Identifier having been entered first.
+     */
+    public function fluidpayProcessors(string $pmsClientId): JsonResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        $midRoute = ClientMidRoute::query()
+            ->where('client_id', $client->id)
+            ->where('gateway', 'fluidpay')
+            ->get()
+            ->first(fn (ClientMidRoute $r) => trim((string) ($r->credentials['api_key'] ?? '')) !== '');
+
+        $gwCreds     = (array) ($client->gateway_credentials['fluidpay'] ?? []);
+        $environment = $midRoute->environment ?? ($client->gateway_credentials['environment'] ?? 'sandbox');
+
+        $midCredentials = array_filter(
+            array_merge(
+                ['environment' => $environment],
+                $gwCreds,                                   // client-level shared default
+                (array) ($midRoute?->credentials ?? []),     // per-MID override, takes priority
+            ),
+            fn ($v) => $v !== null && $v !== '',
+        );
+
+        $result = app(FluidPayAdapter::class)->listProcessors($midCredentials);
+
+        return response()->json([
+            'success'    => $result['error'] === null,
+            'processors' => $result['processors'],
+            'message'    => $result['error'],
+        ]);
     }
 
     public function saveMidRoutes(Request $request, string $pmsClientId): RedirectResponse
