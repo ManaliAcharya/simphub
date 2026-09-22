@@ -34,6 +34,10 @@ class Client extends Model
             'allowed_terminals'        => 'array',
             'fee_surcharge_enabled'       => 'boolean',
             'cash_discount_details'       => 'array',
+            // decimal:5 (not float) — exact decimal arithmetic on this value matters: it's the
+            // surcharge/cash-discount rate used to compute IOLTA trust deposits down to the cent.
+            'cc_fee_percent'              => 'decimal:5',
+            'ach_fee_percent'             => 'decimal:5',
             'qb_fee_override_enabled'        => 'boolean',
             'qb_multi_mid_enabled'           => 'boolean',
             'qb_surcharge_enabled'           => 'boolean',

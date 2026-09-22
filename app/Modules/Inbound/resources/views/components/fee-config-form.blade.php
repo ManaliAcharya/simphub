@@ -90,8 +90,8 @@
                             @endif
                         </td>
                         <td style="padding:7px 12px;">
-                            <input type="number" name="cc_fee_percent" step="0.01" min="0" max="99.99"
-                                   placeholder="0.00"
+                            <input type="number" name="cc_fee_percent" step="0.00001" min="0" max="999.99999"
+                                   placeholder="0.00000"
                                    value="{{ old('cc_fee_percent', $client->cc_fee_percent) }}"
                                    style="width:100%;padding:6px 8px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;">
                         </td>
@@ -104,8 +104,8 @@
                             @endif
                         </td>
                         <td style="padding:7px 12px;">
-                            <input type="number" name="ach_fee_percent" step="0.01" min="0" max="99.99"
-                                   placeholder="0.00"
+                            <input type="number" name="ach_fee_percent" step="0.00001" min="0" max="999.99999"
+                                   placeholder="0.00000"
                                    value="{{ old('ach_fee_percent', $client->ach_fee_percent) }}"
                                    style="width:100%;padding:6px 8px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;">
                         </td>

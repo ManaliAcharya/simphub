@@ -412,8 +412,8 @@ class ClientConfigController extends Controller
         $validated = $request->validate([
             'fee_surcharge_enabled'  => ['nullable', 'boolean'],
             'fee_mode'               => ['nullable', 'string', Rule::in($allowedModes)],
-            'cc_fee_percent'         => ['nullable', 'numeric', 'min:0', 'max:99.99'],
-            'ach_fee_percent'        => ['nullable', 'numeric', 'min:0', 'max:99.99'],
+            'cc_fee_percent'         => ['nullable', 'numeric', 'min:0', 'max:999.99999', 'decimal:0,5'],
+            'ach_fee_percent'        => ['nullable', 'numeric', 'min:0', 'max:999.99999', 'decimal:0,5'],
             'fee_disclosure'         => [$isCd ? 'required' : 'nullable', 'string', 'max:1000'],
             'cd_business_name'       => [$isCd ? 'required' : 'nullable', 'string', 'max:255'],
             'cd_address'             => [$isCd ? 'required' : 'nullable', 'string', 'max:255'],

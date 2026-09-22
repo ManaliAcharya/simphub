@@ -135,6 +135,48 @@ class PaymentCheckoutService
      * address1/city/state/zip BillAddr doesn't have — better a mostly-filled
      * prefill than an empty one, since the customer can still edit any of it.
      */
+    /**
+     * Exact-decimal surcharge/cash-discount fee calculation for IOLTA-compliant clients: the
+     * invoice amount must deposit to the exact cent, so this cannot use float math (binary
+     * floating point can't represent most decimal fractions exactly) or round the fee itself
+     * (the client's rate is deliberately a few thousandths off the processor's flat rate so
+     * that, after rounding the TOTAL up to the next cent, the processor's cut lands the
+     * remainder back to precisely the invoice amount). All arithmetic is bcmath on decimal
+     * strings; $feePercent may carry up to 5 decimal places (e.g. "3.48753").
+     *
+     *   rate_fraction   = feePercent / 100
+     *   fee_cents_exact = invoiceCents * rate_fraction
+     *   total_exact     = invoiceCents + fee_cents_exact
+     *   total_cents     = ceil(total_exact)        // always rounds up, never nearest/down
+     */
+    private function calculateExactFeeCents(int $invoiceCents, string $feePercent): int
+    {
+        $scale = 15; // headroom before the final whole-cent ceiling step
+
+        $rateFraction  = bcdiv($feePercent, '100', $scale);
+        $feeCentsExact = bcmul((string) $invoiceCents, $rateFraction, $scale);
+        $totalExact    = bcadd((string) $invoiceCents, $feeCentsExact, $scale);
+        $totalCents    = $this->ceilDecimalToInt($totalExact);
+
+        return $totalCents - $invoiceCents;
+    }
+
+    /**
+     * Ceiling for a non-negative decimal string via bcmath (no float involved). bcmath's scale
+     * reduction truncates rather than rounds, so this bumps the truncation up by one whenever a
+     * fractional remainder was dropped.
+     */
+    private function ceilDecimalToInt(string $decimal): int
+    {
+        $truncated = bcadd($decimal, '0', 0);
+
+        if (bccomp($decimal, $truncated, 15) > 0) {
+            $truncated = bcadd($truncated, '1', 0);
+        }
+
+        return (int) $truncated;
+    }
+
     private function resolveBillingAddressPrefill(Invoice $invoice): array
     {
         $customerName = trim((string) data_get($invoice->raw_payload, 'invoice.Invoice.CustomerRef.name', ''));
@@ -215,10 +257,11 @@ class PaymentCheckoutService
         }
 
         if ($applyFee) {
-            $isAch      = strtoupper($paymentMethod) === 'ACH';
-            $feePercent = (float) ($isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent);
-            if ($feePercent > 0) {
-                $feeCents = (int) round($invoice->amount_cents * $feePercent / 100);
+            $isAch         = strtoupper($paymentMethod) === 'ACH';
+            $feePercentRaw = $isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent;
+            $feePercent    = $feePercentRaw !== null ? (string) $feePercentRaw : '0';
+            if (bccomp($feePercent, '0', 10) > 0) {
+                $feeCents = $this->calculateExactFeeCents((int) $invoice->amount_cents, $feePercent);
             }
         }
         $totalAmountCents = (int) $invoice->amount_cents + $feeCents;
