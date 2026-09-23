@@ -90,20 +90,43 @@ class PaymentCheckoutService
                     ? $this->payaAvailability($invoice)
                     : ['available' => true, 'reason' => null];
 
-                // Merge client-specific credentials so hostedFieldsConfig gets
-                // the correct public_key / environment for the tokenizer
-                $gwCreds = $clientGwCreds[strtolower($decision->gateway)] ?? [];
-                if ($commonEnv) {
-                    $gwCreds['environment'] = $commonEnv;
+                // If a QB Multi-MID route matches this gateway, its own credentials/MID entirely
+                // replace the routing-rule + client-shared defaults — mirrors submit()'s override
+                // exactly, so the tokenizer widget shown here uses the same public_key/environment
+                // that will actually be used to charge, instead of the wrong (client-default) one.
+                $qbMidRoute = null;
+                if ($invoice->pms_client_id && (string) $invoice->pms_source === 'quickbooks') {
+                    $qbMidRoute = $this->resolveQbMidRoute($invoice, $feeClient, $decision->gateway);
                 }
-                $resolvedCreds = ! empty($gwCreds)
-                    ? array_merge($decision->midCredentials, $gwCreds)
-                    : $decision->midCredentials;
+
+                if ($qbMidRoute) {
+                    $mid = $qbMidRoute->mid_identifier;
+                    $resolvedCreds = array_merge(
+                        $decision->midCredentials,
+                        array_filter((array) ($qbMidRoute->credentials ?? []), fn ($v) => $v !== null && $v !== ''),
+                        ['environment' => $qbMidRoute->environment ?? 'sandbox'],
+                        $qbMidRoute->processor_id ? ['processor_id' => $qbMidRoute->processor_id] : [],
+                    );
+                } else {
+                    $mid = $decision->mid;
+                    // Merge client-specific credentials so hostedFieldsConfig gets
+                    // the correct public_key / environment for the tokenizer
+                    $gwCreds = $clientGwCreds[strtolower($decision->gateway)] ?? [];
+                    if ($commonEnv) {
+                        $gwCreds['environment'] = $commonEnv;
+                    }
+                    $resolvedCreds = ! empty($gwCreds)
+                        ? array_merge($decision->midCredentials, $gwCreds)
+                        : $decision->midCredentials;
+                }
 
                 $hostedFields = $this->gateways->make($decision->gateway)->hostedFieldsConfig(
-                    $decision->mid,
+                    $mid,
                     $resolvedCreds,
                 );
+
+                $paymentMethod = $decision->ruleMatches['payment_method'] ?? 'CARD';
+                $feeCents      = $this->previewFeeCents($invoice, $feeClient, $qbMidRoute, $paymentMethod, (int) $invoice->amount_cents);
 
                 return [
                     'routing_rule_id' => $decision->routingRuleId,
@@ -111,8 +134,8 @@ class PaymentCheckoutService
                     'display_name' => $feeClient
                         ? $feeClient->gatewayDisplayName($decision->gateway)
                         : strtoupper($decision->gateway),
-                    'mid' => $decision->mid,
-                    'payment_method' => $decision->ruleMatches['payment_method'] ?? 'CARD',
+                    'mid' => $mid,
+                    'payment_method' => $paymentMethod,
                     'rule_matches' => $decision->ruleMatches,
                     'hosted_fields' => [
                         'gateway' => $hostedFields->gateway,
@@ -121,6 +144,11 @@ class PaymentCheckoutService
                     ],
                     'is_available' => $availability['available'],
                     'unavailable_reason' => $availability['reason'],
+                    // The amount that will actually be charged if this option is selected —
+                    // the page must display this, not recompute its own estimate from a flat
+                    // percentage (that recompute is what caused the display mismatch bug).
+                    'fee_cents'   => $feeCents,
+                    'total_cents' => (int) $invoice->amount_cents + $feeCents,
                 ];
             })->values()->all(),
         ];
@@ -135,6 +163,57 @@ class PaymentCheckoutService
      * address1/city/state/zip BillAddr doesn't have — better a mostly-filled
      * prefill than an empty one, since the customer can still edit any of it.
      */
+    /**
+     * Exact-decimal surcharge/cash-discount fee calculation for IOLTA-compliant clients: the
+     * invoice amount must deposit to the exact cent, so this cannot use float math (binary
+     * floating point can't represent most decimal fractions exactly) or round the fee itself
+     * (the client's rate is deliberately a few thousandths off the processor's flat rate so
+     * that, after rounding the TOTAL up to the next cent, the processor's cut lands the
+     * remainder back to precisely the invoice amount). All arithmetic is bcmath on decimal
+     * strings; $feePercent may carry up to 5 decimal places (e.g. "3.48753").
+     *
+     *   rate_fraction   = feePercent / 100
+     *   fee_cents_exact = invoiceCents * rate_fraction
+     *   total_exact     = invoiceCents + fee_cents_exact
+     *   total_cents     = ceil(total_exact)        // always rounds up, never nearest/down
+     */
+    private function calculateExactFeeCents(int $invoiceCents, string $feePercent): int
+    {
+        $scale = 15; // headroom before the final whole-cent ceiling step
+
+        $rateFraction  = bcdiv($feePercent, '100', $scale);
+        $feeCentsExact = bcmul((string) $invoiceCents, $rateFraction, $scale);
+        $totalExact    = bcadd((string) $invoiceCents, $feeCentsExact, $scale);
+        $totalCents    = $this->ceilDecimalToInt($totalExact);
+
+        return $totalCents - $invoiceCents;
+    }
+
+    /**
+     * Ceiling for a non-negative decimal string via bcmath (no float involved). bcmath's scale
+     * reduction truncates rather than rounds, so this bumps the truncation up by one whenever a
+     * fractional remainder was dropped.
+     */
+    private function ceilDecimalToInt(string $decimal): int
+    {
+        $truncated = bcadd($decimal, '0', 0);
+
+        if (bccomp($decimal, $truncated, 15) > 0) {
+            $truncated = bcadd($truncated, '1', 0);
+        }
+
+        return (int) $truncated;
+    }
+
+    /**
+     * Pre-existing float/round-nearest fee formula, kept as-is for any client that hasn't
+     * opted into exact-cent rounding — behavior must stay identical to before that feature.
+     */
+    private function calculateRoundedFeeCents(int $invoiceCents, string $feePercent): int
+    {
+        return (int) round($invoiceCents * (float) $feePercent / 100);
+    }
+
     private function resolveBillingAddressPrefill(Invoice $invoice): array
     {
         $customerName = trim((string) data_get($invoice->raw_payload, 'invoice.Invoice.CustomerRef.name', ''));
@@ -215,10 +294,13 @@ class PaymentCheckoutService
         }
 
         if ($applyFee) {
-            $isAch      = strtoupper($paymentMethod) === 'ACH';
-            $feePercent = (float) ($isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent);
-            if ($feePercent > 0) {
-                $feeCents = (int) round($invoice->amount_cents * $feePercent / 100);
+            $isAch         = strtoupper($paymentMethod) === 'ACH';
+            $feePercentRaw = $isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent;
+            $feePercent    = $feePercentRaw !== null ? (string) $feePercentRaw : '0';
+            if (bccomp($feePercent, '0', 10) > 0) {
+                $feeCents = $feeClient->exact_cent_fee_rounding_enabled
+                    ? $this->calculateExactFeeCents((int) $invoice->amount_cents, $feePercent)
+                    : $this->calculateRoundedFeeCents((int) $invoice->amount_cents, $feePercent);
             }
         }
         $totalAmountCents = (int) $invoice->amount_cents + $feeCents;
@@ -408,7 +490,11 @@ class PaymentCheckoutService
             $overrideCredentials = array_merge(
                 $decision->midCredentials,                       // base: routing rule defaults
                 array_filter((array) ($qbMidRoute->credentials ?? []), fn($v) => $v !== null && $v !== ''),
-                ['environment' => $qbMidRoute->environment ?? 'sandbox']
+                ['environment' => $qbMidRoute->environment ?? 'sandbox'],
+                // processor_id lives on the MID route itself (plain column, not the encrypted
+                // credentials blob) — required by FluidPay to pick the right processor when the
+                // account has more than one MID; omitted when the MID doesn't have one set.
+                $qbMidRoute->processor_id ? ['processor_id' => $qbMidRoute->processor_id] : [],
             );
             $decision = new \Modules\Routing\DTOs\RoutingDecision(
                 gateway:        $decision->gateway,
@@ -526,6 +612,7 @@ class PaymentCheckoutService
                 'routing_rule_id'       => $decision->routingRuleId,
                 'gateway'               => $decision->gateway,
                 'mid'                   => $decision->mid,
+                'processor_id'          => $decision->midCredentials['processor_id'] ?? null,
                 'gateway_txn_id'        => $response->transactionReference,
                 'gateway_token'         => (string) $response->gatewayToken,
                 'status'                => 'CAPTURED',
@@ -575,6 +662,59 @@ class PaymentCheckoutService
         }
 
         return $transaction;
+    }
+
+    /**
+     * Preview the fee for a payment option BEFORE the customer submits — used by details()
+     * so the checkout page can show the customer the amount they'll actually be charged,
+     * instead of the page recomputing its own estimate. Mirrors the charge-time gating in
+     * submit() (fee_surcharge_enabled, QB Per-Invoice Override + custom field, QB Multi-MID
+     * per-gateway rate) exactly; the underlying arithmetic (calculateExactFeeCents /
+     * calculateRoundedFeeCents) is the same code submit() calls, so only this gating logic
+     * needs to stay in sync if submit()'s fee rules ever change.
+     */
+    private function previewFeeCents(Invoice $invoice, ?Client $feeClient, ?ClientMidRoute $qbMidRoute, string $paymentMethod, int $invoiceCents): int
+    {
+        if (! $feeClient) {
+            return 0;
+        }
+
+        $isQuickBooksInvoice = (string) $invoice->pms_source === 'quickbooks';
+        $applyFee = (bool) $feeClient->fee_surcharge_enabled;
+
+        if ($isQuickBooksInvoice) {
+            if (! $feeClient->qb_fee_override_enabled) {
+                $applyFee = false;
+            } else {
+                $fieldName  = (string) ($feeClient->qb_fee_override_field ?? 'Cash Discount');
+                $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
+                $applyFee   = $fieldValue !== null && strtolower(trim($fieldValue)) === 'yes';
+            }
+        }
+
+        $feeCents = 0;
+        if ($applyFee) {
+            $isAch         = strtoupper($paymentMethod) === 'ACH';
+            $feePercentRaw = $isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent;
+            $feePercent    = $feePercentRaw !== null ? (string) $feePercentRaw : '0';
+            if (bccomp($feePercent, '0', 10) > 0) {
+                $feeCents = $feeClient->exact_cent_fee_rounding_enabled
+                    ? $this->calculateExactFeeCents($invoiceCents, $feePercent)
+                    : $this->calculateRoundedFeeCents($invoiceCents, $feePercent);
+            }
+        }
+
+        if ($qbMidRoute) {
+            if ($qbMidRoute->route_type === 'fees_on'
+                && $qbMidRoute->rate_percent !== null
+                && (float) $qbMidRoute->rate_percent > 0) {
+                $feeCents = (int) round($invoiceCents * (float) $qbMidRoute->rate_percent / 100);
+            } else {
+                $feeCents = 0;
+            }
+        }
+
+        return $feeCents;
     }
 
     /**

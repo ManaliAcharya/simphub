@@ -3,6 +3,7 @@
 namespace Modules\Inbound\Http\Controllers;
 
 
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -28,6 +29,7 @@ use Modules\Payment\Services\PaymentLinkService;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Modules\Audit\Services\AuditLogger;
 use Illuminate\Support\Facades\Log;
+use Modules\Outbound\Adapters\FluidPayAdapter;
 use Throwable;
 
 class ClientConfigController extends Controller
@@ -410,8 +412,9 @@ class ClientConfigController extends Controller
         $validated = $request->validate([
             'fee_surcharge_enabled'  => ['nullable', 'boolean'],
             'fee_mode'               => ['nullable', 'string', Rule::in($allowedModes)],
-            'cc_fee_percent'         => ['nullable', 'numeric', 'min:0', 'max:99.99'],
-            'ach_fee_percent'        => ['nullable', 'numeric', 'min:0', 'max:99.99'],
+            'cc_fee_percent'         => ['nullable', 'numeric', 'min:0', 'max:999.99999', 'decimal:0,5'],
+            'ach_fee_percent'        => ['nullable', 'numeric', 'min:0', 'max:999.99999', 'decimal:0,5'],
+            'exact_cent_fee_rounding_enabled' => ['nullable', 'boolean'],
             'fee_disclosure'         => [$isCd ? 'required' : 'nullable', 'string', 'max:1000'],
             'cd_business_name'       => [$isCd ? 'required' : 'nullable', 'string', 'max:255'],
             'cd_address'             => [$isCd ? 'required' : 'nullable', 'string', 'max:255'],
@@ -455,6 +458,7 @@ class ClientConfigController extends Controller
             'fee_mode'               => $validated['fee_mode'] ?? 'surcharge',
             'cc_fee_percent'         => $validated['cc_fee_percent'] ?? null,
             'ach_fee_percent'        => $validated['ach_fee_percent'] ?? null,
+            'exact_cent_fee_rounding_enabled' => (bool) ($validated['exact_cent_fee_rounding_enabled'] ?? false),
             'fee_disclosure'         => $validated['fee_disclosure'] ?? null,
             'cash_discount_details'  => !empty($cashDetails) ? $cashDetails : null,
         ]);
@@ -514,6 +518,46 @@ class ClientConfigController extends Controller
         return redirect()->back()->with('success', 'Payment reminder settings saved.');
     }
 
+    /**
+     * List the processors for a FluidPay MID, so the Multi-MID Routing UI can offer
+     * processor_id as a picker. "MID" is short for Merchant ID — FluidPay's processors
+     * endpoint is keyed on merchant_id, so the MID Identifier the admin already typed for
+     * that row is passed straight through as $merchantId; no separate lookup needed.
+     */
+    public function fluidpayProcessors(Request $request, string $pmsClientId): JsonResponse
+    {
+        $request->validate(['merchant_id' => ['required', 'string', 'max:100']]);
+        $merchantId = trim((string) $request->query('merchant_id'));
+
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        $midRoute = ClientMidRoute::query()
+            ->where('client_id', $client->id)
+            ->where('gateway', 'fluidpay')
+            ->get()
+            ->first(fn (ClientMidRoute $r) => trim((string) ($r->credentials['api_key'] ?? '')) !== '');
+
+        $gwCreds     = (array) ($client->gateway_credentials['fluidpay'] ?? []);
+        $environment = $midRoute->environment ?? ($client->gateway_credentials['environment'] ?? 'sandbox');
+
+        $midCredentials = array_filter(
+            array_merge(
+                ['environment' => $environment],
+                $gwCreds,                                   // client-level shared default
+                (array) ($midRoute?->credentials ?? []),     // per-MID override, takes priority
+            ),
+            fn ($v) => $v !== null && $v !== '',
+        );
+
+        $result = app(FluidPayAdapter::class)->listProcessors($midCredentials, $merchantId);
+
+        return response()->json([
+            'success'    => $result['error'] === null,
+            'processors' => $result['processors'],
+            'message'    => $result['error'],
+        ]);
+    }
+
     public function saveMidRoutes(Request $request, string $pmsClientId): RedirectResponse
     {
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
@@ -529,6 +573,7 @@ class ClientConfigController extends Controller
             'routes.*.gateway'              => ['nullable', 'string', 'max:50'],
             'routes.*.mid_identifier'       => ['nullable', 'string', 'max:100'],
             'routes.*.mid_label'            => ['nullable', 'string', 'max:255'],
+            'routes.*.processor_id'         => ['nullable', 'string', 'max:100'],
             'routes.*.rate_percent'         => ['nullable', 'numeric', 'min:0', 'max:99.99'],
             'routes.*.environment'          => ['nullable', 'string', Rule::in(['sandbox', 'production'])],
             'routes.*.credentials'          => ['nullable', 'array'],
@@ -584,6 +629,39 @@ class ClientConfigController extends Controller
                 ->with('error', 'MID Identifier is required to save: ' . implode(', ', $incomplete) . '. Enter a MID Identifier for that row, or clear its other fields.');
         }
 
+        // FluidPay resolves the processor from a processor_id on the transaction, not from the
+        // API key (keys are account-scoped, not MID-scoped). When a client has more than one
+        // FluidPay MID configured, an omitted processor_id makes FluidPay silently fall back to
+        // the account's default processor — so require it on each FluidPay MID once there's more
+        // than one to disambiguate between.
+        $fluidpayMidCount = 0;
+        foreach ($routes as $route) {
+            if (strtolower((string) ($route['gateway'] ?? '')) === 'fluidpay' && ! empty($route['mid_identifier'])) {
+                $fluidpayMidCount++;
+            }
+        }
+
+        // Missing processor_id is surfaced as a warning, not a save-blocker — a client shouldn't
+        // lose their MID/label/credentials edits just because FluidPay's processor lookup is
+        // temporarily unavailable or hasn't been filled in yet. The charge-time behavior (silent
+        // fallback to the default processor when omitted) is the real safety net either way.
+        $missingProcessorIdWarning = null;
+        if ($fluidpayMidCount > 1) {
+            $missingProcessorId = [];
+            foreach ($routes as $route) {
+                if (strtolower((string) ($route['gateway'] ?? '')) !== 'fluidpay' || empty($route['mid_identifier'])) {
+                    continue;
+                }
+                if (empty($route['processor_id'])) {
+                    $missingProcessorId[] = ($route['route_type'] ?? '') === 'fees_on' ? 'Fees On' : 'Fees Off';
+                }
+            }
+
+            if (! empty($missingProcessorId)) {
+                $missingProcessorIdWarning = 'Warning: Processor ID is not set for ' . implode(', ', $missingProcessorId) . '. FluidPay will silently fall back to the default processor for these MIDs until it is set.';
+            }
+        }
+
         foreach ($routes as $route) {
             // Skip routes with no MID identifier filled in yet
             if (empty($route['mid_identifier'])) continue;
@@ -620,6 +698,7 @@ class ClientConfigController extends Controller
                 [
                     'mid_identifier' => $route['mid_identifier'],
                     'mid_label'      => $route['mid_label'] ?? null,
+                    'processor_id'   => $route['processor_id'] ?? null,
                     'rate_percent'   => $route['rate_percent'] ?? null,
                     'environment'    => $route['environment'] ?? 'sandbox',
                     'credentials'    => !empty($mergedCredentials) ? $mergedCredentials : null,
@@ -628,7 +707,12 @@ class ClientConfigController extends Controller
             );
         }
 
-        return redirect()->back()->with('success', 'MID routes saved successfully.');
+        $successMessage = 'MID routes saved successfully.';
+        if ($missingProcessorIdWarning) {
+            $successMessage .= ' ' . $missingProcessorIdWarning;
+        }
+
+        return redirect()->back()->with('success', $successMessage);
     }
 
     public function uploadLogo(Request $request, string $pmsClientId): RedirectResponse

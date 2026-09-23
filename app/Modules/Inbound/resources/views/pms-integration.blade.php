@@ -1252,6 +1252,7 @@
                                                                     <div class="cc-field" style="margin:0;">
                                                                         <label>MID Identifier</label>
                                                                         <input type="text"
+                                                                            id="mid-identifier-{{ $idx }}"
                                                                             name="routes[{{ $idx }}][mid_identifier]"
                                                                             value="{{ old("routes.$idx.mid_identifier", $existing?->mid_identifier) }}"
                                                                             placeholder="e.g. MID_001">
@@ -1265,6 +1266,22 @@
                                                                             placeholder="e.g. {{ $gwUp }} Cash Discount">
                                                                     </div>
                                                                 </div>
+                                                                @if ($gw === 'fluidpay')
+                                                                    <div class="cc-field" style="margin:0 0 10px;">
+                                                                        <label>Processor ID</label>
+                                                                        @php $currentProcessorId = old("routes.$idx.processor_id", $existing?->processor_id); @endphp
+                                                                        <select
+                                                                            class="fluidpay-processor-select"
+                                                                            data-mid-input="mid-identifier-{{ $idx }}"
+                                                                            data-current="{{ $currentProcessorId }}"
+                                                                            name="routes[{{ $idx }}][processor_id]">
+                                                                            <option value="">Select processor…</option>
+                                                                            @if ($currentProcessorId)
+                                                                                <option value="{{ $currentProcessorId }}" selected>{{ $currentProcessorId }} (saved)</option>
+                                                                            @endif
+                                                                        </select>
+                                                                    </div>
+                                                                @endif
                                                                 @php
                                                                     $gwEnv = $gwCredsAll['environment'] ?? 'sandbox';
                                                                     $gwEnvLabel =
@@ -1409,6 +1426,103 @@
                                     this.querySelector('input[name=qb_multi_mid_enabled]').value =
                                         document.getElementById('qb-mid-val').value;
                                 });
+                            </script>
+
+                            {{-- Populate each row's Processor ID dropdown from FluidPay, keyed on that
+                                 row's own MID Identifier (MID = Merchant ID = FluidPay's merchant_id). --}}
+                            <script>
+                                (function() {
+                                    var processorSelects = document.querySelectorAll(
+                                        '.fluidpay-processor-select');
+                                    if (!processorSelects.length) return;
+
+                                    var baseUrl =
+                                        '{{ route('inbound.clients.fluidpay-processors', $client->pms_client_id) }}';
+                                    var cache = {};
+
+                                    function loadProcessors(select) {
+                                        var midInput = document.getElementById(select.dataset.midInput);
+                                        var merchantId = midInput ? midInput.value.trim() : '';
+                                        if (!merchantId) return;
+
+                                        if (cache[merchantId]) {
+                                            renderOptions(select, cache[merchantId]);
+                                            return;
+                                        }
+
+                                        fetch(baseUrl + '?merchant_id=' + encodeURIComponent(merchantId), {
+                                                headers: {
+                                                    'Accept': 'application/json'
+                                                }
+                                            })
+                                            .then(function(r) {
+                                                return r.json();
+                                            })
+                                            .then(function(data) {
+                                                if (!data.success) {
+                                                    console.warn('FluidPay processors: ' + (data.message ||
+                                                        'unknown error'));
+                                                    return;
+                                                }
+                                                cache[merchantId] = data.processors || [];
+                                                renderOptions(select, cache[merchantId]);
+                                            })
+                                            .catch(function(err) {
+                                                console.warn('FluidPay processors fetch failed', err);
+                                            });
+                                    }
+
+                                    function renderOptions(select, processors) {
+                                        var current = select.dataset.current || '';
+                                        var found = false;
+
+                                        select.innerHTML = '';
+
+                                        processors.forEach(function(p) {
+                                            var opt = document.createElement('option');
+                                            opt.value = p.id;
+                                            opt.textContent = p.name + (p.status ? ' (' + p.status + ')' :
+                                                '');
+                                            if (p.id === current) {
+                                                opt.selected = true;
+                                                found = true;
+                                            }
+                                            select.appendChild(opt);
+                                        });
+
+                                        // Keep an already-saved processor_id selectable even if it's not in
+                                        // the current processor list, so saving again doesn't silently drop it.
+                                        if (current && !found) {
+                                            var savedOpt = document.createElement('option');
+                                            savedOpt.value = current;
+                                            savedOpt.textContent = current + ' (saved)';
+                                            savedOpt.selected = true;
+                                            select.appendChild(savedOpt);
+                                        }
+                                    }
+
+                                    processorSelects.forEach(function(select) {
+                                        var midInput = document.getElementById(select.dataset.midInput);
+                                        if (!midInput) return;
+
+                                        // Live-fetch as the MID is typed, don't wait for blur/save.
+                                        var debounceTimer = null;
+                                        midInput.addEventListener('input', function() {
+                                            clearTimeout(debounceTimer);
+                                            debounceTimer = setTimeout(function() {
+                                                loadProcessors(select);
+                                            }, 400);
+                                        });
+                                        midInput.addEventListener('change', function() {
+                                            clearTimeout(debounceTimer);
+                                            loadProcessors(select);
+                                        });
+
+                                        if (midInput.value.trim()) {
+                                            loadProcessors(select);
+                                        }
+                                    });
+                                })();
                             </script>
                         </div>
                     </div>

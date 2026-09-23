@@ -39,12 +39,18 @@ class FluidPayAdapter implements GatewayAdapterInterface
 
         $startedAt = microtime(true);
 
+        // Accounts with more than one FluidPay MID need processor_id to pick which processor
+        // the transaction runs on — the API key alone is account-scoped, not MID-scoped, and
+        // FluidPay silently falls back to the account's default processor without it.
+        $processorId = trim((string) ($request->midCredentials['processor_id'] ?? ''));
+
         \Log::debug('FluidPay charge attempt', [
             'environment'        => $isProduction ? 'production' : 'sandbox',
             'base_url'           => $baseUrl,
             'api_key_prefix'     => substr($apiKey, 0, 10).'...',
             'api_key_length'     => strlen($apiKey),
             'credential_source'  => $credSource,
+            'processor_id'       => $processorId !== '' ? $processorId : null,
             'amount_cents'       => $request->amountInCents,
             'currency'           => $request->currency ?: 'USD',
             'transaction_type'   => $request->transactionType,
@@ -62,6 +68,10 @@ class FluidPayAdapter implements GatewayAdapterInterface
                 'token' => $request->token,
             ],
         ];
+
+        if ($processorId !== '') {
+            $payload['processor_id'] = $processorId;
+        }
 
         // Cardholder name is required for FluidPay to fully process the sale.
         // Billing address is optional and only included when the customer supplied one.
@@ -225,6 +235,52 @@ class FluidPayAdapter implements GatewayAdapterInterface
             null,
             $raw,
         );
+    }
+
+    /**
+     * List the processors configured on a FluidPay merchant account (Manage → Processors),
+     * so admin UIs can offer processor_id as a picker instead of free text. $merchantId is
+     * the MID itself — "MID" is short for Merchant ID, and FluidPay's own processors
+     * endpoint is keyed on merchant_id, so no separate self-lookup call is needed (and the
+     * per-merchant transaction key isn't authorized for account self-lookup anyway — only
+     * for /api/transaction*).
+     */
+    public function listProcessors(array $midCredentials, string $merchantId): array
+    {
+        $resolved = $this->resolveCredentials($midCredentials);
+        ['api_key' => $apiKey, 'base_url' => $baseUrl, 'source' => $credSource] = $resolved;
+
+        if ($apiKey === '') {
+            return ['processors' => [], 'error' => 'FluidPay API key is not configured.'];
+        }
+
+        if ($merchantId === '') {
+            return ['processors' => [], 'error' => 'Enter a MID Identifier first.'];
+        }
+
+        $keyHint = substr($apiKey, 0, 8).'...('.strlen($apiKey).' chars, source: '.$credSource.')';
+
+        try {
+            $processorsResponse = Http::withHeaders(['Authorization' => $apiKey])
+                ->timeout(20)
+                ->get("{$baseUrl}/api/merchant/{$merchantId}/processors");
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            return ['processors' => [], 'error' => 'Could not reach FluidPay: '.$e->getMessage().' [key: '.$keyHint.']'];
+        }
+
+        if (! $processorsResponse->successful()) {
+            return ['processors' => [], 'error' => 'Could not fetch processors for MID "'.$merchantId.'" (HTTP '.$processorsResponse->status().'). [key: '.$keyHint.']'];
+        }
+
+        $rows = (array) ($processorsResponse->json('data') ?? []);
+
+        $processors = array_map(fn (array $p) => [
+            'id'     => (string) ($p['id']     ?? ''),
+            'name'   => (string) ($p['name']   ?? ''),
+            'status' => (string) ($p['status'] ?? ''),
+        ], $rows);
+
+        return ['processors' => $processors, 'error' => null];
     }
 
     public function listTransactions(array $filters, array $midCredentials = []): array

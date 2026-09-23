@@ -165,6 +165,12 @@ class PaymentSessionController extends Controller
             'gateway_txn_id' => $transaction->gateway_txn_id,
             'invoice_status' => optional($invoice)->status,
             'redirect_url'   => optional($invoice)->success_redirect_url ?: null,
+            // The actual charged amounts, straight from the completed transaction — the
+            // confirmation page must display these, not recompute an estimate client-side,
+            // since the real fee calculation (incl. any per-client exact-cent rounding) only
+            // happens server-side and can diverge from a naive percent×amount guess.
+            'amount_cents'   => $transaction->amount_cents,
+            'fee_cents'      => $transaction->fee_cents,
         ]);
     }
 }
