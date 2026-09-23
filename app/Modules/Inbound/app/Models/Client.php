@@ -38,6 +38,7 @@ class Client extends Model
             // surcharge/cash-discount rate used to compute IOLTA trust deposits down to the cent.
             'cc_fee_percent'              => 'decimal:5',
             'ach_fee_percent'             => 'decimal:5',
+            'exact_cent_fee_rounding_enabled' => 'boolean',
             'qb_fee_override_enabled'        => 'boolean',
             'qb_multi_mid_enabled'           => 'boolean',
             'qb_surcharge_enabled'           => 'boolean',

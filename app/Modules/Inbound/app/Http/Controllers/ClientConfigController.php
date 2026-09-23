@@ -414,6 +414,7 @@ class ClientConfigController extends Controller
             'fee_mode'               => ['nullable', 'string', Rule::in($allowedModes)],
             'cc_fee_percent'         => ['nullable', 'numeric', 'min:0', 'max:999.99999', 'decimal:0,5'],
             'ach_fee_percent'        => ['nullable', 'numeric', 'min:0', 'max:999.99999', 'decimal:0,5'],
+            'exact_cent_fee_rounding_enabled' => ['nullable', 'boolean'],
             'fee_disclosure'         => [$isCd ? 'required' : 'nullable', 'string', 'max:1000'],
             'cd_business_name'       => [$isCd ? 'required' : 'nullable', 'string', 'max:255'],
             'cd_address'             => [$isCd ? 'required' : 'nullable', 'string', 'max:255'],
@@ -457,6 +458,7 @@ class ClientConfigController extends Controller
             'fee_mode'               => $validated['fee_mode'] ?? 'surcharge',
             'cc_fee_percent'         => $validated['cc_fee_percent'] ?? null,
             'ach_fee_percent'        => $validated['ach_fee_percent'] ?? null,
+            'exact_cent_fee_rounding_enabled' => (bool) ($validated['exact_cent_fee_rounding_enabled'] ?? false),
             'fee_disclosure'         => $validated['fee_disclosure'] ?? null,
             'cash_discount_details'  => !empty($cashDetails) ? $cashDetails : null,
         ]);

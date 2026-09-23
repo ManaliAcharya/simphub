@@ -177,6 +177,15 @@ class PaymentCheckoutService
         return (int) $truncated;
     }
 
+    /**
+     * Pre-existing float/round-nearest fee formula, kept as-is for any client that hasn't
+     * opted into exact-cent rounding — behavior must stay identical to before that feature.
+     */
+    private function calculateRoundedFeeCents(int $invoiceCents, string $feePercent): int
+    {
+        return (int) round($invoiceCents * (float) $feePercent / 100);
+    }
+
     private function resolveBillingAddressPrefill(Invoice $invoice): array
     {
         $customerName = trim((string) data_get($invoice->raw_payload, 'invoice.Invoice.CustomerRef.name', ''));
@@ -261,7 +270,9 @@ class PaymentCheckoutService
             $feePercentRaw = $isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent;
             $feePercent    = $feePercentRaw !== null ? (string) $feePercentRaw : '0';
             if (bccomp($feePercent, '0', 10) > 0) {
-                $feeCents = $this->calculateExactFeeCents((int) $invoice->amount_cents, $feePercent);
+                $feeCents = $feeClient->exact_cent_fee_rounding_enabled
+                    ? $this->calculateExactFeeCents((int) $invoice->amount_cents, $feePercent)
+                    : $this->calculateRoundedFeeCents((int) $invoice->amount_cents, $feePercent);
             }
         }
         $totalAmountCents = (int) $invoice->amount_cents + $feeCents;

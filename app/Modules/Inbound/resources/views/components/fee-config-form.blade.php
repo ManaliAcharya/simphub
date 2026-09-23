@@ -114,6 +114,30 @@
             </table>
         </div>
 
+        {{-- Exact-Cent Rounding (IOLTA / trust-account compliance) --}}
+        @php $exactCentEnabled = (bool) $client->exact_cent_fee_rounding_enabled; @endphp
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 13px;background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:12px;margin-bottom:14px;">
+            <div>
+                <span style="font-size:13px;font-weight:600;color:#132238;">Exact-Cent Rounding</span>
+                <p style="margin:2px 0 0;font-size:12px;color:#6b7c93;max-width:420px;">
+                    For trust-account clients (e.g. IOLTA) who need the deposited amount to match
+                    the invoice exactly. Uses bcmath decimal math and always rounds the total up to
+                    the next cent, instead of rounding the fee to the nearest cent.
+                </p>
+            </div>
+            <div style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:11px;font-weight:700;flex-shrink:0;margin-left:14px;">
+                <input type="hidden" name="exact_cent_fee_rounding_enabled" id="{{ $ns }}-exact-cent-val" value="{{ $exactCentEnabled ? '1' : '0' }}">
+                <button type="button" id="{{ $ns }}-exact-cent-on"
+                        onclick="fcfExactCentToggle('{{ $ns }}', true)"
+                        style="padding:5px 14px;border:none;cursor:pointer;font-family:inherit;transition:all .15s;
+                        {{ $exactCentEnabled ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">ON</button>
+                <button type="button" id="{{ $ns }}-exact-cent-off"
+                        onclick="fcfExactCentToggle('{{ $ns }}', false)"
+                        style="padding:5px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;transition:all .15s;
+                        {{ $exactCentEnabled ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
+            </div>
+        </div>
+
         {{-- Disclosure Text (CC + ACH) --}}
         <div style="margin-bottom:14px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;display:block;margin-bottom:5px;">
@@ -224,6 +248,14 @@
         document.getElementById(ns + '-off').style.color      = on ? '#9ca3af' : '#374151';
     }
 
+    function fcfExactCentToggle(ns, on) {
+        document.getElementById(ns + '-exact-cent-val').value = on ? '1' : '0';
+        document.getElementById(ns + '-exact-cent-on').style.background  = on ? '#132238' : '#fff';
+        document.getElementById(ns + '-exact-cent-on').style.color       = on ? '#fff'    : '#9ca3af';
+        document.getElementById(ns + '-exact-cent-off').style.background = on ? '#fff'    : '#f1f5f9';
+        document.getElementById(ns + '-exact-cent-off').style.color      = on ? '#9ca3af' : '#374151';
+    }
+
     var CD_DEFAULT_DISCLOSURE = 'This merchant offers a discount for cash or check payments. Card and ACH payments include a processing fee.';
 
     function fcfModeChange(ns) {
@@ -244,5 +276,6 @@
     // Expose globally so onclick attributes work
     window.fcfToggle = fcfToggle;
     window.fcfModeChange = fcfModeChange;
+    window.fcfExactCentToggle = fcfExactCentToggle;
 })();
 </script>
