@@ -90,23 +90,43 @@ class PaymentCheckoutService
                     ? $this->payaAvailability($invoice)
                     : ['available' => true, 'reason' => null];
 
-                // Merge client-specific credentials so hostedFieldsConfig gets
-                // the correct public_key / environment for the tokenizer
-                $gwCreds = $clientGwCreds[strtolower($decision->gateway)] ?? [];
-                if ($commonEnv) {
-                    $gwCreds['environment'] = $commonEnv;
+                // If a QB Multi-MID route matches this gateway, its own credentials/MID entirely
+                // replace the routing-rule + client-shared defaults — mirrors submit()'s override
+                // exactly, so the tokenizer widget shown here uses the same public_key/environment
+                // that will actually be used to charge, instead of the wrong (client-default) one.
+                $qbMidRoute = null;
+                if ($invoice->pms_client_id && (string) $invoice->pms_source === 'quickbooks') {
+                    $qbMidRoute = $this->resolveQbMidRoute($invoice, $feeClient, $decision->gateway);
                 }
-                $resolvedCreds = ! empty($gwCreds)
-                    ? array_merge($decision->midCredentials, $gwCreds)
-                    : $decision->midCredentials;
+
+                if ($qbMidRoute) {
+                    $mid = $qbMidRoute->mid_identifier;
+                    $resolvedCreds = array_merge(
+                        $decision->midCredentials,
+                        array_filter((array) ($qbMidRoute->credentials ?? []), fn ($v) => $v !== null && $v !== ''),
+                        ['environment' => $qbMidRoute->environment ?? 'sandbox'],
+                        $qbMidRoute->processor_id ? ['processor_id' => $qbMidRoute->processor_id] : [],
+                    );
+                } else {
+                    $mid = $decision->mid;
+                    // Merge client-specific credentials so hostedFieldsConfig gets
+                    // the correct public_key / environment for the tokenizer
+                    $gwCreds = $clientGwCreds[strtolower($decision->gateway)] ?? [];
+                    if ($commonEnv) {
+                        $gwCreds['environment'] = $commonEnv;
+                    }
+                    $resolvedCreds = ! empty($gwCreds)
+                        ? array_merge($decision->midCredentials, $gwCreds)
+                        : $decision->midCredentials;
+                }
 
                 $hostedFields = $this->gateways->make($decision->gateway)->hostedFieldsConfig(
-                    $decision->mid,
+                    $mid,
                     $resolvedCreds,
                 );
 
                 $paymentMethod = $decision->ruleMatches['payment_method'] ?? 'CARD';
-                $feeCents      = $this->previewFeeCents($invoice, $feeClient, $decision->gateway, $paymentMethod);
+                $feeCents      = $this->previewFeeCents($invoice, $feeClient, $qbMidRoute, $paymentMethod, (int) $invoice->amount_cents);
 
                 return [
                     'routing_rule_id' => $decision->routingRuleId,
@@ -114,7 +134,7 @@ class PaymentCheckoutService
                     'display_name' => $feeClient
                         ? $feeClient->gatewayDisplayName($decision->gateway)
                         : strtoupper($decision->gateway),
-                    'mid' => $decision->mid,
+                    'mid' => $mid,
                     'payment_method' => $paymentMethod,
                     'rule_matches' => $decision->ruleMatches,
                     'hosted_fields' => [
@@ -653,7 +673,7 @@ class PaymentCheckoutService
      * calculateRoundedFeeCents) is the same code submit() calls, so only this gating logic
      * needs to stay in sync if submit()'s fee rules ever change.
      */
-    private function previewFeeCents(Invoice $invoice, ?Client $feeClient, string $gateway, string $paymentMethod): int
+    private function previewFeeCents(Invoice $invoice, ?Client $feeClient, ?ClientMidRoute $qbMidRoute, string $paymentMethod, int $invoiceCents): int
     {
         if (! $feeClient) {
             return 0;
@@ -679,21 +699,18 @@ class PaymentCheckoutService
             $feePercent    = $feePercentRaw !== null ? (string) $feePercentRaw : '0';
             if (bccomp($feePercent, '0', 10) > 0) {
                 $feeCents = $feeClient->exact_cent_fee_rounding_enabled
-                    ? $this->calculateExactFeeCents((int) $invoice->amount_cents, $feePercent)
-                    : $this->calculateRoundedFeeCents((int) $invoice->amount_cents, $feePercent);
+                    ? $this->calculateExactFeeCents($invoiceCents, $feePercent)
+                    : $this->calculateRoundedFeeCents($invoiceCents, $feePercent);
             }
         }
 
-        if ($invoice->pms_client_id && $isQuickBooksInvoice) {
-            $qbMidRoute = $this->resolveQbMidRoute($invoice, $feeClient, $gateway);
-            if ($qbMidRoute) {
-                if ($qbMidRoute->route_type === 'fees_on'
-                    && $qbMidRoute->rate_percent !== null
-                    && (float) $qbMidRoute->rate_percent > 0) {
-                    $feeCents = (int) round((float) $invoice->amount_cents * (float) $qbMidRoute->rate_percent / 100);
-                } else {
-                    $feeCents = 0;
-                }
+        if ($qbMidRoute) {
+            if ($qbMidRoute->route_type === 'fees_on'
+                && $qbMidRoute->rate_percent !== null
+                && (float) $qbMidRoute->rate_percent > 0) {
+                $feeCents = (int) round($invoiceCents * (float) $qbMidRoute->rate_percent / 100);
+            } else {
+                $feeCents = 0;
             }
         }
 
