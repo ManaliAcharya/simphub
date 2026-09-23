@@ -353,14 +353,18 @@
             const isAch     = (option.payment_method || '').toUpperCase() === 'ACH';
             const fmt       = function(cents) { return '$' + (cents / 100).toFixed(2); };
 
-            // Fee calc
-            const baseCents = invoice.amount_cents || 0;
-            const feeEnabled = config.fee_surcharge_enabled;
-            const feePercent = feeEnabled
+            // Amounts actually charged — from the completed transaction (payload), never
+            // recomputed here. The real fee calculation (incl. any per-client exact-cent
+            // rounding) happens server-side only; re-deriving it client-side can silently
+            // drift from what was actually charged.
+            const totalCents = payload.amount_cents ?? (invoice.amount_cents || 0);
+            const feeCents   = payload.fee_cents ?? 0;
+            const baseCents  = totalCents - feeCents;
+            // feePercent here is cosmetic only (the "(x%)" label) — the dollar figures above
+            // never depend on it.
+            const feePercent = feeCents > 0
                 ? parseFloat(isAch ? (config.ach_fee_percent || 0) : (config.cc_fee_percent || 0))
                 : 0;
-            const feeCents   = feePercent > 0 ? Math.round(baseCents * feePercent / 100) : 0;
-            const totalCents = baseCents + feeCents;
 
             // Icon + title
             const icon = document.getElementById('conf-icon');
@@ -492,10 +496,17 @@
             if (feeEnabled && options.length) {
                 const rows = [];
                 options.filter(function(o) { return o.is_available !== false; }).forEach(function(o) {
-                    const pm = (o.payment_method || (o.hosted_fields && o.hosted_fields.metadata && o.hosted_fields.metadata.payment_method) || 'CARD').toUpperCase();
-                    const pct = parseFloat(pm === 'ACH' ? (config.ach_fee_percent || 0) : (config.cc_fee_percent || 0));
-                    if (pct > 0) {
-                        const saving = Math.round(baseCents * pct / 100);
+                    const pm  = (o.payment_method || (o.hosted_fields && o.hosted_fields.metadata && o.hosted_fields.metadata.payment_method) || 'CARD').toUpperCase();
+                    const gw  = (o.gateway || '').toLowerCase();
+                    // Label percent only (cosmetic) — the dollar figure below always comes from
+                    // the server-computed o.fee_cents, never recomputed from a flat percentage.
+                    const pct = parseFloat(
+                        (config.gateway_rates && config.gateway_rates[gw] !== undefined)
+                            ? (config.gateway_rates[gw] || 0)
+                            : (pm === 'ACH' ? (config.ach_fee_percent || 0) : (config.cc_fee_percent || 0))
+                    );
+                    const saving = o.fee_cents || 0;
+                    if (saving > 0) {
                         rows.push('<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">'
                             + '<span>' + (o.display_name || o.gateway.toUpperCase()) + ' (' + pct + '%)</span>'
                             + '<span style="font-weight:600;">' + fmt(saving) + '</span></div>');
@@ -599,18 +610,19 @@
 
                 const isAch = payMethod === 'ACH';
                 const gwLower = option.gateway.toLowerCase();
+                // Dollar amounts come straight from the server (details() computed the real
+                // fee, incl. any per-client exact-cent rounding) — never recomputed here.
+                const feeCents   = option.fee_cents ?? 0;
+                const totalCents = option.total_cents ?? (baseCents + feeCents);
+                // feePercent is cosmetic only — the "(x%)" label text below, not used for money.
                 let feePercent = 0;
                 if (feeEnabled) {
                     if (config.gateway_rates && config.gateway_rates[gwLower] !== undefined) {
-                        // QB multi-MID: per-gateway rate from client_mid_routes
                         feePercent = parseFloat(config.gateway_rates[gwLower] || 0);
                     } else {
-                        // Standard: cc/ach fallback
                         feePercent = parseFloat(isAch ? (config.ach_fee_percent || 0) : (config.cc_fee_percent || 0));
                     }
                 }
-                const feeCents   = feePercent > 0 ? Math.round(baseCents * feePercent / 100) : 0;
-                const totalCents = baseCents + feeCents;
 
                 const tile = document.createElement('div');
                 tile.className = 'pay-tile' + (available ? '' : ' pay-tile-disabled');
