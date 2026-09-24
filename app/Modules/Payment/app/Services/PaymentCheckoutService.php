@@ -169,8 +169,10 @@ class PaymentCheckoutService
      * floating point can't represent most decimal fractions exactly) or round the fee itself
      * (the client's rate is deliberately a few thousandths off the processor's flat rate so
      * that, after rounding the TOTAL up to the next cent, the processor's cut lands the
-     * remainder back to precisely the invoice amount). All arithmetic is bcmath on decimal
-     * strings; $feePercent may carry up to 5 decimal places (e.g. "3.48753").
+     * remainder back to precisely the invoice amount). Deliberately plain PHP integer math, not
+     * bcmath — bcmath is an optional extension and isn't guaranteed to be installed on every
+     * server, and scaled-integer arithmetic is exact for a fixed, known decimal precision (up to
+     * 5 places, matching the DB column) without needing an external extension at all.
      *
      *   rate_fraction   = feePercent / 100
      *   fee_cents_exact = invoiceCents * rate_fraction
@@ -179,30 +181,50 @@ class PaymentCheckoutService
      */
     private function calculateExactFeeCents(int $invoiceCents, string $feePercent): int
     {
-        $scale = 15; // headroom before the final whole-cent ceiling step
+        $scale            = 5; // feePercent carries up to 5 decimal places (decimal(8,5) column)
+        $percentScale     = 10 ** $scale;             // 100000
+        $percentScaledInt = $this->decimalStringToScaledInt($feePercent, $scale);
 
-        $rateFraction  = bcdiv($feePercent, '100', $scale);
-        $feeCentsExact = bcmul((string) $invoiceCents, $rateFraction, $scale);
-        $totalExact    = bcadd((string) $invoiceCents, $feeCentsExact, $scale);
-        $totalCents    = $this->ceilDecimalToInt($totalExact);
+        // total_exact = invoiceCents * (1 + feePercent/100), scaled up by (percentScale * 100)
+        // so everything stays an exact integer until the final ceiling division.
+        $divisor     = $percentScale * 100; // 10,000,000
+        $totalScaled = $invoiceCents * ($divisor + $percentScaledInt);
+        $totalCents  = $this->ceilIntDivision($totalScaled, $divisor);
 
         return $totalCents - $invoiceCents;
     }
 
     /**
-     * Ceiling for a non-negative decimal string via bcmath (no float involved). bcmath's scale
-     * reduction truncates rather than rounds, so this bumps the truncation up by one whenever a
-     * fractional remainder was dropped.
+     * Converts a decimal string (e.g. "3.48753") into an integer scaled by 10^$scale (e.g.
+     * 348753 for scale 5), truncating/padding the fractional part to exactly $scale digits.
+     * Pure string/integer parsing — no float conversion, so no precision loss.
      */
-    private function ceilDecimalToInt(string $decimal): int
+    private function decimalStringToScaledInt(string $decimal, int $scale): int
     {
-        $truncated = bcadd($decimal, '0', 0);
-
-        if (bccomp($decimal, $truncated, 15) > 0) {
-            $truncated = bcadd($truncated, '1', 0);
+        $decimal  = trim($decimal);
+        $negative = str_starts_with($decimal, '-');
+        if ($negative) {
+            $decimal = substr($decimal, 1);
         }
 
-        return (int) $truncated;
+        [$whole, $frac] = array_pad(explode('.', $decimal, 2), 2, '');
+        $whole = $whole === '' ? '0' : (ltrim($whole, '0') ?: '0');
+        $frac  = str_pad(substr($frac, 0, $scale), $scale, '0');
+
+        $scaledInt = (int) ($whole . $frac);
+
+        return $negative ? -$scaledInt : $scaledInt;
+    }
+
+    /**
+     * Ceiling division for non-negative integers — always rounds up on any remainder.
+     */
+    private function ceilIntDivision(int $numerator, int $denominator): int
+    {
+        $quotient  = intdiv($numerator, $denominator);
+        $remainder = $numerator % $denominator;
+
+        return $remainder !== 0 ? $quotient + 1 : $quotient;
     }
 
     /**
