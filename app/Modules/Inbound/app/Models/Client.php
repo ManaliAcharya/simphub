@@ -41,6 +41,7 @@ class Client extends Model
             'exact_cent_fee_rounding_enabled' => 'boolean',
             'qb_fee_override_enabled'        => 'boolean',
             'qb_multi_mid_enabled'           => 'boolean',
+            'ready_to_send_enabled'          => 'boolean',
             'qb_surcharge_enabled'           => 'boolean',
             'qb_use_native_pdf'              => 'boolean',
             'wave_surcharge_enabled'         => 'boolean',
