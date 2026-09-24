@@ -106,20 +106,73 @@ class PaymentLinkService
         // Do NOT reset payment_link_sent_at on delivery failure. Resetting it lets a PMS
         // webhook retry bypass the once-only guard and send a duplicate email. The claim
         // stays set; an admin can null-out payment_link_sent_at to trigger a resend.
+        //
+        // The claim only proves an attempt happened, not that it succeeded — so each send
+        // is tried/caught individually (like resendPaymentLink) and payment_link_last_sent_to
+        // is corrected below to the recipients that actually got it, with failures logged via
+        // AuditLogger, so a failed first send is visible instead of looking identical to a
+        // real one.
         $paymentUrl  = $this->urlForSession($session);
         $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
         $fromName    = $this->resolveFromName($invoice, $client, $emailConfig);
         $pdfContent  = $this->resolvePdfContent($invoice, $paymentUrl, $pdfContent);
         $sent        = 0;
+        $sentTo      = [];
+        $failures    = [];
 
         foreach ($toCustomer as $email) {
-            Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent, false, $emailConfig, $fromName));
-            $sent++;
+            try {
+                Mail::to($email)->send(new PaymentLinkMail($invoice, $session, $paymentUrl, $pdfContent, false, $emailConfig, $fromName));
+                $sent++;
+                $sentTo[] = $email;
+            } catch (\Throwable $e) {
+                $failures[$email] = $e->getMessage();
+                Log::error('sendInvoiceLinkOnce: failed to send customer email', [
+                    'invoice_id' => $invoice->id,
+                    'session_id' => $session->id,
+                    'email'      => $email,
+                    'error'      => $e->getMessage(),
+                ]);
+            }
         }
 
         if ($toAdmin !== []) {
-            Mail::to($toAdmin[0])->send(new PaymentLinkAdminMail($invoice, $session, $paymentUrl));
-            $sent++;
+            try {
+                Mail::to($toAdmin[0])->send(new PaymentLinkAdminMail($invoice, $session, $paymentUrl));
+                $sent++;
+                $sentTo[] = $toAdmin[0];
+            } catch (\Throwable $e) {
+                $failures[$toAdmin[0]] = $e->getMessage();
+                Log::error('sendInvoiceLinkOnce: failed to send admin email', [
+                    'invoice_id' => $invoice->id,
+                    'session_id' => $session->id,
+                    'email'      => $toAdmin[0],
+                    'error'      => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // Correct the claim's recipient list to who actually got it, not who was attempted.
+        DB::table('payment_sessions')
+            ->where('id', $session->id)
+            ->update([
+                'payment_link_last_sent_to' => json_encode($sentTo, JSON_THROW_ON_ERROR),
+                'updated_at'                => now(),
+            ]);
+
+        if ($failures !== []) {
+            AuditLogger::log(
+                'payment_link.initial_send_failed',
+                'payment_session',
+                $session->id,
+                [
+                    'invoice_id'       => $invoice->id,
+                    'attempted_emails' => $allRecipients,
+                    'sent_emails'      => $sentTo,
+                    'failed_emails'    => array_keys($failures),
+                    'failure_reasons'  => $failures,
+                ]
+            );
         }
 
         return $sent;
