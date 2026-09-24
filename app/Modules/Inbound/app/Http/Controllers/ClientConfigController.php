@@ -475,7 +475,6 @@ class ClientConfigController extends Controller
             'qb_fee_override_field'   => ['nullable', 'string', 'max:100'],
             'qb_multi_mid_enabled'    => ['nullable', 'boolean'],
             'ready_to_send_enabled'   => ['nullable', 'boolean'],
-            'ready_to_send_field'     => ['nullable', 'string', 'max:100'],
         ]);
 
         $client->update([
@@ -483,7 +482,6 @@ class ClientConfigController extends Controller
             'qb_fee_override_field'   => $validated['qb_fee_override_field'] ?? 'Cash Discount',
             'qb_multi_mid_enabled'    => (bool) ($validated['qb_multi_mid_enabled'] ?? false),
             'ready_to_send_enabled'   => (bool) ($validated['ready_to_send_enabled'] ?? false),
-            'ready_to_send_field'     => $validated['ready_to_send_field'] ?? 'Ready to Send',
         ]);
 
         return redirect()->back()->with('success', 'QuickBooks settings saved.');
@@ -882,27 +880,44 @@ class ClientConfigController extends Controller
                 );
             }
 
-            $emailsSent = $this->paymentLinks->resendPaymentLink(
-                $invoice,
-                $paymentSession,
-                $invoice->recipient_emails ?? [],
-                $pdf
-            );
+            // This session may have never actually sent yet — e.g. a "Ready to Send?"
+            // client whose initial auto-send was suppressed. Route through
+            // sendInvoiceLinkOnce() for a genuine first send so first_email_sent_at /
+            // the reminder cadence seed correctly; resendPaymentLink() doesn't touch
+            // either. For every other case this is an ordinary resend, unchanged.
+            $isFirstSend = $paymentSession->payment_link_sent_at === null;
+
+            $emailsSent = $isFirstSend
+                ? $this->paymentLinks->sendInvoiceLinkOnce(
+                    $invoice,
+                    $paymentSession,
+                    $invoice->recipient_emails ?? [],
+                    $pdf
+                )
+                : $this->paymentLinks->resendPaymentLink(
+                    $invoice,
+                    $paymentSession,
+                    $invoice->recipient_emails ?? [],
+                    $pdf
+                );
 
             if ($emailsSent > 0) {
-                AuditLogger::log('PAYMENT_LINK_RESENT', 'payment_session', $paymentSession->id, [
+                AuditLogger::log($isFirstSend ? 'PAYMENT_LINK_SENT' : 'PAYMENT_LINK_RESENT', 'payment_session', $paymentSession->id, [
                     'invoice_id'       => $invoice->id,
                     'pms_client_id'    => $pms_client_id,
                     'emails_sent'      => $emailsSent,
                     'recipient_emails' => $invoice->recipient_emails,
                 ]);
 
-                return back()->with('success', 'Invoice email resent successfully.');
+                return back()->with('success', $isFirstSend
+                    ? 'Invoice email sent successfully.'
+                    : 'Invoice email resent successfully.');
             }
 
-            // resendPaymentLink() itself logs a payment_link.resend_failed audit entry
+            // sendInvoiceLinkOnce()/resendPaymentLink() themselves log a
+            // payment_link.initial_send_failed / payment_link.resend_failed audit entry
             // with the specific per-recipient reason when a send fails.
-            return back()->with('error', 'Failed to resend invoice email. Check the audit log for details.');
+            return back()->with('error', 'Failed to send invoice email. Check the audit log for details.');
         } catch (Throwable $e) {
             Log::error('Failed to resend invoice email.', [
                 'invoice_id'    => $invoice->id,
