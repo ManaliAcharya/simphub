@@ -28,6 +28,7 @@ use Modules\Inbound\Services\WaveOAuthService;
 use Modules\Inbound\Services\ZohoApiClient;
 use Modules\Inbound\Services\ZohoOAuthService;
 use Modules\Billing\Models\Invoice;
+use Modules\Billing\Models\PaymentSession;
 
 class PmsIntegrationController extends Controller
 {
@@ -549,12 +550,23 @@ class PmsIntegrationController extends Controller
                 ])
                 ->where('pms_client_id', $pmsClientId)
                 ->latest('created_at')
-                ->get()
-                ->map(function ($invoice) {
-                    $invoice->recipient_email_list = implode(', ', $invoice->recipient_emails ?? []);
+                ->get();
 
-                    return $invoice;
-                });
+        // Latest payment session per invoice, so the Invoice List tab can tell "never
+        // actually sent" (Send button) apart from "already sent at least once" (Resend).
+        $latestSessionByInvoice = PaymentSession::query()
+            ->whereIn('invoice_id', $invoices->pluck('id'))
+            ->orderByDesc('created_at')
+            ->get(['invoice_id', 'payment_link_sent_at'])
+            ->unique('invoice_id')
+            ->keyBy('invoice_id');
+
+        $invoices = $invoices->map(function ($invoice) use ($latestSessionByInvoice) {
+            $invoice->recipient_email_list = implode(', ', $invoice->recipient_emails ?? []);
+            $invoice->has_been_sent = (bool) ($latestSessionByInvoice->get($invoice->id)?->payment_link_sent_at);
+
+            return $invoice;
+        });
 
 
 

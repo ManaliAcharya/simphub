@@ -1029,8 +1029,6 @@
                                     value="{{ $client->qb_multi_mid_enabled ? '1' : '0' }}">
                                 <input type="hidden" name="ready_to_send_enabled"
                                     value="{{ $client->ready_to_send_enabled ? '1' : '0' }}">
-                                <input type="hidden" name="ready_to_send_field"
-                                    value="{{ $client->ready_to_send_field ?? 'Ready to Send' }}">
 
                                 {{-- Enable toggle --}}
                                 <div
@@ -1163,7 +1161,8 @@
                             </button>
                         </div>
                         <div class="cc-card-desc">Let the merchant tinker with and save an invoice repeatedly without
-                            emailing the customer until they're actually ready to send it.</div>
+                            emailing the customer — the invoice still syncs into SimpHub, but the payment link only
+                            goes out once someone manually clicks Send on the Invoice List tab.</div>
 
                         <div id="qb-rts-body">
                             <form method="POST"
@@ -1178,40 +1177,25 @@
 
                                 {{-- Enable toggle --}}
                                 <div
-                                    style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;margin-bottom:14px;">
+                                    style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;">
                                     <div>
                                         <div style="font-size:14px;font-weight:600;color:var(--cc-text);">Enable
                                             Ready to Send?</div>
-                                        <div style="font-size:12px;color:var(--cc-text-2);margin-top:1px;">Only send
-                                            the payment link once a QB custom field reads Yes.</div>
+                                        <div style="font-size:12px;color:var(--cc-text-2);margin-top:1px;">Require a
+                                            manual Send click before the payment link ever emails the customer.</div>
                                     </div>
                                     <div
                                         style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700;">
                                         <input type="hidden" name="ready_to_send_enabled" id="qb-rts-val"
                                             value="{{ $client->ready_to_send_enabled ? '1' : '0' }}">
                                         <button type="button" id="qb-rts-on"
-                                            onclick="qbToggle('qb-rts-val','qb-rts-on','qb-rts-off',true,'qb-rts-section')"
+                                            onclick="qbToggle('qb-rts-val','qb-rts-on','qb-rts-off',true)"
                                             style="padding:5px 14px;border:none;cursor:pointer;font-family:inherit;{{ $client->ready_to_send_enabled ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">ON</button>
                                         <button type="button" id="qb-rts-off"
-                                            onclick="qbToggle('qb-rts-val','qb-rts-on','qb-rts-off',false,'qb-rts-section')"
+                                            onclick="qbToggle('qb-rts-val','qb-rts-on','qb-rts-off',false)"
                                             style="padding:5px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $client->ready_to_send_enabled ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
                                     </div>
                                 </div>
-
-                                {{-- Field name (shown when enabled) --}}
-                                <div id="qb-rts-section"
-                                    style="{{ $client->ready_to_send_enabled ? '' : 'display:none;' }}">
-                                    <div class="cc-field" style="margin-bottom:14px;">
-                                        <label>QBO Custom Field Name</label>
-                                        <input type="text" name="ready_to_send_field"
-                                            value="{{ old('ready_to_send_field', $client->ready_to_send_field ?? 'Ready to Send') }}"
-                                            placeholder="e.g. Ready to Send">
-                                        <div style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">Must match
-                                            the exact custom field name on the QuickBooks invoice template. Blank or
-                                            anything other than Yes/Y means "don't send yet" — the invoice still syncs
-                                            into SimpHub either way, just without emailing the customer.</div>
-                                    </div>
-                                </div>{{-- end qb-rts-section --}}
 
                                 <button type="submit" class="button primary"
                                     style="font-size:13px;margin-top:14px;">Save Ready to Send settings</button>
@@ -2147,7 +2131,7 @@
                                                         value="{{ $provider }}">
 
                                                     <button type="submit" class="button primary">
-                                                        Resend
+                                                        {{ $invoice->has_been_sent ? 'Resend' : 'Send' }}
                                                     </button>
                                                 </form>
                                             @else

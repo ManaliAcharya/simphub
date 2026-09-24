@@ -10,7 +10,6 @@ use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Services\PaymentSessionService;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\QuickBooksConnection;
-use Modules\Inbound\Support\QbCustomField;
 use Modules\Payment\Services\PaymentLinkService;
 use RuntimeException;
 
@@ -98,21 +97,10 @@ class QuickBooksInvoiceIngestionService
         $useNativePdf = $client?->qb_use_native_pdf ?? true;
         $pdf = $useNativePdf ? $this->client->fetchInvoicePdf($connection, $externalInvoiceId) : null;
 
-        // "Ready to Send?" gate: when enabled, a merchant can save an invoice repeatedly
-        // while tinkering without emailing the customer prematurely — the payment link only
-        // goes out once this custom field reads Yes/Y. ready_to_send_last_value is recorded
-        // either way so ProcessQBInvoiceLinkJob can tell a genuine blank->Yes transition on a
-        // later edit apart from "still Yes, already sent, nothing to do."
-        $shouldSend = true;
-        if ($client?->ready_to_send_enabled) {
-            $fieldName  = $client->ready_to_send_field ?: 'Ready to Send';
-            $fieldValue = QbCustomField::extract((array) ($result['invoice']->raw_payload ?? []), $fieldName);
-            $shouldSend = QbCustomField::isYes($fieldValue);
-
-            $result['payment_session']->forceFill([
-                'ready_to_send_last_value' => $shouldSend ? 'yes' : null,
-            ])->save();
-        }
+        // "Ready to Send?" gate: when enabled, invoices still sync into SimpHub as normal,
+        // but the payment link never auto-sends — the merchant sends it manually from the
+        // Invoice List tab once they're actually ready (ClientConfigController::sendInvoice).
+        $shouldSend = ! ($client?->ready_to_send_enabled);
 
         $emailsSent = $shouldSend
             ? $this->paymentLinks->sendInvoiceLinkOnce(
