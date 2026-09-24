@@ -297,7 +297,7 @@ class PaymentCheckoutService
             $isAch         = strtoupper($paymentMethod) === 'ACH';
             $feePercentRaw = $isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent;
             $feePercent    = $feePercentRaw !== null ? (string) $feePercentRaw : '0';
-            if (bccomp($feePercent, '0', 10) > 0) {
+            if ((float) $feePercent > 0) {
                 $feeCents = $feeClient->exact_cent_fee_rounding_enabled
                     ? $this->calculateExactFeeCents((int) $invoice->amount_cents, $feePercent)
                     : $this->calculateRoundedFeeCents((int) $invoice->amount_cents, $feePercent);
@@ -697,7 +697,7 @@ class PaymentCheckoutService
             $isAch         = strtoupper($paymentMethod) === 'ACH';
             $feePercentRaw = $isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent;
             $feePercent    = $feePercentRaw !== null ? (string) $feePercentRaw : '0';
-            if (bccomp($feePercent, '0', 10) > 0) {
+            if ((float) $feePercent > 0) {
                 $feeCents = $feeClient->exact_cent_fee_rounding_enabled
                     ? $this->calculateExactFeeCents($invoiceCents, $feePercent)
                     : $this->calculateRoundedFeeCents($invoiceCents, $feePercent);
