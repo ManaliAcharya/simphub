@@ -10,6 +10,7 @@ use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Services\PaymentSessionService;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\QuickBooksConnection;
+use Modules\Inbound\Support\QbCustomField;
 use Modules\Payment\Services\PaymentLinkService;
 use RuntimeException;
 
@@ -89,18 +90,38 @@ class QuickBooksInvoiceIngestionService
             ];
         });
 
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->first();
+
         // Clients can opt out of QuickBooks' own PDF export in favor of the PDF we
         // generate ourselves from our invoice data (PaymentLinkService falls back to
         // it automatically whenever $pdf is null) - default stays QB's native export.
-        $useNativePdf = Client::query()->where('pms_client_id', $pmsClientId)->value('qb_use_native_pdf') ?? true;
+        $useNativePdf = $client?->qb_use_native_pdf ?? true;
         $pdf = $useNativePdf ? $this->client->fetchInvoicePdf($connection, $externalInvoiceId) : null;
 
-        $emailsSent = $this->paymentLinks->sendInvoiceLinkOnce(
-            $result['invoice'],
-            $result['payment_session'],
-            $recipientEmails,
-            $pdf
-        );
+        // "Ready to Send?" gate: when enabled, a merchant can save an invoice repeatedly
+        // while tinkering without emailing the customer prematurely — the payment link only
+        // goes out once this custom field reads Yes/Y. ready_to_send_last_value is recorded
+        // either way so ProcessQBInvoiceLinkJob can tell a genuine blank->Yes transition on a
+        // later edit apart from "still Yes, already sent, nothing to do."
+        $shouldSend = true;
+        if ($client?->ready_to_send_enabled) {
+            $fieldName  = $client->ready_to_send_field ?: 'Ready to Send';
+            $fieldValue = QbCustomField::extract((array) ($result['invoice']->raw_payload ?? []), $fieldName);
+            $shouldSend = QbCustomField::isYes($fieldValue);
+
+            $result['payment_session']->forceFill([
+                'ready_to_send_last_value' => $shouldSend ? 'yes' : null,
+            ])->save();
+        }
+
+        $emailsSent = $shouldSend
+            ? $this->paymentLinks->sendInvoiceLinkOnce(
+                $result['invoice'],
+                $result['payment_session'],
+                $recipientEmails,
+                $pdf
+            )
+            : 0;
 
         if ($emailsSent > 0) {
             AuditLogger::log('PAYMENT_LINK_SENT', 'payment_session', $result['payment_session']->id, [

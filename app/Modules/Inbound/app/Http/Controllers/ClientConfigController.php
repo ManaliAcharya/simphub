@@ -474,12 +474,16 @@ class ClientConfigController extends Controller
             'qb_fee_override_enabled' => ['nullable', 'boolean'],
             'qb_fee_override_field'   => ['nullable', 'string', 'max:100'],
             'qb_multi_mid_enabled'    => ['nullable', 'boolean'],
+            'ready_to_send_enabled'   => ['nullable', 'boolean'],
+            'ready_to_send_field'     => ['nullable', 'string', 'max:100'],
         ]);
 
         $client->update([
             'qb_fee_override_enabled' => (bool) ($validated['qb_fee_override_enabled'] ?? false),
             'qb_fee_override_field'   => $validated['qb_fee_override_field'] ?? 'Cash Discount',
             'qb_multi_mid_enabled'    => (bool) ($validated['qb_multi_mid_enabled'] ?? false),
+            'ready_to_send_enabled'   => (bool) ($validated['ready_to_send_enabled'] ?? false),
+            'ready_to_send_field'     => $validated['ready_to_send_field'] ?? 'Ready to Send',
         ]);
 
         return redirect()->back()->with('success', 'QuickBooks settings saved.');

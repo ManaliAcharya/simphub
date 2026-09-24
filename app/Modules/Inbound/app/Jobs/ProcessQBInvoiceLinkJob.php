@@ -16,6 +16,7 @@ use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksEmailResolver;
+use Modules\Inbound\Support\QbCustomField;
 use Modules\Payment\Services\PaymentLinkService;
 
 class ProcessQBInvoiceLinkJob implements ShouldQueue
@@ -129,6 +130,31 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
             return;
         }
 
+        // "Ready to Send?" gate — layers on top of auto_resend_on_change above, only
+        // relevant for clients who've opted in. Detects a genuine blank/No -> Yes
+        // transition against ready_to_send_last_value (also set on the initial sync in
+        // QuickBooksInvoiceIngestionService::ingest()), so re-saving while the field is
+        // still Yes doesn't resend again, and Yes -> blank -> Yes later correctly fires
+        // a fresh send.
+        if ($client?->ready_to_send_enabled) {
+            $fieldName  = $client->ready_to_send_field ?: 'Ready to Send';
+            $fieldValue = QbCustomField::extract((array) ($invoice->raw_payload ?? []), $fieldName);
+            $isYesNow   = QbCustomField::isYes($fieldValue);
+            $wasYes     = $session->ready_to_send_last_value === 'yes';
+
+            $session->forceFill(['ready_to_send_last_value' => $isYesNow ? 'yes' : null])->save();
+
+            if (! $isYesNow || $wasYes) {
+                Log::info('ProcessQBInvoiceLinkJob: ready-to-send field did not transition to Yes, skipping resend', [
+                    'invoice_id'    => $invoice->id,
+                    'qb_invoice_id' => $this->entityId,
+                    'field_name'    => $fieldName,
+                    'field_value'   => $fieldValue,
+                ]);
+                return;
+            }
+        }
+
         // TEMPORARILY DISABLED for testing — every invoice update should fire a resend
         // regardless of how recently the last one went out. Re-enable before shipping.
         // // Enforce 15-minute cooldown
@@ -203,7 +229,15 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         // the sole writer of the invoice's stored amount_cents.
         $invoice->amount_cents = (int) round($liveBalance * 100);
 
-        $linkService->resendPaymentLink($invoice, $session, $recipientEmails, $pdf);
+        // If this session has never actually sent yet (e.g. its first real "Yes" only
+        // happened on this later edit, having been gated blank on the initial sync),
+        // route through sendInvoiceLinkOnce so first_email_sent_at/reminders get seeded
+        // correctly — resendPaymentLink() doesn't touch either.
+        if ($session->payment_link_sent_at === null) {
+            $linkService->sendInvoiceLinkOnce($invoice, $session, $recipientEmails, $pdf);
+        } else {
+            $linkService->resendPaymentLink($invoice, $session, $recipientEmails, $pdf);
+        }
 
         AuditLogger::log(
             'payment_link.resent_on_invoice_update',
