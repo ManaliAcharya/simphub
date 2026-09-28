@@ -470,7 +470,6 @@
                                 $pms = $isBoarding ? 'boarding' : strtolower($client->client_pms ?? 'custom');
                                 $allowed = $isBoarding ? [] : array_map('strtolower', $client->allowed_payment_gateways ?? []);
                                 $paused = $isBoarding ? [] : array_map('strtolower', $client->paused_payment_gateways ?? []);
-                                $configUrl = clientConfigUrl($client);
                             @endphp
                             <tr class="client-row" data-name="{{ strtolower($displayName) }}"
                                 data-pms="{{ $pms }}">
@@ -568,8 +567,6 @@
                                     </button>
                                 </td>
                                 <td style="text-align:right;">
-                                    <a href="{{ $configUrl }}" class="action-btn">View config →</a>
-
                                     @if ($client->account && auth()->user()?->is_super_admin)
                                         <form action="{{ route('admin.impersonate.start', $client->account->id) }}" method="POST" style="display:inline;">
                                             @csrf
