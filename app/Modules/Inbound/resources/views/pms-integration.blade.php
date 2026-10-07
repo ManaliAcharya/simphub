@@ -1364,8 +1364,12 @@
                                                                         @if ($gw === 'fluidpay')
                                                                             <button type="button"
                                                                                 class="button fluidpay-test-creds"
-                                                                                data-idx="{{ $idx }}"
+                                                                                data-test-url="{{ route('inbound.clients.fluidpay-test-credentials', $client->pms_client_id) }}"
                                                                                 data-route-type="{{ $routeType }}"
+                                                                                data-mid-input="mid-identifier-{{ $idx }}"
+                                                                                data-api-input="cred-{{ $idx }}-api_key"
+                                                                                data-public-input="cred-{{ $idx }}-public_key"
+                                                                                data-result="cred-test-result-{{ $idx }}"
                                                                                 style="font-size:12px;padding:5px 12px;">
                                                                                 Test credentials
                                                                             </button>
@@ -1598,155 +1602,7 @@
                                 })();
                             </script>
 
-                            {{-- "Test credentials" on each FluidPay row: the server checks the private key and
-                                 processor access (blank fields fall back to the saved keys), then the public
-                                 key is checked here by loading FluidPay's card form with it. Nothing is saved. --}}
-                            <script>
-                                (function() {
-                                    var buttons = document.querySelectorAll('.fluidpay-test-creds');
-                                    if (!buttons.length) return;
-
-                                    var testUrl =
-                                        '{{ route('inbound.clients.fluidpay-test-credentials', $client->pms_client_id) }}';
-                                    var csrf = document.querySelector('#mid-routes-form input[name=_token]');
-                                    var tokenizerScripts = {};
-
-                                    var styles = {
-                                        pass: { icon: '✓', color: '#065f46', bg: '#ecfdf5', border: '#a7f3d0' },
-                                        warn: { icon: '!', color: '#92400e', bg: '#fffbeb', border: '#fde68a' },
-                                        fail: { icon: '✕', color: '#991b1b', bg: '#fef2f2', border: '#fecaca' },
-                                        info: { icon: '…', color: '#374151', bg: '#f9fafb', border: '#e5e7eb' },
-                                    };
-
-                                    function row(check) {
-                                        var s = styles[check.status] || styles.info;
-                                        var el = document.createElement('div');
-                                        el.style.cssText = 'display:flex;gap:8px;align-items:flex-start;padding:7px 10px;margin-top:6px;' +
-                                            'border-radius:8px;font-size:12px;line-height:1.45;background:' + s.bg +
-                                            ';border:1px solid ' + s.border + ';color:' + s.color + ';';
-                                        var icon = document.createElement('strong');
-                                        icon.setAttribute('aria-hidden', 'true');
-                                        icon.textContent = s.icon;
-                                        var text = document.createElement('span');
-                                        var label = document.createElement('strong');
-                                        label.textContent = check.label + ': ';
-                                        text.appendChild(label);
-                                        text.appendChild(document.createTextNode(check.message));
-                                        el.appendChild(icon);
-                                        el.appendChild(text);
-                                        return el;
-                                    }
-
-                                    function loadScript(src) {
-                                        if (!tokenizerScripts[src]) {
-                                            tokenizerScripts[src] = new Promise(function(resolve, reject) {
-                                                var script = document.createElement('script');
-                                                script.src = src;
-                                                script.onload = resolve;
-                                                script.onerror = reject;
-                                                document.head.appendChild(script);
-                                            });
-                                        }
-                                        return tokenizerScripts[src];
-                                    }
-
-                                    // FluidPay has no API to validate a public key, so load the real card form
-                                    // with it (off-screen) and report whether it comes up.
-                                    function testPublicKey(tokenizer, box, idx) {
-                                        var pending = row({ status: 'info', label: 'Public key', message: 'Loading FluidPay card form with this key…' });
-                                        box.appendChild(pending);
-
-                                        var holderId = 'cred-test-tokenizer-' + idx;
-                                        var old = document.getElementById(holderId);
-                                        if (old) old.remove();
-                                        var holder = document.createElement('div');
-                                        holder.id = holderId;
-                                        holder.setAttribute('aria-hidden', 'true');
-                                        holder.style.cssText = 'position:absolute;left:-10000px;top:0;width:400px;height:300px;';
-                                        document.body.appendChild(holder);
-
-                                        var done = false;
-                                        function finish(check) {
-                                            if (done) return;
-                                            done = true;
-                                            box.replaceChild(row(check), pending);
-                                            holder.remove();
-                                        }
-
-                                        loadScript(tokenizer.script_url).then(function() {
-                                            if (typeof window.Tokenizer !== 'function') {
-                                                finish({ status: 'fail', label: 'Public key', message: 'FluidPay card form script loaded but is not usable on this page.' });
-                                                return;
-                                            }
-                                            new window.Tokenizer({
-                                                url: tokenizer.base_url,
-                                                apikey: tokenizer.public_key,
-                                                container: '#' + holderId,
-                                                submission: function() {},
-                                                onLoad: function() {
-                                                    finish({ status: 'pass', label: 'Public key', message: 'FluidPay card form loaded with this key. Confirm on a real payment link that the card fields accept input.' });
-                                                },
-                                            });
-                                            setTimeout(function() {
-                                                finish({ status: 'fail', label: 'Public key', message: 'FluidPay card form did not load with this key within 15 seconds — the key is likely wrong, from the other environment, or URL-restricted in FluidPay.' });
-                                            }, 15000);
-                                        }).catch(function() {
-                                            finish({ status: 'fail', label: 'Public key', message: 'Could not load FluidPay\'s card form script.' });
-                                        });
-                                    }
-
-                                    buttons.forEach(function(button) {
-                                        button.addEventListener('click', function() {
-                                            var idx = button.dataset.idx;
-                                            var box = document.getElementById('cred-test-result-' + idx);
-                                            var val = function(id) {
-                                                var el = document.getElementById(id);
-                                                return el ? el.value.trim() : '';
-                                            };
-
-                                            box.innerHTML = '';
-                                            box.style.display = 'block';
-                                            box.appendChild(row({ status: 'info', label: 'Testing', message: 'Checking with FluidPay…' }));
-                                            button.disabled = true;
-
-                                            fetch(testUrl, {
-                                                    method: 'POST',
-                                                    headers: {
-                                                        'Accept': 'application/json',
-                                                        'Content-Type': 'application/json',
-                                                        'X-CSRF-TOKEN': csrf ? csrf.value : '',
-                                                    },
-                                                    body: JSON.stringify({
-                                                        route_type: button.dataset.routeType,
-                                                        mid_identifier: val('mid-identifier-' + idx),
-                                                        api_key: val('cred-' + idx + '-api_key'),
-                                                        public_key: val('cred-' + idx + '-public_key'),
-                                                    }),
-                                                })
-                                                .then(function(r) {
-                                                    return r.json().then(function(data) {
-                                                        if (!r.ok) throw new Error(data.message || ('HTTP ' + r.status));
-                                                        return data;
-                                                    });
-                                                })
-                                                .then(function(data) {
-                                                    box.innerHTML = '';
-                                                    (data.checks || []).forEach(function(check) {
-                                                        box.appendChild(row(check));
-                                                    });
-                                                    if (data.tokenizer) testPublicKey(data.tokenizer, box, idx);
-                                                })
-                                                .catch(function(err) {
-                                                    box.innerHTML = '';
-                                                    box.appendChild(row({ status: 'fail', label: 'Test failed', message: err.message }));
-                                                })
-                                                .finally(function() {
-                                                    button.disabled = false;
-                                                });
-                                        });
-                                    });
-                                })();
-                            </script>
+                            @include('inbound::components.fluidpay-credential-test-script')
                         </div>
                     </div>
 
