@@ -283,6 +283,86 @@ class FluidPayAdapter implements GatewayAdapterInterface
         return ['processors' => $processors, 'error' => null];
     }
 
+    /**
+     * Read-only credential check for the Multi-MID "Test credentials" button. Never falls back
+     * to the env-config key — it tests exactly the key the admin entered or saved. Returns one
+     * entry per check: ['label', 'status' => pass|warn|fail, 'message'].
+     */
+    public function testCredentials(array $midCredentials, string $merchantId): array
+    {
+        $apiKey    = trim((string) ($midCredentials['api_key'] ?? ''));
+        $publicKey = trim((string) ($midCredentials['public_key'] ?? ''));
+        ['base_url' => $baseUrl, 'is_production' => $isProduction] = $this->resolveCredentials($midCredentials);
+        $envLabel = $isProduction ? 'production' : 'sandbox';
+
+        $checks = [];
+        $check  = function (string $label, string $status, string $message) use (&$checks): void {
+            $checks[] = compact('label', 'status', 'message');
+        };
+
+        if ($apiKey === '') {
+            $check('Private key', 'fail', 'No private key entered or saved for this MID.');
+        } elseif (str_starts_with($apiKey, 'pub_')) {
+            $check('Private key', 'fail', 'This is a public key (pub_…). The Private Key field needs the api_… key.');
+        } elseif (! str_starts_with($apiKey, 'api_')) {
+            $check('Private key', 'fail', 'This does not look like a FluidPay private key — they start with "api_".');
+        } else {
+            try {
+                $response = Http::withHeaders(['Authorization' => $apiKey])
+                    ->timeout(15)
+                    ->post("{$baseUrl}/api/transaction/search", ['limit' => 1]);
+
+                match (true) {
+                    $response->successful()     => $check('Private key', 'pass', "Accepted by FluidPay ({$envLabel})."),
+                    $response->status() === 401 => $check('Private key', 'fail', "Rejected by FluidPay {$envLabel} (401) — the key is wrong, revoked, or from the other environment."),
+                    $response->status() === 403 => $check('Private key', 'warn', 'Recognised by FluidPay, but not allowed to search transactions (403).'),
+                    default                     => $check('Private key', 'fail', 'FluidPay returned HTTP '.$response->status().'.'),
+                };
+
+                if ($response->status() === 401) {
+                    $check('Processor access', 'warn', 'Skipped — fix the private key first.');
+                } elseif ($merchantId === '') {
+                    $check('Processor access', 'warn', 'Enter a MID Identifier to check processor access.');
+                } else {
+                    $processors = Http::withHeaders(['Authorization' => $apiKey])
+                        ->timeout(15)
+                        ->get("{$baseUrl}/api/merchant/{$merchantId}/processors");
+                    $count = count((array) ($processors->json('data') ?? []));
+
+                    match (true) {
+                        $processors->successful() && $count > 0 => $check('Processor access', 'pass', "{$count} processor(s) found for this MID."),
+                        $processors->successful()               => $check('Processor access', 'warn', 'Key can read this MID, but it has no processors set up in FluidPay.'),
+                        $processors->status() === 403           => $check('Processor access', 'fail', 'Key is not allowed to read this MID\'s processors (FluidPay: forbidden). The key\'s FluidPay user needs merchant/processor view permission, or the key belongs to a different merchant.'),
+                        $processors->status() === 404           => $check('Processor access', 'fail', 'FluidPay could not find this MID Identifier — check it is FluidPay\'s merchant ID.'),
+                        default                                 => $check('Processor access', 'fail', 'FluidPay returned HTTP '.$processors->status().' for this MID.'),
+                    };
+                }
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                $check('Private key', 'fail', 'Could not reach FluidPay: '.$e->getMessage());
+            }
+        }
+
+        if ($publicKey === '') {
+            $check('Public key', 'fail', 'No public key entered or saved for this MID — the card form cannot load without it.');
+        } elseif (str_starts_with($publicKey, 'api_')) {
+            $check('Public key', 'fail', 'This is the private key (api_…). Never put it in the public key field — it is sent to the customer\'s browser.');
+        } elseif (! str_starts_with($publicKey, 'pub_')) {
+            $check('Public key', 'fail', 'This does not look like a FluidPay public key — they start with "pub_".');
+        }
+
+        return [
+            'checks'       => $checks,
+            // A public key is meant for the browser, so it is safe to hand back for the
+            // in-page card-form load test. The private key never leaves the server.
+            'tokenizer'    => str_starts_with($publicKey, 'pub_') ? [
+                'script_url' => (string) (config($isProduction ? 'services.fluidpay.tokenizer_url_production' : 'services.fluidpay.tokenizer_url') ?: $baseUrl.'/tokenizer/tokenizer.js'),
+                'base_url'   => $baseUrl,
+                'public_key' => $publicKey,
+            ] : null,
+            'environment'  => $envLabel,
+        ];
+    }
+
     public function listTransactions(array $filters, array $midCredentials = []): array
     {
         ['api_key' => $apiKey, 'base_url' => $baseUrl] = $this->resolveCredentials($midCredentials);

@@ -289,7 +289,9 @@ $activeTab — default active tab id (first tab if not set)
 
     .cc-field select,
     .cc-field input[type="text"],
-    .cc-field input[type="url"] {
+    .cc-field input[type="url"],
+    .cc-field input[type="password"],
+    .cc-field input[type="number"] {
         width: 100%;
         padding: 8px 12px;
         border: 1px solid var(--cc-border);
