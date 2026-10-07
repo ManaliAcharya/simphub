@@ -560,6 +560,42 @@ class ClientConfigController extends Controller
         ]);
     }
 
+    /**
+     * "Test credentials" on a FluidPay Multi-MID row. Tests what is typed in the row, falling
+     * back to that row's saved keys for any field left blank ("Configured — leave blank to
+     * keep"). Read-only: nothing is saved and no transaction is created.
+     */
+    public function testFluidpayCredentials(Request $request, string $pmsClientId): JsonResponse
+    {
+        $request->validate([
+            'route_type'     => ['required', 'string', Rule::in(['fees_on', 'fees_off'])],
+            'mid_identifier' => ['nullable', 'string', 'max:100'],
+            'api_key'        => ['nullable', 'string', 'max:1000'],
+            'public_key'     => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        $saved = (array) (ClientMidRoute::query()
+            ->where('client_id', $client->id)
+            ->where('route_type', $request->input('route_type'))
+            ->where('gateway', 'fluidpay')
+            ->first()?->credentials ?? []);
+
+        // Same environment the Multi-MID form saves onto the route (from Gateway Credentials).
+        $environment = ((array) ($client->gateway_credentials ?? []))['environment'] ?? 'sandbox';
+
+        $credentials = [
+            'environment' => $environment,
+            'api_key'     => trim((string) $request->input('api_key')) ?: (string) ($saved['api_key'] ?? ''),
+            'public_key'  => trim((string) $request->input('public_key')) ?: (string) ($saved['public_key'] ?? ''),
+        ];
+
+        return response()->json(
+            app(FluidPayAdapter::class)->testCredentials($credentials, trim((string) $request->input('mid_identifier')))
+        );
+    }
+
     public function saveMidRoutes(Request $request, string $pmsClientId): RedirectResponse
     {
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();

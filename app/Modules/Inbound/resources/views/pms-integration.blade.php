@@ -1349,6 +1349,111 @@
                                                                 value="{{ $gw }}">
 
                                                             <div id="mid-fields-{{ $idx }}">
+                                                                @php
+                                                                    $creds = $existing?->credentials ?? [];
+                                                                    $credFields = match ($gw) {
+                                                                        'fluidpay' => [
+                                                                            [
+                                                                                'key' => 'api_key',
+                                                                                'label' => 'Private Key',
+                                                                                'type' => 'password',
+                                                                            ],
+                                                                            [
+                                                                                'key' => 'public_key',
+                                                                                'label' => 'Public Key (tokenizer)',
+                                                                                'type' => 'text',
+                                                                            ],
+                                                                        ],
+                                                                        'paya' => [
+                                                                            [
+                                                                                'key' => 'username',
+                                                                                'label' => 'Vault Username',
+                                                                                'type' => 'text',
+                                                                            ],
+                                                                            [
+                                                                                'key' => 'password',
+                                                                                'label' => 'Vault Password',
+                                                                                'type' => 'password',
+                                                                            ],
+                                                                            [
+                                                                                'key' => 'terminal_id',
+                                                                                'label' => 'Terminal ID',
+                                                                                'type' => 'text',
+                                                                            ],
+                                                                        ],
+                                                                        'nmi' => [
+                                                                            [
+                                                                                'key' => 'security_key',
+                                                                                'label' => 'Security Key',
+                                                                                'type' => 'password',
+                                                                            ],
+                                                                            [
+                                                                                'key' => 'public_key',
+                                                                                'label' => 'Public Key',
+                                                                                'type' => 'text',
+                                                                            ],
+                                                                        ],
+                                                                        default => [
+                                                                            [
+                                                                                'key' => 'api_key',
+                                                                                'label' => 'API Key',
+                                                                                'type' => 'password',
+                                                                            ],
+                                                                        ],
+                                                                    };
+                                                                @endphp
+                                                                <div
+                                                                    style="border-bottom:1px solid var(--cc-border-light);padding-bottom:12px;margin-bottom:12px;">
+                                                                    <div
+                                                                        style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+                                                                        <span
+                                                                            style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--cc-text-2);">
+                                                                            API Credentials</span>
+                                                                        @if ($gw === 'fluidpay')
+                                                                            <button type="button"
+                                                                                class="button fluidpay-test-creds"
+                                                                                data-idx="{{ $idx }}"
+                                                                                data-route-type="{{ $routeType }}"
+                                                                                style="font-size:12px;padding:5px 12px;">
+                                                                                Test credentials
+                                                                            </button>
+                                                                        @endif
+                                                                    </div>
+                                                                    <div
+                                                                        style="display:grid;grid-template-columns:repeat({{ min(count($credFields), 2) }},1fr);gap:10px;">
+                                                                        @foreach ($credFields as $cf)
+                                                                            @php
+                                                                                $isConfigured = !empty(
+                                                                                    $creds[$cf['key']] ?? null
+                                                                                );
+                                                                                $placeholder = $isConfigured
+                                                                                    ? 'Configured — leave blank to keep'
+                                                                                    : '';
+                                                                            @endphp
+                                                                            <div class="cc-field" style="margin:0;">
+                                                                                <label>
+                                                                                    {{ $cf['label'] }}
+                                                                                    @if ($isConfigured)
+                                                                                        <span
+                                                                                            style="font-size:11px;font-weight:600;color:#16a34a;margin-left:6px;">✓
+                                                                                            Configured</span>
+                                                                                    @endif
+                                                                                </label>
+                                                                                <input type="{{ $cf['type'] }}"
+                                                                                    id="cred-{{ $idx }}-{{ $cf['key'] }}"
+                                                                                    name="routes[{{ $idx }}][credentials][{{ $cf['key'] }}]"
+                                                                                    value=""
+                                                                                    autocomplete="off"
+                                                                                    placeholder="{{ $placeholder }}">
+                                                                            </div>
+                                                                        @endforeach
+                                                                    </div>
+                                                                    @if ($gw === 'fluidpay')
+                                                                        <div id="cred-test-result-{{ $idx }}"
+                                                                            role="status" aria-live="polite"
+                                                                            style="display:none;margin-top:10px;"></div>
+                                                                    @endif
+                                                                </div>
                                                                 <div
                                                                     style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
                                                                     <div class="cc-field" style="margin:0;">
@@ -1415,92 +1520,6 @@
                                                                                 style="font-size:11px;color:#9ca3af;margin-left:4px;">(from
                                                                                 Gateway Credentials)</span>
                                                                         </div>
-                                                                    </div>
-                                                                </div>
-                                                                @php
-                                                                    $creds = $existing?->credentials ?? [];
-                                                                    $credFields = match ($gw) {
-                                                                        'fluidpay' => [
-                                                                            [
-                                                                                'key' => 'api_key',
-                                                                                'label' => 'Private Key',
-                                                                                'type' => 'password',
-                                                                            ],
-                                                                            [
-                                                                                'key' => 'public_key',
-                                                                                'label' => 'Public Key (tokenizer)',
-                                                                                'type' => 'text',
-                                                                            ],
-                                                                        ],
-                                                                        'paya' => [
-                                                                            [
-                                                                                'key' => 'username',
-                                                                                'label' => 'Vault Username',
-                                                                                'type' => 'text',
-                                                                            ],
-                                                                            [
-                                                                                'key' => 'password',
-                                                                                'label' => 'Vault Password',
-                                                                                'type' => 'password',
-                                                                            ],
-                                                                            [
-                                                                                'key' => 'terminal_id',
-                                                                                'label' => 'Terminal ID',
-                                                                                'type' => 'text',
-                                                                            ],
-                                                                        ],
-                                                                        'nmi' => [
-                                                                            [
-                                                                                'key' => 'security_key',
-                                                                                'label' => 'Security Key',
-                                                                                'type' => 'password',
-                                                                            ],
-                                                                            [
-                                                                                'key' => 'public_key',
-                                                                                'label' => 'Public Key',
-                                                                                'type' => 'text',
-                                                                            ],
-                                                                        ],
-                                                                        default => [
-                                                                            [
-                                                                                'key' => 'api_key',
-                                                                                'label' => 'API Key',
-                                                                                'type' => 'password',
-                                                                            ],
-                                                                        ],
-                                                                    };
-                                                                @endphp
-                                                                <div
-                                                                    style="border-top:1px solid var(--cc-border-light);padding-top:10px;margin-top:4px;">
-                                                                    <div
-                                                                        style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--cc-text-2);margin-bottom:8px;">
-                                                                        API Credentials</div>
-                                                                    <div
-                                                                        style="display:grid;grid-template-columns:repeat({{ min(count($credFields), 2) }},1fr);gap:10px;">
-                                                                        @foreach ($credFields as $cf)
-                                                                            @php
-                                                                                $isConfigured = !empty(
-                                                                                    $creds[$cf['key']] ?? null
-                                                                                );
-                                                                                $placeholder = $isConfigured
-                                                                                    ? 'Configured — leave blank to keep'
-                                                                                    : '';
-                                                                            @endphp
-                                                                            <div class="cc-field" style="margin:0;">
-                                                                                <label>
-                                                                                    {{ $cf['label'] }}
-                                                                                    @if ($isConfigured)
-                                                                                        <span
-                                                                                            style="font-size:11px;font-weight:600;color:#16a34a;margin-left:6px;">✓
-                                                                                            Configured</span>
-                                                                                    @endif
-                                                                                </label>
-                                                                                <input type="{{ $cf['type'] }}"
-                                                                                    name="routes[{{ $idx }}][credentials][{{ $cf['key'] }}]"
-                                                                                    value=""
-                                                                                    placeholder="{{ $placeholder }}">
-                                                                            </div>
-                                                                        @endforeach
                                                                     </div>
                                                                 </div>
                                                             </div>{{-- end mid-fields-{{ $idx }} --}}
@@ -1623,6 +1642,156 @@
                                         if (midInput.value.trim()) {
                                             loadProcessors(select);
                                         }
+                                    });
+                                })();
+                            </script>
+
+                            {{-- "Test credentials" on each FluidPay row: the server checks the private key and
+                                 processor access (blank fields fall back to the saved keys), then the public
+                                 key is checked here by loading FluidPay's card form with it. Nothing is saved. --}}
+                            <script>
+                                (function() {
+                                    var buttons = document.querySelectorAll('.fluidpay-test-creds');
+                                    if (!buttons.length) return;
+
+                                    var testUrl =
+                                        '{{ route('inbound.clients.fluidpay-test-credentials', $client->pms_client_id) }}';
+                                    var csrf = document.querySelector('#mid-routes-form input[name=_token]');
+                                    var tokenizerScripts = {};
+
+                                    var styles = {
+                                        pass: { icon: '✓', color: '#065f46', bg: '#ecfdf5', border: '#a7f3d0' },
+                                        warn: { icon: '!', color: '#92400e', bg: '#fffbeb', border: '#fde68a' },
+                                        fail: { icon: '✕', color: '#991b1b', bg: '#fef2f2', border: '#fecaca' },
+                                        info: { icon: '…', color: '#374151', bg: '#f9fafb', border: '#e5e7eb' },
+                                    };
+
+                                    function row(check) {
+                                        var s = styles[check.status] || styles.info;
+                                        var el = document.createElement('div');
+                                        el.style.cssText = 'display:flex;gap:8px;align-items:flex-start;padding:7px 10px;margin-top:6px;' +
+                                            'border-radius:8px;font-size:12px;line-height:1.45;background:' + s.bg +
+                                            ';border:1px solid ' + s.border + ';color:' + s.color + ';';
+                                        var icon = document.createElement('strong');
+                                        icon.setAttribute('aria-hidden', 'true');
+                                        icon.textContent = s.icon;
+                                        var text = document.createElement('span');
+                                        var label = document.createElement('strong');
+                                        label.textContent = check.label + ': ';
+                                        text.appendChild(label);
+                                        text.appendChild(document.createTextNode(check.message));
+                                        el.appendChild(icon);
+                                        el.appendChild(text);
+                                        return el;
+                                    }
+
+                                    function loadScript(src) {
+                                        if (!tokenizerScripts[src]) {
+                                            tokenizerScripts[src] = new Promise(function(resolve, reject) {
+                                                var script = document.createElement('script');
+                                                script.src = src;
+                                                script.onload = resolve;
+                                                script.onerror = reject;
+                                                document.head.appendChild(script);
+                                            });
+                                        }
+                                        return tokenizerScripts[src];
+                                    }
+
+                                    // FluidPay has no API to validate a public key, so load the real card form
+                                    // with it (off-screen) and report whether it comes up.
+                                    function testPublicKey(tokenizer, box, idx) {
+                                        var pending = row({ status: 'info', label: 'Public key', message: 'Loading FluidPay card form with this key…' });
+                                        box.appendChild(pending);
+
+                                        var holderId = 'cred-test-tokenizer-' + idx;
+                                        var old = document.getElementById(holderId);
+                                        if (old) old.remove();
+                                        var holder = document.createElement('div');
+                                        holder.id = holderId;
+                                        holder.setAttribute('aria-hidden', 'true');
+                                        holder.style.cssText = 'position:absolute;left:-10000px;top:0;width:400px;height:300px;';
+                                        document.body.appendChild(holder);
+
+                                        var done = false;
+                                        function finish(check) {
+                                            if (done) return;
+                                            done = true;
+                                            box.replaceChild(row(check), pending);
+                                            holder.remove();
+                                        }
+
+                                        loadScript(tokenizer.script_url).then(function() {
+                                            if (typeof window.Tokenizer !== 'function') {
+                                                finish({ status: 'fail', label: 'Public key', message: 'FluidPay card form script loaded but is not usable on this page.' });
+                                                return;
+                                            }
+                                            new window.Tokenizer({
+                                                url: tokenizer.base_url,
+                                                apikey: tokenizer.public_key,
+                                                container: '#' + holderId,
+                                                submission: function() {},
+                                                onLoad: function() {
+                                                    finish({ status: 'pass', label: 'Public key', message: 'FluidPay card form loaded with this key. Confirm on a real payment link that the card fields accept input.' });
+                                                },
+                                            });
+                                            setTimeout(function() {
+                                                finish({ status: 'fail', label: 'Public key', message: 'FluidPay card form did not load with this key within 15 seconds — the key is likely wrong, from the other environment, or URL-restricted in FluidPay.' });
+                                            }, 15000);
+                                        }).catch(function() {
+                                            finish({ status: 'fail', label: 'Public key', message: 'Could not load FluidPay\'s card form script.' });
+                                        });
+                                    }
+
+                                    buttons.forEach(function(button) {
+                                        button.addEventListener('click', function() {
+                                            var idx = button.dataset.idx;
+                                            var box = document.getElementById('cred-test-result-' + idx);
+                                            var val = function(id) {
+                                                var el = document.getElementById(id);
+                                                return el ? el.value.trim() : '';
+                                            };
+
+                                            box.innerHTML = '';
+                                            box.style.display = 'block';
+                                            box.appendChild(row({ status: 'info', label: 'Testing', message: 'Checking with FluidPay…' }));
+                                            button.disabled = true;
+
+                                            fetch(testUrl, {
+                                                    method: 'POST',
+                                                    headers: {
+                                                        'Accept': 'application/json',
+                                                        'Content-Type': 'application/json',
+                                                        'X-CSRF-TOKEN': csrf ? csrf.value : '',
+                                                    },
+                                                    body: JSON.stringify({
+                                                        route_type: button.dataset.routeType,
+                                                        mid_identifier: val('mid-identifier-' + idx),
+                                                        api_key: val('cred-' + idx + '-api_key'),
+                                                        public_key: val('cred-' + idx + '-public_key'),
+                                                    }),
+                                                })
+                                                .then(function(r) {
+                                                    return r.json().then(function(data) {
+                                                        if (!r.ok) throw new Error(data.message || ('HTTP ' + r.status));
+                                                        return data;
+                                                    });
+                                                })
+                                                .then(function(data) {
+                                                    box.innerHTML = '';
+                                                    (data.checks || []).forEach(function(check) {
+                                                        box.appendChild(row(check));
+                                                    });
+                                                    if (data.tokenizer) testPublicKey(data.tokenizer, box, idx);
+                                                })
+                                                .catch(function(err) {
+                                                    box.innerHTML = '';
+                                                    box.appendChild(row({ status: 'fail', label: 'Test failed', message: err.message }));
+                                                })
+                                                .finally(function() {
+                                                    button.disabled = false;
+                                                });
+                                        });
                                     });
                                 })();
                             </script>
