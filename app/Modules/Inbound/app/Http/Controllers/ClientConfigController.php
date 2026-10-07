@@ -289,6 +289,26 @@ class ClientConfigController extends Controller
         ])->with('success', 'Webhook URL updated.');
     }
 
+    /**
+     * Blank fields mean "keep the saved key", so only non-empty values are checked.
+     * Returns null when the keys look right.
+     */
+    private function invalidFluidpayKeyMessage(array $credentials): ?string
+    {
+        $apiKey    = trim((string) ($credentials['api_key'] ?? ''));
+        $publicKey = trim((string) ($credentials['public_key'] ?? ''));
+
+        if ($apiKey !== '' && ! str_starts_with($apiKey, 'api_')) {
+            return 'The Private Key must be a FluidPay private key starting with "api_". The credentials were not saved — if your browser filled that field in automatically, clear it and paste the key from FluidPay.';
+        }
+
+        if ($publicKey !== '' && ! str_starts_with($publicKey, 'pub_')) {
+            return 'The Public Key must be a FluidPay public key starting with "pub_". The credentials were not saved.';
+        }
+
+        return null;
+    }
+
     public function updateGatewayCredentials(Request $request, string $pmsClientId): RedirectResponse
     {
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
@@ -308,6 +328,10 @@ class ClientConfigController extends Controller
         ]);
 
         $incoming = (array) ($request->input('gateway_credentials') ?? []);
+
+        if ($message = $this->invalidFluidpayKeyMessage((array) ($incoming['fluidpay'] ?? []))) {
+            return redirect()->back()->withInput()->with('error', "FLUIDPAY: {$message}");
+        }
 
         // Start from existing stored credentials so blank password fields (left intentionally
         // empty to keep the current value) do not overwrite saved private keys.
@@ -634,6 +658,22 @@ class ClientConfigController extends Controller
 
         // Use $request->input() for routes to ensure nested credential keys are not stripped
         $routes = $request->input('routes', []);
+
+        // Browsers autofill a saved login password into the Private Key field; never store
+        // anything that isn't shaped like the FluidPay key it claims to be. Checked before
+        // any row is removed or saved, so a rejected submit changes no routes.
+        foreach ($routes as $route) {
+            if (! empty($route['remove']) || strtolower((string) ($route['gateway'] ?? '')) !== 'fluidpay') {
+                continue;
+            }
+            if ($message = $this->invalidFluidpayKeyMessage((array) ($route['credentials'] ?? []))) {
+                $routeTypeLabel = ($route['route_type'] ?? '') === 'fees_on' ? 'Fees On' : 'Fees Off';
+
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', "FLUIDPAY ({$routeTypeLabel}): {$message}");
+            }
+        }
 
         // Rows checked "Remove this configuration" are deleted outright and excluded from
         // the save/validation below — the client is explicitly clearing them, so whatever
