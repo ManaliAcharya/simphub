@@ -284,11 +284,12 @@ class FluidPayAdapter implements GatewayAdapterInterface
     }
 
     /**
-     * Read-only credential check for the Multi-MID "Test credentials" button. Never falls back
-     * to the env-config key — it tests exactly the key the admin entered or saved. Returns one
-     * entry per check: ['label', 'status' => pass|warn|fail, 'message'].
+     * Read-only credential check for the "Test credentials" buttons (Gateway Credentials and
+     * Multi-MID rows). Never falls back to the env-config key — it tests exactly the key the
+     * admin entered or saved. $merchantId null skips the processor check (client-level keys
+     * have no MID). Returns one entry per check: ['label', 'status' => pass|warn|fail, 'message'].
      */
-    public function testCredentials(array $midCredentials, string $merchantId): array
+    public function testCredentials(array $midCredentials, ?string $merchantId): array
     {
         $apiKey    = trim((string) ($midCredentials['api_key'] ?? ''));
         $publicKey = trim((string) ($midCredentials['public_key'] ?? ''));
@@ -319,7 +320,9 @@ class FluidPayAdapter implements GatewayAdapterInterface
                     default                     => $check('Private key', 'fail', 'FluidPay returned HTTP '.$response->status().'.'),
                 };
 
-                if ($response->status() === 401) {
+                if ($merchantId === null) {
+                    // Client-level keys: no MID to check processors against.
+                } elseif ($response->status() === 401) {
                     $check('Processor access', 'warn', 'Skipped — fix the private key first.');
                 } elseif ($merchantId === '') {
                     $check('Processor access', 'warn', 'Enter a MID Identifier to check processor access.');

@@ -168,7 +168,7 @@
                     {{-- Common environment — applies to all gateways --}}
                     <div class="cc-field" style="margin-bottom:16px;">
                         <label style="font-weight:600;">Environment</label>
-                        <select name="gateway_credentials[environment]"
+                        <select name="gateway_credentials[environment]" id="csc-gw-env"
                                 style="width:100%;padding:8px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
                             <option value="sandbox"    @selected($commonEnv !== 'production')>Sandbox</option>
                             <option value="production" @selected($commonEnv === 'production')>Production</option>
@@ -179,7 +179,20 @@
                         @foreach($activeGateways as $gw)
                         @if(isset($credDefs[$gw]))
                         <div style="background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;padding:14px;">
-                            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7c93;margin-bottom:10px;">{{ strtoupper($gw) }}</div>
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+                                <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7c93;">{{ strtoupper($gw) }}</span>
+                                @if($gw === 'fluidpay')
+                                    <button type="button" class="button fluidpay-test-creds"
+                                            data-test-url="{{ route('inbound.clients.fluidpay-test-credentials', $client->pms_client_id) }}"
+                                            data-api-input="csc-cred-fluidpay-api_key"
+                                            data-public-input="csc-cred-fluidpay-public_key"
+                                            data-env-input="csc-gw-env"
+                                            data-result="csc-cred-test-result-fluidpay"
+                                            style="font-size:12px;padding:5px 12px;">
+                                        Test credentials
+                                    </button>
+                                @endif
+                            </div>
                             <div style="display:grid;gap:8px;">
                                 <div class="cc-field" style="margin:0;">
                                     <label>
@@ -210,12 +223,17 @@
                                         @endif
                                     </label>
                                     <input type="{{ $field['type'] }}"
+                                           id="csc-cred-{{ $gw }}-{{ $field['key'] }}"
                                            name="gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
                                            value=""
+                                           autocomplete="off"
                                            placeholder="{{ $placeholder }}"
                                            style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
                                 </div>
                                 @endforeach
+                                @if($gw === 'fluidpay')
+                                    <div id="csc-cred-test-result-fluidpay" role="status" aria-live="polite" style="display:none;"></div>
+                                @endif
                             </div>
                         </div>
                         @endif
@@ -223,6 +241,9 @@
                     </div>
                     <button type="submit" class="button primary" style="font-size:12px;padding:7px 16px;margin-top:14px;">Save credentials</button>
                 </form>
+                @if(in_array('fluidpay', $activeGateways, true))
+                    @include('inbound::components.fluidpay-credential-test-script')
+                @endif
             </div>
             @endif
             @endif {{-- showGateways + compact --}}

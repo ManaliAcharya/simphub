@@ -561,29 +561,42 @@ class ClientConfigController extends Controller
     }
 
     /**
-     * "Test credentials" on a FluidPay Multi-MID row. Tests what is typed in the row, falling
-     * back to that row's saved keys for any field left blank ("Configured — leave blank to
+     * "Test credentials" for FluidPay keys. With a route_type it tests a Multi-MID row;
+     * without one it tests the client-level keys in Gateway Credentials. Tests what is typed,
+     * falling back to the saved keys for any field left blank ("Configured — leave blank to
      * keep"). Read-only: nothing is saved and no transaction is created.
      */
     public function testFluidpayCredentials(Request $request, string $pmsClientId): JsonResponse
     {
         $request->validate([
-            'route_type'     => ['required', 'string', Rule::in(['fees_on', 'fees_off'])],
+            'route_type'     => ['nullable', 'string', Rule::in(['fees_on', 'fees_off'])],
             'mid_identifier' => ['nullable', 'string', 'max:100'],
+            'environment'    => ['nullable', 'string', Rule::in(['sandbox', 'production'])],
             'api_key'        => ['nullable', 'string', 'max:1000'],
             'public_key'     => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+        $client     = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+        $clientGw   = (array) ($client->gateway_credentials ?? []);
+        $isMidRoute = $request->filled('route_type');
 
-        $saved = (array) (ClientMidRoute::query()
-            ->where('client_id', $client->id)
-            ->where('route_type', $request->input('route_type'))
-            ->where('gateway', 'fluidpay')
-            ->first()?->credentials ?? []);
+        if ($isMidRoute) {
+            $saved = (array) (ClientMidRoute::query()
+                ->where('client_id', $client->id)
+                ->where('route_type', $request->input('route_type'))
+                ->where('gateway', 'fluidpay')
+                ->first()?->credentials ?? []);
 
-        // Same environment the Multi-MID form saves onto the route (from Gateway Credentials).
-        $environment = ((array) ($client->gateway_credentials ?? []))['environment'] ?? 'sandbox';
+            // Same environment the Multi-MID form saves onto the route (from Gateway Credentials).
+            $environment = $clientGw['environment'] ?? 'sandbox';
+            $merchantId  = trim((string) $request->input('mid_identifier'));
+        } else {
+            $saved = (array) ($clientGw['fluidpay'] ?? []);
+
+            // The Environment dropdown may have been changed but not saved yet — test against it.
+            $environment = $request->input('environment') ?: ($clientGw['environment'] ?? 'sandbox');
+            $merchantId  = null;
+        }
 
         $credentials = [
             'environment' => $environment,
@@ -592,7 +605,7 @@ class ClientConfigController extends Controller
         ];
 
         return response()->json(
-            app(FluidPayAdapter::class)->testCredentials($credentials, trim((string) $request->input('mid_identifier')))
+            app(FluidPayAdapter::class)->testCredentials($credentials, $merchantId)
         );
     }
 
