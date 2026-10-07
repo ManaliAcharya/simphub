@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\View;
+use Modules\Audit\Services\AuditLogger;
 use Modules\Auth\Services\MerchantSessionService;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -61,12 +62,18 @@ class MerchantSessionMiddleware
 
         $isImpersonating = (bool) $session->is_impersonation;
 
-        // A super-admin's read-only "view as client" session: allow safe
-        // (GET/HEAD/OPTIONS) requests through so every existing portal
-        // screen renders normally, but block anything that would change
-        // data. See ImpersonationService for how these sessions are created.
-        if ($isImpersonating && ! $request->isMethodSafe()) {
-            abort(403, 'This is a read-only impersonated session — changes cannot be made while viewing as a client.');
+        // A super-admin's "view as client" session can edit the client's config,
+        // but never the client's own login: anything gated behind a password
+        // re-prompt (email, password, session management) stays blocked, as does
+        // the re-prompt itself. See ImpersonationService for how these sessions
+        // are created.
+        $isImpersonatedWrite = $isImpersonating && ! $request->isMethodSafe();
+
+        if ($isImpersonatedWrite && (
+            in_array('reauth.required', $request->route()?->gatherMiddleware() ?? [], true)
+            || $request->routeIs('*auth.reauthenticate')
+        )) {
+            abort(403, 'Account login settings cannot be changed while viewing as a client.');
         }
 
         $request->attributes->set('merchant_session', $session);
@@ -78,6 +85,26 @@ class MerchantSessionMiddleware
         View::share('impersonationAdmin', $isImpersonating ? $session->impersonatedByAdmin : null);
 
         $response = $next($request);
+
+        // Every change an admin makes on a client's behalf is attributed to them.
+        // Only the route is logged, never the request body — it can carry
+        // gateway credentials.
+        if ($isImpersonatedWrite) {
+            AuditLogger::log(
+                eventType: 'IMPERSONATION_WRITE',
+                entityType: 'client_account',
+                entityId: $clientAccount->id,
+                payload: [
+                    'admin_user_id' => $session->impersonated_by_user_id,
+                    'merchant_session_id' => $session->id,
+                    'method' => $request->method(),
+                    'route' => $request->route()?->getName(),
+                    'path' => $request->path(),
+                    'status' => $response->getStatusCode(),
+                ],
+                actorType: 'admin'
+            );
+        }
 
         $this->merchantSessionService->touchLastActivity($session);
 

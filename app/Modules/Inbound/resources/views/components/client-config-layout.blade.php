@@ -608,7 +608,7 @@ $activeTab — default active tab id (first tab if not set)
         <div style="position:sticky;top:0;z-index:1000;background:#78350f;color:#fef3c7;padding:10px 16px;font-size:13px;line-height:1.4;display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;text-align:center;">
             <span>
                 🔒 Viewing <strong>{{ $displayName }}</strong>'s account as an admin{{ isset($impersonationAdmin) && $impersonationAdmin ? ' (' . $impersonationAdmin->email . ')' : '' }}
-                — read-only, no changes can be made.
+                — changes you save apply to this client and are logged under your name.
             </span>
             <form method="POST" action="{{ route('admin.impersonate.stop') }}" style="display:inline;margin:0;">
                 @csrf
