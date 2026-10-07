@@ -1447,7 +1447,7 @@
                                                                                     id="cred-{{ $idx }}-{{ $cf['key'] }}"
                                                                                     name="routes[{{ $idx }}][credentials][{{ $cf['key'] }}]"
                                                                                     value=""
-                                                                                    autocomplete="off"
+                                                                                    autocomplete="{{ $cf['type'] === 'password' ? 'new-password' : 'off' }}" data-lpignore="true" data-1p-ignore
                                                                                     placeholder="{{ $placeholder }}">
                                                                             </div>
                                                                         @endforeach

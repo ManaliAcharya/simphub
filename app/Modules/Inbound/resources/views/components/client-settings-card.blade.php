@@ -226,7 +226,7 @@
                                            id="csc-cred-{{ $gw }}-{{ $field['key'] }}"
                                            name="gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
                                            value=""
-                                           autocomplete="off"
+                                           autocomplete="{{ $field['type'] === 'password' ? 'new-password' : 'off' }}" data-lpignore="true" data-1p-ignore
                                            placeholder="{{ $placeholder }}"
                                            style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
                                 </div>
