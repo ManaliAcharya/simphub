@@ -7,15 +7,13 @@ use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Transaction;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClioConnection;
-use Modules\Inbound\Models\LawcusConnection;
 use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Models\WaveConnection;
 use Modules\Inbound\Models\AdvancedMdPractice;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
-use Modules\Inbound\Services\LawcusApiClient;
-use Modules\Inbound\Services\LawcusOAuthService;
+use Modules\Inbound\Services\LawcusPaymentSyncService;
 use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksOAuthService;
 use Modules\Inbound\Services\WaveApiClient;
@@ -36,12 +34,11 @@ class SyncInvoicePaidListener
         private readonly ClioApiClient $clioApi,
         private readonly QuickBooksOAuthService $qbOAuth,
         private readonly QuickBooksApiClient $qbApi,
-        private readonly LawcusOAuthService $lawcusOAuth,
-        private readonly LawcusApiClient $lawcusApi,
         private readonly WaveOAuthService $waveOAuth,
         private readonly WaveApiClient $waveApi,
         private readonly AdvancedMdSessionService $advancedMdSession,
         private readonly AdvancedMdApiClient $advancedMdApi,
+        private readonly LawcusPaymentSyncService $lawcusPaymentSync,
     ) {}
 
     public function handle(PaymentApproved $event): void
@@ -358,58 +355,7 @@ class SyncInvoicePaidListener
 
     private function syncToLawcus(Transaction $transaction, mixed $invoice, mixed $client): void
     {
-        try {
-            $connection = LawcusConnection::query()
-                ->where('provider', 'lawcus')
-                ->where('pms_client_id', $invoice->pms_client_id)
-                ->first();
-
-            $connection = $this->lawcusOAuth->ensureValidAccessToken($connection);
-
-            $bankAccountId = is_string($client->lawcus_default_bank_account_id) && trim($client->lawcus_default_bank_account_id) !== ''
-                ? (int) $client->lawcus_default_bank_account_id
-                : null;
-
-            if ($bankAccountId === null) {
-                throw new \RuntimeException('No default Lawcus bank account configured for this client.');
-            }
-
-            $amount  = round(((int) $transaction->amount_cents) / 100, 2);
-            $billId  = (string) $invoice->external_invoice_id;
-
-            $paymentPayload = [
-                'date'          => now()->toDateString(),
-                'payment_type'  => $this->lawcusPaymentType((string) $transaction->gateway),
-                'reference'     => (string) $transaction->gateway_txn_id,
-                'bank_account'  => ['id' => $bankAccountId],
-                'bill_payments' => [[
-                    'bill'   => ['id' => (int) $billId],
-                    'amount' => $amount,
-                ]],
-            ];
-
-            $this->lawcusApi->recordPayment($connection, $paymentPayload);
-
-            $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
-
-            AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
-                'pms_source'          => 'lawcus',
-                'transaction_id'      => $transaction->id,
-                'gateway'             => $transaction->gateway,
-                'gateway_txn_id'      => $transaction->gateway_txn_id,
-                'external_invoice_id' => $invoice->external_invoice_id,
-                'bank_account_id'     => $bankAccountId,
-            ]);
-        } catch (\Throwable $exception) {
-            $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
-
-            AuditLogger::log('PMS_PAYMENT_RECORD_FAILED', 'invoice', $invoice->id, [
-                'pms_source'     => 'lawcus',
-                'transaction_id' => $transaction->id,
-                'gateway'        => $transaction->gateway,
-                'error'          => $exception->getMessage(),
-            ]);
-        }
+        $this->lawcusPaymentSync->sync($transaction, $invoice);
     }
 
     private function syncToWave(Transaction $transaction, mixed $invoice, mixed $client): void
@@ -546,15 +492,6 @@ class SyncInvoicePaidListener
     }
 
     private function clioPaymentType(string $gateway): string
-    {
-        return match (strtolower($gateway)) {
-            'paya'     => 'Check',
-            'fluidpay' => 'Credit Card',
-            default    => 'Credit Card',
-        };
-    }
-
-    private function lawcusPaymentType(string $gateway): string
     {
         return match (strtolower($gateway)) {
             'paya'     => 'Check',

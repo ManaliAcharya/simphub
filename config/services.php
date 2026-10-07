@@ -85,12 +85,14 @@ return [
     'lawcus' => [
         'base_url'             => rtrim(env('LAWCUS_BASE_URL', 'https://app.lawcus.com'), '/'),
         'api_base_url'         => rtrim(env('LAWCUS_API_BASE_URL', env('LAWCUS_BASE_URL', 'https://app.lawcus.com')), '/'),
+        'rest_api_base_url'    => rtrim(env('LAWCUS_REST_API_BASE_URL', 'https://api.us.lawcus.com'), '/'),
         'client_id'            => env('LAWCUS_CLIENT_ID'),
         'client_secret'        => env('LAWCUS_CLIENT_SECRET'),
         'redirect_uri'         => env('LAWCUS_REDIRECT_URI', rtrim(env('APP_URL', 'http://localhost'), '/').'/inbound/lawcus/callback'),
         'scope'                => env('LAWCUS_SCOPE', 'openid'),
         'webhook_callback_url' => env('LAWCUS_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/lawcus'),
         'webhook_events'       => array_values(array_filter(array_map('trim', explode(',', env('LAWCUS_WEBHOOK_EVENTS', 'invoice.created'))))),
+        'ops_alert_email'      => env('LAWCUS_OPS_ALERT_EMAIL'),
     ],
 
     'mindbody' => [

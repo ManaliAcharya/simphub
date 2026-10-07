@@ -4,13 +4,18 @@ namespace Modules\Inbound\Services;
 
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Services\PaymentSessionService;
+use Modules\Inbound\Mail\LawcusConnectionBrokenMail;
+use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\LawcusConnection;
 use Modules\Payment\Services\PaymentLinkService;
 use RuntimeException;
+use Throwable;
 
 class LawcusInvoiceIngestionService
 {
@@ -25,12 +30,13 @@ class LawcusInvoiceIngestionService
     {
         $pmsClientId     = $this->resolvePmsClientId($triggerPayload);
         $connection      = $this->oauth->ensureValidAccessToken($this->resolveConnection($pmsClientId));
-        $invoicePayload  = $this->client->fetchBill($connection, $externalInvoiceId);
+        $invoicePayload  = $this->fetchBillTracked($connection, $externalInvoiceId, $pmsClientId);
         $normalized      = $this->normalizeInvoice($invoicePayload, $triggerPayload);
-        $customerPayload = $this->fetchCustomerPayload($connection, (string) $normalized['external_client_id']);
-        $recipientEmails = $this->extractClientEmails($invoicePayload);
+        $customerPayload = $this->fetchCustomerPayload($connection, $invoicePayload, $pmsClientId);
+        $recipientEmails = $this->extractClientEmails($invoicePayload, $customerPayload);
+        $customerName    = $this->extractClientName($invoicePayload, $customerPayload);
 
-        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $pmsClientId) {
+        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $customerName, $pmsClientId) {
             $invoice = Invoice::query()->updateOrCreate(
                 [
                     'pms_source'          => 'lawcus',
@@ -53,6 +59,10 @@ class LawcusInvoiceIngestionService
                         'customer' => $customerPayload,
                     ],
                     'recipient_emails' => $recipientEmails,
+                    'customer'         => array_filter([
+                        'name'  => $customerName,
+                        'email' => $recipientEmails[0] ?? null,
+                    ]),
                     'synced_at'        => now(),
                 ]
             );
@@ -109,17 +119,83 @@ class LawcusInvoiceIngestionService
         return $result;
     }
 
-    private function fetchCustomerPayload(LawcusConnection $connection, string $externalClientId): array
+    private function fetchBillTracked(LawcusConnection $connection, string $externalInvoiceId, string $pmsClientId): array
     {
-        if (trim($externalClientId) === '') {
+        try {
+            $payload = $this->client->fetchBill($connection, $externalInvoiceId);
+            $this->oauth->recordApiSuccess($connection);
+
+            return $payload;
+        } catch (Throwable $e) {
+            $this->handleApiFailure($connection, $e, $pmsClientId);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * The REST invoice already embeds the client contact, so the separate contact
+     * lookup (by UUID) is only a fallback for when it's missing.
+     */
+    private function fetchCustomerPayload(LawcusConnection $connection, array $invoicePayload, string $pmsClientId): array
+    {
+        $embedded = Arr::get($invoicePayload, 'data.client');
+
+        if (is_array($embedded) && $embedded !== []) {
+            return $embedded;
+        }
+
+        $contactUuid = trim((string) (
+            Arr::get($invoicePayload, 'data.client_uuid') ?? Arr::get($invoicePayload, 'data.clientuuid') ?? ''
+        ));
+
+        if ($contactUuid === '') {
             return [];
         }
 
         try {
-            return $this->client->fetchContact($connection, $externalClientId);
-        } catch (\Throwable) {
+            $payload = $this->client->fetchContact($connection, $contactUuid);
+            $this->oauth->recordApiSuccess($connection);
+
+            return $payload;
+        } catch (Throwable $e) {
+            $this->handleApiFailure($connection, $e, $pmsClientId);
+
             return [];
         }
+    }
+
+    /**
+     * Records the failure against the connection and, the moment it transitions from
+     * healthy to broken (not on every subsequent failed attempt), emails ops — Lawcus's
+     * per-account access tokens have no automatic refresh, so a revoked/deleted token
+     * would otherwise fail silently until someone happened to notice invoices had stopped
+     * syncing for this firm.
+     */
+    private function handleApiFailure(LawcusConnection $connection, Throwable $exception, string $pmsClientId): void
+    {
+        if (! $this->oauth->recordApiFailure($connection, $exception)) {
+            return;
+        }
+
+        $opsEmail = config('services.lawcus.ops_alert_email');
+
+        if (! $opsEmail) {
+            Log::warning('Lawcus connection broken but LAWCUS_OPS_ALERT_EMAIL is not configured — no alert sent', [
+                'pms_client_id' => $pmsClientId,
+                'error'         => $exception->getMessage(),
+            ]);
+
+            return;
+        }
+
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->first();
+
+        if (! $client) {
+            return;
+        }
+
+        Mail::to($opsEmail)->send(new LawcusConnectionBrokenMail($client, $exception->getMessage()));
     }
 
     private function normalizeInvoice(array $invoicePayload, array $triggerPayload): array
@@ -131,7 +207,8 @@ class LawcusInvoiceIngestionService
             throw new RuntimeException('Lawcus invoice response did not include an invoice id.');
         }
 
-        $total    = Arr::get($data, 'total', Arr::get($data, 'balance', 0));
+        // Bill what's still owed — a partially paid invoice should not be charged in full.
+        $total    = Arr::get($data, 'amount_due') ?? Arr::get($data, 'total', Arr::get($data, 'balance', 0));
         $fundType = strtoupper((string) (
             Arr::get($data, 'fund_type')
             ?? Arr::get($triggerPayload, 'fund_type')
@@ -216,24 +293,46 @@ class LawcusInvoiceIngestionService
         return 'USD';
     }
 
-    private function extractClientEmails(array $invoicePayload): array
+    private function extractClientEmails(array $invoicePayload, array $customerPayload = []): array
     {
         $data   = (array) Arr::get($invoicePayload, 'data', []);
         $emails = [
+            Arr::get($data, 'client_email'),
+            Arr::get($customerPayload, 'email'),
             Arr::get($data, 'client.email'),
             Arr::get($data, 'client.primary_email_address'),
             Arr::get($data, 'contact.email'),
             Arr::get($data, 'billing_contact.email'),
         ];
 
-        foreach ((array) Arr::get($data, 'client.emails', []) as $email) {
-            $emails[] = is_array($email) ? ($email['address'] ?? null) : $email;
+        // Lawcus returns contact "emails" as a JSON-encoded string of {type, value, is_primary}.
+        foreach ([Arr::get($data, 'client.emails'), Arr::get($customerPayload, 'emails')] as $list) {
+            if (is_string($list)) {
+                $list = json_decode($list, true);
+            }
+
+            foreach ((array) $list as $email) {
+                $emails[] = is_array($email) ? ($email['value'] ?? $email['address'] ?? null) : $email;
+            }
         }
 
         return array_values(array_unique(array_filter(array_map(
             static fn ($email) => is_string($email) ? trim($email) : null,
             $emails
         ))));
+    }
+
+    private function extractClientName(array $invoicePayload, array $customerPayload): ?string
+    {
+        $data = (array) Arr::get($invoicePayload, 'data', []);
+
+        $name = trim((string) (
+            Arr::get($customerPayload, 'name')
+            ?? Arr::get($data, 'client_name')
+            ?? trim(Arr::get($data, 'client_first_name', '').' '.Arr::get($data, 'client_last_name', ''))
+        ));
+
+        return $name !== '' ? $name : null;
     }
 
     private function resolvePmsClientId(array $triggerPayload): string

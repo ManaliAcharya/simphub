@@ -108,6 +108,9 @@ Route::middleware('web')->group(function (): void {
         Route::post('/inbound/lawcus/default-bank-account', [PmsIntegrationController::class, 'saveLawcusDefaultBankAccount'])
             ->name('inbound.lawcus.default-bank-account');
 
+        Route::post('/inbound/lawcus/connect-token', [PmsAuthController::class, 'connectLawcusToken'])
+            ->name('inbound.lawcus.connect-token');
+
         Route::post('/inbound/wave/default-account', [PmsIntegrationController::class, 'saveWaveDefaultAccount'])
             ->name('inbound.wave.default-account');
 

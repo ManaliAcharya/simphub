@@ -136,6 +136,7 @@ class PaymentLinkMail extends Mailable
         return (string) (
             Arr::get($raw, 'customer.Customer.DisplayName')
             ?? Arr::get($raw, 'customer.data.display_number')
+            ?? Arr::get($this->invoice->customer ?? [], 'name')
             ?? ''
         );
     }
