@@ -9,13 +9,13 @@ use Modules\Auth\Models\ClientAccount;
 use Modules\Auth\Models\MerchantSession;
 
 /**
- * Lets a super-admin open a read-only, time-limited view of a client's
- * portal/config screens without ever knowing or using the client's
+ * Lets a super-admin open a time-limited session on a client's portal/config
+ * screens, and edit that config, without ever knowing or using the client's
  * password. Implemented as a specially-flagged MerchantSession so it reuses
  * every existing merchant.auth-gated screen (client config, gateways,
- * fees, boarding, etc.) instead of duplicating them; MerchantSessionMiddleware
- * blocks any non-GET request on that session, so nothing can be changed
- * while impersonating. Every start/end is written to the audit log.
+ * fees, boarding, etc.) instead of duplicating them. MerchantSessionMiddleware
+ * still blocks the client's own login settings (email, password, sessions) and
+ * audit-logs every write. Every start/end is written to the audit log too.
  */
 class ImpersonationService
 {

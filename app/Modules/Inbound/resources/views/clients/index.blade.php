@@ -571,7 +571,7 @@
                                         <form action="{{ route('admin.impersonate.start', $client->account->id) }}" method="POST" style="display:inline;">
                                             @csrf
                                             <button type="submit" class="action-btn"
-                                                title="Opens a read-only, audited view of this client's portal — no client login needed.">
+                                                title="Opens this client's portal so you can view and edit their config — no client login needed. Every change is audit-logged.">
                                                 View as client →
                                             </button>
                                         </form>
