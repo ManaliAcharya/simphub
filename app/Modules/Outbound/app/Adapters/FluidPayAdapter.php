@@ -119,10 +119,8 @@ class FluidPayAdapter implements GatewayAdapterInterface
                 'api_key_prefix'    => substr($apiKey, 0, 10).'...',
                 'msg'         => $msg,
                 'body'        => $raw ?: $httpResponse->body(),
-                'response_headers' => [
-                    'request-id' => $httpResponse->header('X-Request-Id') ?: $httpResponse->header('Request-Id'),
-                    'content-type' => $httpResponse->header('Content-Type'),
-                ],
+                'correlation_id' => $this->correlationId($httpResponse),
+                'content_type'   => $httpResponse->header('Content-Type'),
                 'elapsed_ms'  => $elapsedMs,
                 'invoice_id'         => $request->metadata['invoice_id'] ?? null,
                 'payment_session_id' => $request->metadata['payment_session_id'] ?? null,
@@ -137,12 +135,16 @@ class FluidPayAdapter implements GatewayAdapterInterface
         $responseCode  = (int)    ($data['response_code'] ?? 0);
         $responseText  = (string) ($data['response'] ?? $raw['msg'] ?? 'Unknown error');
 
-        \Log::debug('FluidPay charge HTTP response', [
+        \Log::info('FluidPay charge HTTP response', [
             'status'         => $httpResponse->status(),
+            'environment'    => $isProduction ? 'production' : 'sandbox',
             'response_code'  => $responseCode,
             'response_text'  => $responseText,
             'transaction_id' => $transactionId,
+            'correlation_id' => $this->correlationId($httpResponse),
             'elapsed_ms'     => $elapsedMs,
+            'invoice_id'         => $request->metadata['invoice_id'] ?? null,
+            'payment_session_id' => $request->metadata['payment_session_id'] ?? null,
         ]);
 
         // response_code 100–199 are approvals per FluidPay docs
@@ -171,9 +173,20 @@ class FluidPayAdapter implements GatewayAdapterInterface
 
         $body = ['amount' => $request->amountInCents];
 
-        $httpResponse = Http::withHeaders(['Authorization' => $apiKey])
-            ->timeout(45)
-            ->post("{$baseUrl}/api/transaction/{$request->gatewayTxnId}/refund", $body);
+        $startedAt = microtime(true);
+        try {
+            $httpResponse = Http::withHeaders(['Authorization' => $apiKey])
+                ->timeout(45)
+                ->post("{$baseUrl}/api/transaction/{$request->gatewayTxnId}/refund", $body);
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            $this->logConnectionError('refund', $baseUrl, $startedAt, $e, ['gateway_txn_id' => $request->gatewayTxnId]);
+            throw $e;
+        }
+
+        $this->logApiCall('refund', $httpResponse, $baseUrl, $startedAt, [
+            'gateway_txn_id' => $request->gatewayTxnId,
+            'amount_cents'   => $request->amountInCents,
+        ]);
 
         $raw = $httpResponse->json() ?? [];
 
@@ -210,9 +223,17 @@ class FluidPayAdapter implements GatewayAdapterInterface
             return GatewayResponse::declined('FluidPay API key is not configured.');
         }
 
-        $httpResponse = Http::withHeaders(['Authorization' => $apiKey])
-            ->timeout(30)
-            ->post("{$baseUrl}/api/transaction/{$gatewayTxnId}/void");
+        $startedAt = microtime(true);
+        try {
+            $httpResponse = Http::withHeaders(['Authorization' => $apiKey])
+                ->timeout(30)
+                ->post("{$baseUrl}/api/transaction/{$gatewayTxnId}/void");
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            $this->logConnectionError('void', $baseUrl, $startedAt, $e, ['gateway_txn_id' => $gatewayTxnId]);
+            throw $e;
+        }
+
+        $this->logApiCall('void', $httpResponse, $baseUrl, $startedAt, ['gateway_txn_id' => $gatewayTxnId]);
 
         $raw = $httpResponse->json() ?? [];
 
@@ -260,16 +281,32 @@ class FluidPayAdapter implements GatewayAdapterInterface
 
         $keyHint = substr($apiKey, 0, 8).'...('.strlen($apiKey).' chars, source: '.$credSource.')';
 
+        $logContext = [
+            'merchant_id'       => $merchantId,
+            'credential_source' => $credSource,
+            'api_key_prefix'    => substr($apiKey, 0, 8).'...',
+        ];
+
+        $startedAt = microtime(true);
         try {
             $processorsResponse = Http::withHeaders(['Authorization' => $apiKey])
                 ->timeout(20)
                 ->get("{$baseUrl}/api/merchant/{$merchantId}/processors");
         } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            $this->logConnectionError('list processors', $baseUrl, $startedAt, $e, $logContext);
+
             return ['processors' => [], 'error' => 'Could not reach FluidPay: '.$e->getMessage().' [key: '.$keyHint.']'];
         }
 
+        $this->logApiCall('list processors', $processorsResponse, $baseUrl, $startedAt, $logContext + [
+            'processor_count' => count((array) ($processorsResponse->json('data') ?? [])),
+        ]);
+
         if (! $processorsResponse->successful()) {
-            return ['processors' => [], 'error' => 'Could not fetch processors for MID "'.$merchantId.'" (HTTP '.$processorsResponse->status().'). [key: '.$keyHint.']'];
+            $correlationId = $this->correlationId($processorsResponse);
+
+            return ['processors' => [], 'error' => 'Could not fetch processors for MID "'.$merchantId.'" (HTTP '.$processorsResponse->status().').'
+                .$this->correlationSuffix($correlationId).' [key: '.$keyHint.']'];
         }
 
         $rows = (array) ($processorsResponse->json('data') ?? []);
@@ -308,16 +345,22 @@ class FluidPayAdapter implements GatewayAdapterInterface
         } elseif (! str_starts_with($apiKey, 'api_')) {
             $check('Private key', 'fail', 'This does not look like a FluidPay private key — they start with "api_".');
         } else {
+            $logContext = ['merchant_id' => $merchantId, 'api_key_prefix' => substr($apiKey, 0, 8).'...'];
+
             try {
+                $startedAt = microtime(true);
                 $response = Http::withHeaders(['Authorization' => $apiKey])
                     ->timeout(15)
                     ->post("{$baseUrl}/api/transaction/search", ['limit' => 1]);
+                $this->logApiCall('test credentials: key check', $response, $baseUrl, $startedAt, $logContext);
+
+                $keyRef = $this->correlationSuffix($this->correlationId($response));
 
                 match (true) {
                     $response->successful()     => $check('Private key', 'pass', "Accepted by FluidPay ({$envLabel})."),
-                    $response->status() === 401 => $check('Private key', 'fail', "Rejected by FluidPay {$envLabel} (401) — the key is wrong, revoked, or from the other environment."),
-                    $response->status() === 403 => $check('Private key', 'warn', 'Recognised by FluidPay, but not allowed to search transactions (403).'),
-                    default                     => $check('Private key', 'fail', 'FluidPay returned HTTP '.$response->status().'.'),
+                    $response->status() === 401 => $check('Private key', 'fail', "Rejected by FluidPay {$envLabel} (401) — the key is wrong, revoked, or from the other environment.".$keyRef),
+                    $response->status() === 403 => $check('Private key', 'warn', 'Recognised by FluidPay, but not allowed to search transactions (403).'.$keyRef),
+                    default                     => $check('Private key', 'fail', 'FluidPay returned HTTP '.$response->status().'.'.$keyRef),
                 };
 
                 if ($merchantId === null) {
@@ -327,20 +370,27 @@ class FluidPayAdapter implements GatewayAdapterInterface
                 } elseif ($merchantId === '') {
                     $check('Processor access', 'warn', 'Enter a MID Identifier to check processor access.');
                 } else {
+                    $startedAt = microtime(true);
                     $processors = Http::withHeaders(['Authorization' => $apiKey])
                         ->timeout(15)
                         ->get("{$baseUrl}/api/merchant/{$merchantId}/processors");
                     $count = count((array) ($processors->json('data') ?? []));
+                    $procRef = $this->correlationSuffix($this->correlationId($processors));
+
+                    $this->logApiCall('test credentials: processor access', $processors, $baseUrl, $startedAt, $logContext + [
+                        'processor_count' => $count,
+                    ]);
 
                     match (true) {
                         $processors->successful() && $count > 0 => $check('Processor access', 'pass', "{$count} processor(s) found for this MID."),
                         $processors->successful()               => $check('Processor access', 'warn', 'Key can read this MID, but it has no processors set up in FluidPay.'),
-                        $processors->status() === 403           => $check('Processor access', 'fail', 'Key is not allowed to read this MID\'s processors (FluidPay: forbidden). The key\'s FluidPay user needs merchant/processor view permission, or the key belongs to a different merchant.'),
-                        $processors->status() === 404           => $check('Processor access', 'fail', 'FluidPay could not find this MID Identifier — check it is FluidPay\'s merchant ID.'),
-                        default                                 => $check('Processor access', 'fail', 'FluidPay returned HTTP '.$processors->status().' for this MID.'),
+                        $processors->status() === 403           => $check('Processor access', 'fail', 'Key is not allowed to read this MID\'s processors (FluidPay: forbidden). The key\'s FluidPay user needs merchant/processor view permission, or the key belongs to a different merchant.'.$procRef),
+                        $processors->status() === 404           => $check('Processor access', 'fail', 'FluidPay could not find this MID Identifier — check it is FluidPay\'s merchant ID.'.$procRef),
+                        default                                 => $check('Processor access', 'fail', 'FluidPay returned HTTP '.$processors->status().' for this MID.'.$procRef),
                     };
                 }
             } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                $this->logConnectionError('test credentials', $baseUrl, $startedAt, $e, $logContext);
                 $check('Private key', 'fail', 'Could not reach FluidPay: '.$e->getMessage());
             }
         }
@@ -460,5 +510,54 @@ class FluidPayAdapter implements GatewayAdapterInterface
                 'mode' => $publicKey !== '' ? 'tokenizer' : 'mock',
             ],
         );
+    }
+
+    /**
+     * FluidPay tags every API response with an x-correlation-id header. FluidPay support
+     * asks for it to trace a failed call on their side, so surface it on errors.
+     */
+    private function correlationId(\Illuminate\Http\Client\Response $response): ?string
+    {
+        $id = trim((string) $response->header('x-correlation-id'));
+
+        return $id !== '' ? $id : null;
+    }
+
+    /**
+     * One log line per FluidPay API call: info on success, warning on an HTTP error (with
+     * FluidPay's body). Info, not debug, so it survives a production LOG_LEVEL of info.
+     */
+    private function logApiCall(string $operation, \Illuminate\Http\Client\Response $response, string $baseUrl, float $startedAt, array $context = []): void
+    {
+        $entry = [
+            'status'         => $response->status(),
+            'correlation_id' => $this->correlationId($response),
+            'base_url'       => $baseUrl,
+            'elapsed_ms'     => (int) ((microtime(true) - $startedAt) * 1000),
+        ] + $context;
+
+        if ($response->successful()) {
+            \Log::info("FluidPay API {$operation}", $entry);
+
+            return;
+        }
+
+        \Log::warning("FluidPay API {$operation} failed", $entry + [
+            'body' => $response->json() ?? $response->body(),
+        ]);
+    }
+
+    private function logConnectionError(string $operation, string $baseUrl, float $startedAt, \Throwable $e, array $context = []): void
+    {
+        \Log::error("FluidPay API {$operation} connection error", [
+            'base_url'   => $baseUrl,
+            'elapsed_ms' => (int) ((microtime(true) - $startedAt) * 1000),
+            'error'      => $e->getMessage(),
+        ] + $context);
+    }
+
+    private function correlationSuffix(?string $correlationId): string
+    {
+        return $correlationId !== null ? ' (FluidPay Correlation ID: '.$correlationId.')' : '';
     }
 }
