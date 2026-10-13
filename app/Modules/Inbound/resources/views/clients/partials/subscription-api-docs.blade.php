@@ -30,10 +30,10 @@
         <ul class="flow-steps">
             <li><span class="step-num">1</span> Your CRM calls <code>POST /subscribe</code> with the customer and the monthly amount.</li>
             <li><span class="step-num">2</span> We create the subscription and immediately email the customer a payment link for the full amount. The same link is returned as <code>payment_link</code>.</li>
-            <li><span class="step-num">3</span> On the 1st of every following month, we email the customer a new payment link for that month.</li>
+            <li><span class="step-num">3</span> After that, we email a new payment link every month on your billing day, starting the following month. You set the billing day on the Subscriptions tab of your config page (default: the 1st). A customer never gets two links in the same month.</li>
             <li><span class="step-num">4</span> Status is <code>pending_payment</code> until the first payment, then <code>active</code>.</li>
             <li><span class="step-num">5</span> To change the monthly amount, your CRM calls <code>POST /update-amount</code>. The new amount applies from the next payment link; links already sent keep their amount.</li>
-            <li><span class="step-num">6</span> Your CRM calls <code>POST /unsubscribe</code> to cancel. Links already sent stay payable until <code>effective_date</code> (end of the current month); no new links are sent.</li>
+            <li><span class="step-num">6</span> Your CRM calls <code>POST /unsubscribe</code> to cancel. Links already sent stay payable until <code>effective_date</code> (the day before the next link would have gone out); no new links are sent.</li>
         </ul>
         <div class="info-box">
             Billing is always monthly; there is no billing cycle to send. A new link is sent each month even if an earlier month is still unpaid.
@@ -123,7 +123,7 @@ Content-Type: application/json
             </div>
             <div class="ep-body">
                 <p class="ep-desc-text">
-                    Sets a new monthly amount. The next payment link (sent on <code>effective_from</code>, the 1st of next month) uses it.
+                    Sets a new monthly amount. The next payment link (sent on <code>effective_from</code>, your next billing day) uses it.
                     Links already sent, including this month's, keep the amount they were sent with. The customer is not emailed about the change.
                     Identify the subscription the same way as unsubscribe: <code>simphub_reference_id</code>, then <code>customer_unique_id</code>, then <code>customer_email</code> + <code>customer_name</code>.
                 </p>

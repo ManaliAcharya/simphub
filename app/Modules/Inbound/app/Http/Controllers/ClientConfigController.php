@@ -18,6 +18,7 @@ use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClientMidRoute;
 use Modules\Inbound\Models\EmailConfiguration;
 use Modules\Inbound\Models\PmsConnection;
+use Modules\Inbound\Services\SubscriptionService;
 use Modules\Inbound\Services\ZohoRegionResolver;
 use Modules\Routing\Models\RoutingRule;
 use Modules\Routing\Models\TerminalConfiguration;
@@ -338,6 +339,27 @@ class ClientConfigController extends Controller
         ])
             ->with('success', $rotated ? 'New API key generated. The previous key no longer works.' : 'API key generated.')
             ->with('subscription_api_key', $plainKey);
+    }
+
+    public function updateSubscriptionBillingDay(Request $request, string $pmsClientId, SubscriptionService $subscriptions): RedirectResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        abort_unless($client->client_pms === 'ZOHOCRM', 422, 'Billing day is only available for Zoho CRM clients.');
+
+        $validated = $request->validate([
+            'subscription_billing_day' => ['required', 'integer', 'between:1,31'],
+        ]);
+
+        $day   = (int) $validated['subscription_billing_day'];
+        $moved = $subscriptions->changeBillingDay($client, $day);
+
+        return redirect()->route('inbound.zohocrm.page', [
+            'pms_client_id' => $pmsClientId,
+            'tab'           => 'subscriptions',
+        ])->with('subscription_settings_success', $moved > 0
+            ? "Billing day saved. {$moved} existing subscription(s) moved to the new day."
+            : 'Billing day saved.');
     }
 
     public function updateGatewayCredentials(Request $request, string $pmsClientId): RedirectResponse

@@ -127,6 +127,14 @@ class Client extends Model
         return $plainKey;
     }
 
+    /** Day of the month subscription links go out (1-31); defaults to the 1st. */
+    public function subscriptionBillingDay(): int
+    {
+        $day = (int) ($this->subscription_billing_day ?? 1);
+
+        return $day >= 1 && $day <= 31 ? $day : 1;
+    }
+
     public static function hashSubscriptionApiKey(string $plainKey): string
     {
         return hash('sha256', $plainKey);

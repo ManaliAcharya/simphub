@@ -94,7 +94,8 @@ class SubscriptionService
             'status'          => Subscription::STATUS_CANCELLED,
             'cancelled_at'    => now(),
             // Links already sent stay payable; nothing is billed after this month.
-            'effective_date'  => CarbonImmutable::today()->endOfMonth()->toDateString(),
+            // End of the period already billed: the day before the next link would go out.
+            'effective_date'  => $this->effectiveDate($subscription)->toDateString(),
             'next_billing_on' => null,
         ])->save();
 
@@ -134,6 +135,51 @@ class SubscriptionService
             'subscription'          => $subscription->fresh(),
             'previous_amount_cents' => $previousCents,
         ];
+    }
+
+    /**
+     * Sets the client's billing day and moves every open subscription's next link to
+     * that day, keeping the month it was already due in, so no customer is billed
+     * twice in one month.
+     */
+    public function changeBillingDay(Client $client, int $day): int
+    {
+        $previousDay = $client->subscriptionBillingDay();
+        $client->forceFill(['subscription_billing_day' => $day])->save();
+
+        $moved = 0;
+
+        Subscription::query()
+            ->open()
+            ->where('pms_client_id', $client->pms_client_id)
+            ->whereNotNull('next_billing_on')
+            ->chunkById(200, function ($subscriptions) use ($day, &$moved) {
+                foreach ($subscriptions as $subscription) {
+                    $next = self::billingDate(CarbonImmutable::parse($subscription->next_billing_on), $day);
+
+                    if (! $next->equalTo($subscription->next_billing_on)) {
+                        $subscription->forceFill(['next_billing_on' => $next->toDateString()])->save();
+                        $moved++;
+                    }
+                }
+            });
+
+        AuditLogger::log('SUBSCRIPTION_BILLING_DAY_CHANGED', 'client', (string) $client->id, [
+            'pms_client_id'          => $client->pms_client_id,
+            'previous_billing_day'   => $previousDay,
+            'billing_day'            => $day,
+            'subscriptions_moved'    => $moved,
+        ]);
+
+        return $moved;
+    }
+
+    /** The billing day in the given month, falling back to the month's last day (e.g. 31st -> Feb 28). */
+    public static function billingDate(CarbonImmutable $month, int $day): CarbonImmutable
+    {
+        $month = $month->startOfMonth();
+
+        return $month->setDay(min($day, $month->daysInMonth));
     }
 
     /**
@@ -187,7 +233,7 @@ class SubscriptionService
 
     /**
      * Creates (or reuses) the invoice and payment session for one billing period
-     * and moves next_billing_on to the 1st of the following month.
+     * and moves next_billing_on to the client's billing day in the following month.
      *
      * @return array{0: Invoice, 1: PaymentSession}
      */
@@ -232,10 +278,31 @@ class SubscriptionService
 
         $subscription->forceFill([
             'last_billed_at'  => now(),
-            'next_billing_on' => $periodStart->addMonthNoOverflow()->toDateString(),
+            'next_billing_on' => self::billingDate(
+                $periodStart->addMonthNoOverflow(),
+                $this->billingDayFor($subscription->pms_client_id)
+            )->toDateString(),
         ])->save();
 
         return [$invoice, $session];
+    }
+
+    private function billingDayFor(string $pmsClientId): int
+    {
+        return Client::query()->where('pms_client_id', $pmsClientId)->first()?->subscriptionBillingDay() ?? 1;
+    }
+
+    private function effectiveDate(Subscription $subscription): CarbonImmutable
+    {
+        $today = CarbonImmutable::today();
+
+        if (! $subscription->next_billing_on) {
+            return $today->endOfMonth()->startOfDay();
+        }
+
+        $lastPaidDay = CarbonImmutable::parse($subscription->next_billing_on)->subDay();
+
+        return $lastPaidDay->lessThan($today) ? $today : $lastPaidDay;
     }
 
     private function sendLink(Invoice $invoice, PaymentSession $session, Subscription $subscription): void

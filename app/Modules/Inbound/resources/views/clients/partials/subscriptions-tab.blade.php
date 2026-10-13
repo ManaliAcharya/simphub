@@ -6,6 +6,8 @@
         'cancelled'       => 'Cancelled',
     ];
     $money = fn (int $cents) => '$' . number_format($cents / 100, 2);
+    $ordinal = fn (int $n) => $n . (in_array($n % 100, [11, 12, 13], true) ? 'th' : (['th', 'st', 'nd', 'rd'][$n % 10] ?? 'th'));
+    $billingDay = $client->subscriptionBillingDay();
 @endphp
 
 <style>
@@ -33,6 +35,39 @@
     .sub-pager { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:14px; font-size:13px; flex-wrap:wrap; }
     .sub-pager a { color:#2563eb; text-decoration:none; font-weight:600; }
 </style>
+
+<div class="cc-card">
+    <div class="cc-card-title">Billing day</div>
+    <div class="cc-card-desc">
+        Day of the month the monthly payment links are emailed to all your subscribed customers. New customers get their first link right away,
+        then on this day from the next month. In months without this day (e.g. the 31st in February), links go out on the last day of the month.
+    </div>
+
+    @if (session('subscription_settings_success'))
+        <div class="cc-notice success" role="status" style="margin-bottom:12px;">{{ session('subscription_settings_success') }}</div>
+    @endif
+    @error('subscription_billing_day')
+        <div class="cc-notice error" role="alert" style="margin-bottom:12px;">{{ $message }}</div>
+    @enderror
+
+    <form method="POST" action="{{ route('inbound.clients.subscription-billing-day', $client->pms_client_id) }}"
+          class="sub-filters" style="margin-bottom:0;"
+          onsubmit="return this.subscription_billing_day.value == '{{ $billingDay }}' || confirm('Change the billing day? Every open subscription's next link moves to the new day (no customer is billed twice in a month).');">
+        @csrf
+        <div>
+            <label for="sub-billing-day">Send links on the</label>
+            <select id="sub-billing-day" name="subscription_billing_day" style="min-width:140px;">
+                @for ($day = 1; $day <= 31; $day++)
+                    <option value="{{ $day }}" @selected($day === $billingDay)>{{ $ordinal($day) }} of the month</option>
+                @endfor
+            </select>
+        </div>
+        <button type="submit" class="button primary" style="font-size:13px;">Save</button>
+        @if (! $client->subscription_billing_day)
+            <span class="sub-muted" style="align-self:center;">Default: 1st of the month</span>
+        @endif
+    </form>
+</div>
 
 <div class="sub-stats" role="list">
     <div class="sub-stat" role="listitem"><div class="sub-stat-label">Active</div><div class="sub-stat-value">{{ $subscriptionSummary['active'] }}</div></div>
