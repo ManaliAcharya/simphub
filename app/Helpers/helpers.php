@@ -10,7 +10,7 @@ if (! function_exists('clientConfigUrl')) {
         $client = $owner;
 
         return match (strtolower($client->client_pms)) {
-            'custom' => route('inbound.clients.api-docs', [
+            'custom', 'zohocrm' => route('inbound.clients.api-docs', [
                 'pms_client_id' => $client->pms_client_id,
             ]),
 

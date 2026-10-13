@@ -3,6 +3,8 @@
 namespace Modules\Inbound\Providers;
 
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
+use Modules\Inbound\Listeners\ActivateSubscriptionOnPayment;
+use Modules\Payment\Events\PaymentApproved;
 
 class EventServiceProvider extends ServiceProvider
 {
@@ -11,7 +13,11 @@ class EventServiceProvider extends ServiceProvider
      *
      * @var array<string, array<int, string>>
      */
-    protected $listen = [];
+    protected $listen = [
+        PaymentApproved::class => [
+            ActivateSubscriptionOnPayment::class,
+        ],
+    ];
 
     /**
      * Indicates if events should be discovered.

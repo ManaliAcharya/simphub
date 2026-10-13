@@ -15,7 +15,7 @@ class CustomPmsController extends Controller
             ->where('pms_client_id', $request->query('pms_client_id'))
             ->first();
 
-        if (! $client || $client->client_pms !== 'CUSTOM') {
+        if (! $client || ! in_array($client->client_pms, ['CUSTOM', 'ZOHOCRM'], true)) {
             return redirect()->route('inbound.clients.create');
         }
 

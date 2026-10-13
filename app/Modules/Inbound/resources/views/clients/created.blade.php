@@ -104,7 +104,7 @@
                 $configUrl = $provider === 'boarding'
                     ? route('inbound.boarding.page')
                     : match($provider) {
-                        'custom'      => route('inbound.clients.api-docs',  ['pms_client_id' => $client->pms_client_id]),
+                        'custom', 'zohocrm' => route('inbound.clients.api-docs',  ['pms_client_id' => $client->pms_client_id]),
                         'quickbooks'  => route('inbound.quickbooks.page',   ['pms_client_id' => $client->pms_client_id]),
                         'zoho'        => route('inbound.zoho.page',         ['pms_client_id' => $client->pms_client_id]),
                         'wave'        => route('inbound.wave.page',         ['pms_client_id' => $client->pms_client_id]),

@@ -54,6 +54,7 @@ Route::middleware('web')->group(function (): void {
             Route::post('/{pms_client_id}/gateway-credentials', [ClientConfigController::class, 'updateGatewayCredentials'])->name('update-gateway-credentials');
             Route::post('/{pms_client_id}/gateways/pause', [ClientConfigController::class, 'toggleGatewayPause'])->name('toggle-gateway-pause');
             Route::post('/{pms_client_id}/webhook-url', [ClientConfigController::class, 'updateWebhookUrl'])->name('update-webhook-url');
+            Route::post('/{pms_client_id}/subscription-api-key', [ClientConfigController::class, 'generateSubscriptionApiKey'])->name('subscription-api-key');
             Route::post('/{pms_client_id}/fees', [ClientConfigController::class, 'updateFees'])->name('update-fees');
             Route::post('/{pms_client_id}/qb-settings', [ClientConfigController::class, 'updateQbSettings'])->name('update-qb-settings');
             Route::post('/{pms_client_id}/reminder-settings', [ClientConfigController::class, 'updateReminderSettings'])->name('update-reminder-settings');

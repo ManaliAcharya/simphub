@@ -80,6 +80,11 @@ class InboundServiceProvider extends ModuleServiceProvider
             $schedule->job(PollLawcusInvoicesJob::class)->everyFiveMinutes()
                 ->withoutOverlapping()
                 ->onOneServer();
+
+            // Monthly subscription links go out on the 1st; runs daily to catch up after downtime.
+            $schedule->command('subscriptions:bill')->dailyAt('06:00')
+                ->withoutOverlapping()
+                ->onOneServer();
         });
     }
 }

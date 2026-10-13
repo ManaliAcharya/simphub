@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Modules\Auth\Models\ClientAccount;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Str;
 
 class Client extends Model
 {
@@ -19,7 +20,7 @@ class Client extends Model
 
     protected $guarded = [];
 
-    protected $hidden = ['gateway_credentials'];
+    protected $hidden = ['gateway_credentials', 'subscription_api_key_hash'];
 
     protected function casts(): array
     {
@@ -48,6 +49,7 @@ class Client extends Model
             'payment_link_override_enabled'  => 'boolean',
             'reminders_enabled'              => 'boolean',
             'reminder_schedule_days'         => 'array',
+            'subscription_api_key_created_at' => 'datetime',
         ];
     }
 
@@ -106,6 +108,28 @@ class Client extends Model
         $name  = trim((string) ($names[strtolower($gateway)] ?? ''));
 
         return $name !== '' ? $name : strtoupper($gateway);
+    }
+
+    /**
+     * Issues a new subscription API key, replacing any previous one. Only the hash
+     * is stored, so the returned plain key must be shown to the user immediately.
+     */
+    public function issueSubscriptionApiKey(): string
+    {
+        $plainKey = 'shk_'.Str::random(48);
+
+        $this->forceFill([
+            'subscription_api_key_hash'       => self::hashSubscriptionApiKey($plainKey),
+            'subscription_api_key_last4'      => substr($plainKey, -4),
+            'subscription_api_key_created_at' => now(),
+        ])->save();
+
+        return $plainKey;
+    }
+
+    public static function hashSubscriptionApiKey(string $plainKey): string
+    {
+        return hash('sha256', $plainKey);
     }
 
     public function account(): MorphOne
