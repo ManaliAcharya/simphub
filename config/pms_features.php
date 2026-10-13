@@ -11,6 +11,7 @@ return [
         'quickbooks' => 'QuickBooks',
         'clio'       => 'Clio',
         'zoho'       => 'Zoho Books',
+        'zohocrm'    => 'Zoho CRM',
         'lawcus'     => 'Lawcus',
         'wave'       => 'Wave',
         'mindbody'   => 'Mindbody',

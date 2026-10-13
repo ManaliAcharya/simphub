@@ -197,6 +197,10 @@
                             <div class="logo-box"><img src="{{ asset('images/zoho_logo.png') }}" alt="Zoho"></div>
                             <div class="tile-name">Zoho Books</div>
                         </div>
+                        <div class="tile pms {{ old('client_pms') === 'ZOHOCRM' ? 'selected' : '' }}" data-value="ZOHOCRM" onclick="selectPMS(this)">
+                            <div class="logo-box"><img src="{{ asset('images/zoho_logo.png') }}" alt="Zoho CRM"></div>
+                            <div class="tile-name">Zoho CRM</div>
+                        </div>
                         <div class="tile pms {{ old('client_pms') === 'LAWCUS' ? 'selected' : '' }}" data-value="LAWCUS" onclick="selectPMS(this)">
                             <div class="logo-box"><img src="{{ asset('images/lawcus_logo.png') }}" alt="Lawcus"></div>
                             <div class="tile-name">Lawcus</div>

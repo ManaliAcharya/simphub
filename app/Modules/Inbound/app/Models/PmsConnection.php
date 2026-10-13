@@ -21,6 +21,7 @@ class PmsConnection extends Model
             'token_expires_at' => 'datetime',
             'webhook_expires_at' => 'datetime',
             'meta' => 'array',
+            'consecutive_failures' => 'integer',
         ];
     }
 }

@@ -59,6 +59,35 @@ class LawcusOAuthService
         return $this->persistTokens($response->json(), $connection);
     }
 
+    /**
+     * Lawcus never gave us an OAuth app (no client_id/client_secret configured anywhere —
+     * requiredConfig() below throws every time), but it does let a firm's own owner/admin
+     * generate a personal access token from their account. This persists that pasted token
+     * the same way an OAuth exchange would, minus the code/refresh_token dance — there's
+     * nothing to refresh, so token_expires_at/refresh_token stay null and
+     * ensureValidAccessToken() naturally treats it as never-expiring.
+     */
+    public function persistPastedToken(string $token, string $pmsClientId): LawcusConnection
+    {
+        $token = trim($token);
+
+        if ($token === '') {
+            throw new RuntimeException('Access token is required.');
+        }
+
+        $connection = $this->persistTokens(['access_token' => $token], pmsClientId: $pmsClientId);
+
+        // A fresh paste always replaces whatever was there — including resetting the
+        // failure counter, since this is the firm re-confirming a working token.
+        $connection->forceFill([
+            'refresh_token'        => null,
+            'token_expires_at'     => null,
+            'consecutive_failures' => 0,
+        ])->save();
+
+        return $connection->fresh();
+    }
+
     public function ensureValidAccessToken(?LawcusConnection $connection = null): LawcusConnection
     {
         if (! $connection) {
@@ -86,6 +115,45 @@ class LawcusOAuthService
     public function validateState(?string $state): array
     {
         return $this->state->validate($state);
+    }
+
+    public function recordApiSuccess(LawcusConnection $connection): void
+    {
+        if ($connection->consecutive_failures > 0 || $connection->last_error !== null) {
+            $connection->forceFill([
+                'consecutive_failures' => 0,
+                'last_error'           => null,
+            ])->save();
+        }
+    }
+
+    /**
+     * Increments the failure counter only for genuine auth failures (401/403) — a transient
+     * error (network blip, Lawcus downtime, rate limit) doesn't count and isn't touched here.
+     * Returns true exactly once, the moment the connection transitions from healthy to
+     * broken, so the caller knows to alert — not on every subsequent failed attempt while
+     * it's still down.
+     */
+    public function recordApiFailure(LawcusConnection $connection, \Throwable $exception): bool
+    {
+        if (! $this->isAuthFailure($exception)) {
+            return false;
+        }
+
+        $justBroke = $connection->consecutive_failures === 0;
+
+        $connection->forceFill([
+            'consecutive_failures' => $connection->consecutive_failures + 1,
+            'last_error'           => $exception->getMessage(),
+        ])->save();
+
+        return $justBroke;
+    }
+
+    private function isAuthFailure(\Throwable $exception): bool
+    {
+        return $exception instanceof \Illuminate\Http\Client\RequestException
+            && in_array($exception->response->status(), [401, 403], true);
     }
 
     private function persistTokens(array $payload, ?LawcusConnection $connection = null, ?string $pmsClientId = null): LawcusConnection

@@ -7,8 +7,10 @@ use Modules\Inbound\Http\Controllers\CrmTransactionController;
 use Modules\Inbound\Http\Controllers\EmailConfigController;
 use Modules\Inbound\Http\Controllers\InvoiceIngestionController;
 use Modules\Inbound\Http\Controllers\MindbodyWebhookController;
+use Modules\Inbound\Http\Controllers\SubscriptionController;
 use Modules\Inbound\Http\Controllers\WebhookController;
 use Modules\Inbound\Http\Middleware\CrmApiAuth;
+use Modules\Inbound\Http\Middleware\SubscriptionApiAuth;
 
 Route::prefix('v1/inbound')->name('inbound.')->group(function () {
     Route::post('/webhooks/{source}', WebhookController::class)->name('webhooks.receive');
@@ -28,3 +30,13 @@ Route::prefix('v1')->name('crm.')->middleware(CrmApiAuth::class)->group(function
     Route::put('/clients/{client_id}/email-config',        [EmailConfigController::class, 'update'])->name('email-config.update');
     Route::post('/clients/{client_id}/email-config/logo',  [EmailConfigController::class, 'uploadLogo'])->name('email-config.logo');
 });
+
+// Zoho CRM subscription API — authenticated with the client's subscription API key.
+Route::prefix('v1/subscriptions')
+    ->name('subscriptions.')
+    ->middleware([SubscriptionApiAuth::class, 'throttle:60,1'])
+    ->group(function () {
+        Route::post('/subscribe',   [SubscriptionController::class, 'subscribe'])->name('subscribe');
+        Route::post('/unsubscribe', [SubscriptionController::class, 'unsubscribe'])->name('unsubscribe');
+        Route::post('/update-amount', [SubscriptionController::class, 'updateAmount'])->name('update-amount');
+    });

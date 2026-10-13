@@ -4,12 +4,14 @@ namespace Modules\Inbound\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Inbound\Jobs\PollAdvancedMdChargesJob;
+use Modules\Inbound\Jobs\PollLawcusInvoicesJob;
 use Modules\Inbound\Jobs\PollWaveInvoicesJob;
 use Modules\Inbound\Services\Connectors\ClioConnector;
 use Modules\Inbound\Services\Connectors\LawcusConnector;
 use Modules\Inbound\Services\Connectors\QuickBooksConnector;
 use Modules\Inbound\Services\Connectors\WaveConnector;
 use Modules\Inbound\Services\Connectors\ZohoConnector;
+use Modules\Inbound\Services\Connectors\ZohoCrmConnector;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
@@ -53,6 +55,7 @@ class InboundServiceProvider extends ModuleServiceProvider
                 $app->make(QuickBooksConnector::class),
                 $app->make(LawcusConnector::class),
                 $app->make(WaveConnector::class),
+                $app->make(ZohoCrmConnector::class),
             ]);
         });
     }
@@ -73,6 +76,15 @@ class InboundServiceProvider extends ModuleServiceProvider
                 ->onOneServer();
 
             $schedule->job(PollWaveInvoicesJob::class)->everyFiveMinutes()
+                ->withoutOverlapping()
+                ->onOneServer();
+
+            $schedule->job(PollLawcusInvoicesJob::class)->everyFiveMinutes()
+                ->withoutOverlapping()
+                ->onOneServer();
+
+            // Monthly subscription links go out on the 1st; runs daily to catch up after downtime.
+            $schedule->command('subscriptions:bill')->dailyAt('06:00')
                 ->withoutOverlapping()
                 ->onOneServer();
         });

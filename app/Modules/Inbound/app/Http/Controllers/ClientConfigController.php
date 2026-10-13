@@ -18,6 +18,7 @@ use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClientMidRoute;
 use Modules\Inbound\Models\EmailConfiguration;
 use Modules\Inbound\Models\PmsConnection;
+use Modules\Inbound\Services\SubscriptionService;
 use Modules\Inbound\Services\ZohoRegionResolver;
 use Modules\Routing\Models\RoutingRule;
 use Modules\Routing\Models\TerminalConfiguration;
@@ -128,7 +129,9 @@ class ClientConfigController extends Controller
             'client_email'               => ['required', 'email', 'max:255', 'unique:client_accounts,email_lower'],
         ]);
 
-        if (strtoupper($validated['client_pms']) === 'ZOHO' && empty($validated['zoho_region'])) {
+        $isZoho = strtoupper($validated['client_pms']) === 'ZOHO';
+
+        if ($isZoho && empty($validated['zoho_region'])) {
             return back()
                 ->withErrors(['zoho_region' => 'Zoho region is required when PMS is Zoho.'])
                 ->withInput();
@@ -143,7 +146,7 @@ class ClientConfigController extends Controller
             'webhook_url'              => $isCustomPms ? ($validated['webhook_url'] ?? null) : null,
             'client_name'              => $validated['client_name'],
             'client_pms'               => strtoupper($validated['client_pms']),
-            'zoho_region'              => strtoupper($validated['client_pms']) === 'ZOHO'
+            'zoho_region'              => $isZoho
                 ? $zohoRegions->normalize($validated['zoho_region'] ?? 'US')
                 : null,
             'allowed_payment_gateways' => $isTerminal ? [] : collect($validated['allowed_payment_gateways'] ?? [])
@@ -176,6 +179,8 @@ class ClientConfigController extends Controller
 
         $provider = match ($client->client_pms) {
             'ZOHO'        => 'zoho',
+            'ZOHOCRM'     => 'zohocrm',
+            'LAWCUS'      => 'lawcus',
             'QUICKBOOKS'  => 'quickbooks',
             'WAVE'        => 'wave',
             'MINDBODY'    => 'mindbody',
@@ -263,6 +268,7 @@ class ClientConfigController extends Controller
         $routeName = match ($provider) {
             'quickbooks' => 'inbound.quickbooks.page',
             'zoho'       => 'inbound.zoho.page',
+            'zohocrm'    => 'inbound.zohocrm.page',
             'lawcus'     => 'inbound.lawcus.page',
             'wave'       => 'inbound.wave.page',
             'mindbody'   => 'inbound.mindbody.page',
@@ -307,6 +313,53 @@ class ClientConfigController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * Issues (or rotates) a Zoho CRM client's subscription API key. The plain key is
+     * flashed once and never stored, so it is kept out of the URL and logs.
+     */
+    public function generateSubscriptionApiKey(string $pmsClientId): RedirectResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        abort_unless($client->client_pms === 'ZOHOCRM', 422, 'Subscription API keys are only available for Zoho CRM clients.');
+
+        $rotated  = $client->subscription_api_key_hash !== null;
+        $plainKey = $client->issueSubscriptionApiKey();
+
+        AuditLogger::log('SUBSCRIPTION_API_KEY_ISSUED', 'client', (string) $client->id, [
+            'pms_client_id' => $client->pms_client_id,
+            'rotated'       => $rotated,
+        ]);
+
+        return redirect()->route('inbound.zohocrm.page', [
+            'pms_client_id' => $pmsClientId,
+            'tab'           => 'connection',
+        ])
+            ->with('success', $rotated ? 'New API key generated. The previous key no longer works.' : 'API key generated.')
+            ->with('subscription_api_key', $plainKey);
+    }
+
+    public function updateSubscriptionBillingDay(Request $request, string $pmsClientId, SubscriptionService $subscriptions): RedirectResponse
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        abort_unless($client->client_pms === 'ZOHOCRM', 422, 'Billing day is only available for Zoho CRM clients.');
+
+        $validated = $request->validate([
+            'subscription_billing_day' => ['required', 'integer', 'between:1,31'],
+        ]);
+
+        $day   = (int) $validated['subscription_billing_day'];
+        $moved = $subscriptions->changeBillingDay($client, $day);
+
+        return redirect()->route('inbound.zohocrm.page', [
+            'pms_client_id' => $pmsClientId,
+            'tab'           => 'subscriptions',
+        ])->with('subscription_settings_success', $moved > 0
+            ? "Billing day saved. {$moved} existing subscription(s) moved to the new day."
+            : 'Billing day saved.');
     }
 
     public function updateGatewayCredentials(Request $request, string $pmsClientId): RedirectResponse

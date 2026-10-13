@@ -55,6 +55,32 @@ class LawcusConnector implements PmsConnectorInterface
         );
     }
 
+    /**
+     * Lawcus has no usable OAuth app for us (no client_id/client_secret) — connecting
+     * a client happens by pasting a personal access token the firm's own owner/admin
+     * generates from their Lawcus account instead. Mirrors completeAuthorization()'s
+     * webhook-registration step, since that only needs a valid access_token on the
+     * connection, not how it was obtained.
+     */
+    public function connectWithToken(string $token, string $pmsClientId): PmsCallbackResult
+    {
+        $connection = $this->oauth->persistPastedToken($token, $pmsClientId);
+
+        try {
+            $webhook = $this->webhooks->registerInvoiceCreatedWebhook($connection);
+        } catch (Throwable) {
+            $webhook = [];
+        }
+
+        return new PmsCallbackResult(
+            connection: $connection,
+            successMessage: 'Lawcus connected successfully.',
+            redirectParameters: [
+                'webhook_id' => $webhook['id'] ?? null,
+            ],
+        );
+    }
+
     public function webhookMode(): string
     {
         return 'automatic';

@@ -6,6 +6,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Inbound\Models\Client;
+use Modules\Inbound\Services\Connectors\LawcusConnector;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Modules\Inbound\Services\PmsOAuthStateService;
 use Throwable;
@@ -25,7 +26,17 @@ class PmsAuthController extends Controller
 
         abort_unless($client, 404, 'Unknown PMS client identifier.');
 
-        return redirect()->away($registry->for($provider)->authorizationUrl($client->pms_client_id));
+        try {
+            $authorizationUrl = $registry->for($provider)->authorizationUrl($client->pms_client_id);
+        } catch (\RuntimeException $e) {
+            // e.g. Zoho CRM, whose connect step is not built yet.
+            return redirect()->route("inbound.{$provider}.page", [
+                'pms_client_id' => $client->pms_client_id,
+                'error'         => $e->getMessage(),
+            ]);
+        }
+
+        return redirect()->away($authorizationUrl);
     }
 
     public function callback(
@@ -69,6 +80,34 @@ class PmsAuthController extends Controller
             return redirect()->route("inbound.{$provider}.page", [
                 'error' => $exception->getMessage(),
                 'pms_client_id' => $pmsClientId,
+            ]);
+        }
+    }
+
+    /**
+     * Lawcus has no usable OAuth app for us — the firm's own owner/admin pastes a
+     * personal access token generated from their Lawcus account instead of going
+     * through an OAuth redirect. Kept separate from redirect()/callback() above
+     * since those are generic OAuth plumbing shared with Clio/Zoho/Wave.
+     */
+    public function connectLawcusToken(Request $request, LawcusConnector $connector): RedirectResponse
+    {
+        $validated = $request->validate([
+            'pms_client_id' => ['required', 'string'],
+            'access_token'  => ['required', 'string'],
+        ]);
+
+        try {
+            $result = $connector->connectWithToken($validated['access_token'], $validated['pms_client_id']);
+
+            return redirect()->route('inbound.lawcus.page', [
+                'success'       => $result->successMessage,
+                'pms_client_id' => $result->connection->pms_client_id,
+            ]);
+        } catch (Throwable $exception) {
+            return redirect()->route('inbound.lawcus.page', [
+                'error'         => $exception->getMessage(),
+                'pms_client_id' => $validated['pms_client_id'],
             ]);
         }
     }

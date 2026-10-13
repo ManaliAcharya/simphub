@@ -24,7 +24,7 @@ Route::middleware('web')->group(function (): void {
 
     // ── Public / admin routes (no merchant login required) ────────────────
     Route::get('/setup/{provider}/{token}', [PmsIntegrationController::class, 'showByToken'])
-        ->whereIn('provider', ['clio', 'zoho', 'lawcus', 'wave', 'quickbooks', 'mindbody'])
+        ->whereIn('provider', ['clio', 'zoho', 'zohocrm', 'lawcus', 'wave', 'quickbooks', 'mindbody'])
         ->middleware(['merchant.auth', 'no-cache'])
         ->name('inbound.setup.share');
 
@@ -54,6 +54,8 @@ Route::middleware('web')->group(function (): void {
             Route::post('/{pms_client_id}/gateway-credentials', [ClientConfigController::class, 'updateGatewayCredentials'])->name('update-gateway-credentials');
             Route::post('/{pms_client_id}/gateways/pause', [ClientConfigController::class, 'toggleGatewayPause'])->name('toggle-gateway-pause');
             Route::post('/{pms_client_id}/webhook-url', [ClientConfigController::class, 'updateWebhookUrl'])->name('update-webhook-url');
+            Route::post('/{pms_client_id}/subscription-api-key', [ClientConfigController::class, 'generateSubscriptionApiKey'])->name('subscription-api-key');
+            Route::post('/{pms_client_id}/subscription-billing-day', [ClientConfigController::class, 'updateSubscriptionBillingDay'])->name('subscription-billing-day');
             Route::post('/{pms_client_id}/fees', [ClientConfigController::class, 'updateFees'])->name('update-fees');
             Route::post('/{pms_client_id}/qb-settings', [ClientConfigController::class, 'updateQbSettings'])->name('update-qb-settings');
             Route::post('/{pms_client_id}/reminder-settings', [ClientConfigController::class, 'updateReminderSettings'])->name('update-reminder-settings');
@@ -66,6 +68,7 @@ Route::middleware('web')->group(function (): void {
             Route::post('/{pms_client_id}/email-config', [ClientConfigController::class, 'updateEmailConfig'])->name('update-email-config');
             Route::get('/terminal-created', [TerminalClientController::class, 'created'])->name('terminal-created');
             Route::get('/api-docs', [CustomPmsController::class, 'apiDocs'])->name('api-docs');
+            Route::get('/{pms_client_id}/subscription-api-docs', [CustomPmsController::class, 'subscriptionApiDocs'])->name('subscription-api-docs');
             Route::get('/{pms_client_id}/{action}', [ClientConfigController::class, 'redirectAction'])
                 ->where('action', 'email-config|fees|gateways|gateway-credentials|webhook-url|notification-settings|qb-settings|mid-routes|logo')
                 ->name('redirect-action');
@@ -109,6 +112,9 @@ Route::middleware('web')->group(function (): void {
         Route::post('/inbound/lawcus/default-bank-account', [PmsIntegrationController::class, 'saveLawcusDefaultBankAccount'])
             ->name('inbound.lawcus.default-bank-account');
 
+        Route::post('/inbound/lawcus/connect-token', [PmsAuthController::class, 'connectLawcusToken'])
+            ->name('inbound.lawcus.connect-token');
+
         Route::post('/inbound/wave/default-account', [PmsIntegrationController::class, 'saveWaveDefaultAccount'])
             ->name('inbound.wave.default-account');
 
@@ -120,7 +126,7 @@ Route::middleware('web')->group(function (): void {
     });
 
     // OAuth callbacks — initiated by external provider, no session cookie present
-    foreach (['clio', 'zoho', 'lawcus', 'wave'] as $provider) {
+    foreach (['clio', 'zoho', 'zohocrm', 'lawcus', 'wave'] as $provider) {
 
         Route::prefix("inbound/{$provider}")
             ->name("inbound.{$provider}.")

@@ -7,6 +7,13 @@
         ['id' => 'email', 'label' => 'Email Settings'],
         ['id' => 'invoices', 'label' => 'Invoice List'],
     ];
+
+    // Zoho CRM calls our subscription API rather than sending webhooks: no Webhooks tab,
+    // and a Subscriptions tab right after Connection.
+    if ($provider === 'zohocrm') {
+        $pmsTabs = array_values(array_filter($pmsTabs, fn ($tab) => $tab['id'] !== 'webhooks'));
+        array_splice($pmsTabs, 1, 0, [['id' => 'subscriptions', 'label' => 'Subscriptions']]);
+    }
 @endphp
 
 <style>
@@ -236,7 +243,7 @@
                             </div>
                             <div style="display:flex;gap:8px;flex-wrap:wrap;">
 
-                                @if ($connectUrl)
+                                @if ($connectUrl && $provider !== 'lawcus')
                                     {{-- <a href="{{ $connectUrl }}" class="reconnect-btn"
                                         style="font-size:12px;padding:7px 16px;">Reconnect</a> --}}
 
@@ -327,6 +334,31 @@
                                 @endforeach
                             </div>
                         @endif
+
+                        @if ($provider === 'lawcus' && ($connection->consecutive_failures ?? 0) > 0)
+                            <hr class="cc-card-divider">
+                            <div class="cc-notice error" style="margin-bottom:12px;">
+                                This connection is broken — the last {{ $connection->consecutive_failures }}
+                                attempt(s) to reach Lawcus failed authentication
+                                ({{ $connection->last_error }}). Invoices for this client are not syncing.
+                                Have the firm generate a fresh access token and paste it below.
+                            </div>
+                        @endif
+
+                        @if ($provider === 'lawcus' && $client)
+                            <form method="POST"
+                                action="{{ route('inbound.lawcus.connect-token') }}"
+                                style="margin-top:10px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <div style="flex:1;min-width:260px;">
+                                    <input type="text" name="access_token" required
+                                        placeholder="Paste a new Lawcus access token to replace the current one"
+                                        style="width:100%;padding:8px 12px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;">
+                                </div>
+                                <button type="submit" class="button secondary" style="font-size:12px;padding:7px 16px;flex-shrink:0;">Replace token</button>
+                            </form>
+                        @endif
                     </div>
                     @if (
                         $provider === 'quickbooks' &&
@@ -348,8 +380,13 @@
                                 <div>
                                     <div class="cc-card-title" style="color:#92400e;">{{ $providerLabel }} not
                                         connected</div>
+                                    @if ($provider === 'zohocrm')
+                                    <div style="font-size:13px;color:#78350f;margin-top:2px;">Connecting Zoho CRM is
+                                        not available yet. Subscriptions already work through the API key below.</div>
+                                    @else
                                     <div style="font-size:13px;color:#78350f;margin-top:2px;">Complete the connection to
                                         start processing invoices.</div>
+                                    @endif
                                     @if ($provider === 'quickbooks')
                                         @php $connectEnv = $configured_environment ?? 'sandbox'; @endphp
                                         <div
@@ -367,10 +404,33 @@
                                     @endif
                                 </div>
                             </div>
-                            @if ($connectUrl)
+                            @if ($connectUrl && ! in_array($provider, ['lawcus', 'zohocrm'], true))
                                 <a href="{{ $connectUrl }}" class="button primary">Connect {{ $providerLabel }}</a>
                             @endif
                         </div>
+
+                        {{-- Lawcus has no usable OAuth app for us (no client_id/client_secret) — a firm's
+                             own owner/admin generates a personal access token from their Lawcus account
+                             instead, and pastes it here. --}}
+                        @if ($provider === 'lawcus' && $client)
+                            <form method="POST"
+                                action="{{ route('inbound.lawcus.connect-token') }}"
+                                style="margin-top:14px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <div style="flex:1;min-width:260px;">
+                                    <input type="text" name="access_token" required
+                                        placeholder="Paste the Lawcus access token here"
+                                        style="width:100%;padding:8px 12px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;">
+                                    <div style="font-size:12px;color:#78350f;margin-top:4px;">
+                                        Generate this from the firm owner's or admin's own Lawcus account — the
+                                        token is tied to whoever created it, so it should be theirs, not a
+                                        general staff account.
+                                    </div>
+                                </div>
+                                <button type="submit" class="button primary" style="flex-shrink:0;">Save token</button>
+                            </form>
+                        @endif
                     </div>
                 @endif
 
@@ -413,6 +473,11 @@
                                 connected user has access.</div>
                         @endif
                     </div>
+                @endif
+
+                {{-- Subscription API credentials (Zoho CRM) --}}
+                @if ($provider === 'zohocrm' && $client)
+                    @include('inbound::clients.partials.subscription-credentials')
                 @endif
 
                 {{-- Default Account (Clio) --}}
@@ -979,6 +1044,13 @@
             </div>{{-- end cc-panel-connection --}}
 
             {{-- ── Gateways tab ── --}}
+            @if ($provider === 'zohocrm')
+                {{-- ── Subscriptions tab (Zoho CRM) ── --}}
+                <div id="cc-panel-subscriptions" class="cc-tab-panel">
+                    @include('inbound::clients.partials.subscriptions-tab')
+                </div>
+            @endif
+
             <div id="cc-panel-gateways" class="cc-tab-panel">
                 <x-inbound::client-settings-card :client="$client" :available-gateways="$availableGateways" :show-left-col="false"
                     :show-fees="false" :show-logo="false" :compact="true" />

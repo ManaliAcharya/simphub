@@ -26,6 +26,10 @@ if (! function_exists('clientConfigUrl')) {
                 'pms_client_id' => $client->pms_client_id,
             ]),
 
+            'zohocrm' => route('inbound.zohocrm.page', [
+                'pms_client_id' => $client->pms_client_id,
+            ]),
+
             'clio' => route('inbound.clio.page', [
                 'pms_client_id' => $client->pms_client_id,
             ]),

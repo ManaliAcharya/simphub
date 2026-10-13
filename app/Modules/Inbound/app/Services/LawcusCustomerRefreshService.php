@@ -3,7 +3,7 @@
 namespace Modules\Inbound\Services;
 
 use Modules\Billing\Models\Invoice;
-use Modules\Inbound\Models\PmsConnection;
+use Modules\Inbound\Models\LawcusConnection;
 
 class LawcusCustomerRefreshService
 {
@@ -24,8 +24,14 @@ class LawcusCustomerRefreshService
             return null;
         }
 
-        $externalClientId = trim((string) ($invoice->external_client_id ?? ''));
-        if ($externalClientId === '') {
+        // The REST contact endpoint takes the contact UUID, not the numeric client id
+        // stored in external_client_id — use the UUID captured at ingestion.
+        $contactUuid = trim((string) (
+            data_get($invoice->raw_payload, 'customer.uuid')
+            ?? data_get($invoice->raw_payload, 'invoice.data.client_uuid')
+            ?? ''
+        ));
+        if ($contactUuid === '') {
             return null;
         }
 
@@ -34,7 +40,7 @@ class LawcusCustomerRefreshService
             return null;
         }
 
-        $connection = PmsConnection::query()
+        $connection = LawcusConnection::query()
             ->where('provider', 'lawcus')
             ->where('pms_client_id', $pmsClientId)
             ->first();
@@ -44,7 +50,7 @@ class LawcusCustomerRefreshService
         }
 
         try {
-            $customerPayload = $this->client->fetchContact($connection, $externalClientId);
+            $customerPayload = $this->client->fetchContact($connection, $contactUuid);
         } catch (\Throwable) {
             return null;
         }
