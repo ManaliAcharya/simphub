@@ -38,4 +38,5 @@ Route::prefix('v1/subscriptions')
     ->group(function () {
         Route::post('/subscribe',   [SubscriptionController::class, 'subscribe'])->name('subscribe');
         Route::post('/unsubscribe', [SubscriptionController::class, 'unsubscribe'])->name('unsubscribe');
+        Route::post('/update-amount', [SubscriptionController::class, 'updateAmount'])->name('update-amount');
     });

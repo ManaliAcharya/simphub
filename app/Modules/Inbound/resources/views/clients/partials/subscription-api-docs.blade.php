@@ -32,10 +32,11 @@
             <li><span class="step-num">2</span> We create the subscription and immediately email the customer a payment link for the full amount. The same link is returned as <code>payment_link</code>.</li>
             <li><span class="step-num">3</span> On the 1st of every following month, we email the customer a new payment link for that month.</li>
             <li><span class="step-num">4</span> Status is <code>pending_payment</code> until the first payment, then <code>active</code>.</li>
-            <li><span class="step-num">5</span> Your CRM calls <code>POST /unsubscribe</code> to cancel. Links already sent stay payable until <code>effective_date</code> (end of the current month); no new links are sent.</li>
+            <li><span class="step-num">5</span> To change the monthly amount, your CRM calls <code>POST /update-amount</code>. The new amount applies from the next payment link; links already sent keep their amount.</li>
+            <li><span class="step-num">6</span> Your CRM calls <code>POST /unsubscribe</code> to cancel. Links already sent stay payable until <code>effective_date</code> (end of the current month); no new links are sent.</li>
         </ul>
         <div class="info-box">
-            Only <code>monthly</code> billing is supported. A new link is sent each month even if an earlier month is still unpaid.
+            Billing is always monthly; there is no billing cycle to send. A new link is sent each month even if an earlier month is still unpaid.
             A customer can have one open subscription at a time; after cancelling, they can subscribe again.
         </div>
     </div>
@@ -60,7 +61,6 @@
                     <tr><td><code>customer_name</code></td><td>string</td><td>Shown on the payment page and email. Max 255.</td><td><span class="badge-opt">Optional</span></td></tr>
                     <tr><td><code>customer_unique_id</code></td><td>string</td><td>Your CRM's ID for the customer. Strongly recommended: it identifies the customer for duplicate checks and unsubscribe. Max 255.</td><td><span class="badge-opt">Optional</span></td></tr>
                     <tr><td><code>subscription_amount</code></td><td>decimal</td><td>Monthly amount in USD, up to 2 decimals. <code>0.50</code> – <code>999999.99</code>.</td><td><span class="badge-req">Required</span></td></tr>
-                    <tr><td><code>billing_cycle</code></td><td>string</td><td><code>monthly</code> (default). Other values are rejected.</td><td><span class="badge-opt">Optional</span></td></tr>
                 </table>
 
                 <p class="code-label label-req">Example Request</p>
@@ -74,8 +74,7 @@ Content-Type: application/json
   "customer_email": "jane.doe@example.com",
   "customer_name": "Jane Doe",
   "customer_unique_id": "CUST-10045",
-  "subscription_amount": 199.00,
-  "billing_cycle": "monthly"
+  "subscription_amount": 199.00
 }</pre>
                 </div>
 
@@ -108,7 +107,80 @@ Content-Type: application/json
                     <tr><th>Status</th><th>When</th></tr>
                     <tr><td><span class="status-4xx">401</span></td><td>Missing or invalid API key.</td></tr>
                     <tr><td><span class="status-4xx">409</span></td><td>Customer already has an open subscription. Matched on <code>customer_unique_id</code> if sent, otherwise on <code>customer_email</code>.</td></tr>
-                    <tr><td><span class="status-4xx">422</span></td><td>Missing or invalid email, amount, or billing cycle.</td></tr>
+                    <tr><td><span class="status-4xx">422</span></td><td>Missing or invalid email or amount.</td></tr>
+                    <tr><td><span class="status-5xx">500</span></td><td>Unexpected error. Please try again later.</td></tr>
+                </table>
+            </div>
+        </div>
+
+        {{-- POST /update-amount --}}
+        <div class="endpoint-card open" id="ep-update-amount">
+            <div class="ep-header" onclick="toggleEp('ep-update-amount')">
+                <span class="method-badge method-post">POST</span>
+                <span class="ep-url">/api/v1/subscriptions/update-amount</span>
+                <span class="ep-desc">Change a customer's monthly amount from the next cycle</span>
+                <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+            </div>
+            <div class="ep-body">
+                <p class="ep-desc-text">
+                    Sets a new monthly amount. The next payment link (sent on <code>effective_from</code>, the 1st of next month) uses it.
+                    Links already sent, including this month's, keep the amount they were sent with. The customer is not emailed about the change.
+                    Identify the subscription the same way as unsubscribe: <code>simphub_reference_id</code>, then <code>customer_unique_id</code>, then <code>customer_email</code> + <code>customer_name</code>.
+                </p>
+
+                <p class="section-label">Request Body</p>
+                <table class="doc-table">
+                    <tr><th>Field</th><th>Type</th><th>Description</th><th>Required</th></tr>
+                    <tr><td><code>simphub_reference_id</code></td><td>string</td><td>Returned by subscribe, e.g. <code>SH-SUB-000123</code>.</td><td><span class="badge-opt">Optional</span></td></tr>
+                    <tr><td><code>customer_unique_id</code></td><td>string</td><td>The ID you sent to subscribe.</td><td><span class="badge-opt">Optional</span></td></tr>
+                    <tr><td><code>customer_email</code></td><td>email</td><td>Required if neither ID above is sent.</td><td><span class="badge-opt">Conditional</span></td></tr>
+                    <tr><td><code>customer_name</code></td><td>string</td><td>Required if neither ID above is sent.</td><td><span class="badge-opt">Conditional</span></td></tr>
+                    <tr><td><code>subscription_amount</code></td><td>decimal</td><td>New monthly amount in USD, up to 2 decimals. <code>0.50</code> – <code>999999.99</code>.</td><td><span class="badge-req">Required</span></td></tr>
+                </table>
+
+                <p class="code-label label-req">Example Request</p>
+                <div class="code-block">
+                    <button class="copy-code" onclick="copyCode(this)">Copy</button>
+                    <pre>POST {{ $baseUrl }}/api/v1/subscriptions/update-amount
+Authorization: Bearer &lt;api_key&gt;
+Content-Type: application/json
+
+{
+  "customer_unique_id": "CUST-10045",
+  "subscription_amount": 30.00
+}</pre>
+                </div>
+
+                <p class="code-label label-ok">200 — OK</p>
+                <div class="code-block">
+                    <button class="copy-code" onclick="copyCode(this)">Copy</button>
+                    <pre>{
+  "success": true,
+  "message": "Subscription amount updated successfully.",
+  "data": {
+    "simphub_reference_id": "SH-SUB-000123",
+    "customer_email": "jane.doe@example.com",
+    "customer_name": "Jane Doe",
+    "customer_unique_id": "CUST-10045",
+    "previous_amount": 20,
+    "subscription_amount": 30,
+    "billing_cycle": "monthly",
+    "status": "active",
+    "effective_from": "2026-11-01"
+  }
+}</pre>
+                </div>
+                <p style="font-size:12px;color:#6b7280;margin:8px 0 0;line-height:1.6;">
+                    Sending the same amount again returns 200 and changes nothing. Calling it twice before the next cycle keeps the last amount.
+                </p>
+
+                <p class="section-label" style="margin-top:16px;">Errors</p>
+                <table class="doc-table">
+                    <tr><th>Status</th><th>When</th></tr>
+                    <tr><td><span class="status-4xx">401</span></td><td>Missing or invalid API key.</td></tr>
+                    <tr><td><span class="status-4xx">404</span></td><td>No subscription for this customer.</td></tr>
+                    <tr><td><span class="status-4xx">409</span></td><td>Subscription is cancelled. Subscribe the customer again instead.</td></tr>
+                    <tr><td><span class="status-4xx">422</span></td><td>Missing or invalid amount or customer details, or more than one open subscription matches email + name.</td></tr>
                     <tr><td><span class="status-5xx">500</span></td><td>Unexpected error. Please try again later.</td></tr>
                 </table>
             </div>

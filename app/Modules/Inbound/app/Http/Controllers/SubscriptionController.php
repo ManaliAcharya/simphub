@@ -14,6 +14,17 @@ use Modules\Inbound\Services\SubscriptionService;
 
 class SubscriptionController extends Controller
 {
+    // Billing is always monthly, so subscribe takes no billing_cycle (ignored if sent).
+    private const AMOUNT_RULES = ['required', 'numeric', 'decimal:0,2', 'min:0.50', 'max:999999.99'];
+
+    /** How unsubscribe / update-amount identify a subscription. */
+    private const LOOKUP_RULES = [
+        'simphub_reference_id' => ['nullable', 'string', 'max:32'],
+        'customer_unique_id'   => ['nullable', 'string', 'max:255'],
+        'customer_email'       => ['required_without_all:simphub_reference_id,customer_unique_id', 'nullable', 'email', 'max:255'],
+        'customer_name'        => ['required_without_all:simphub_reference_id,customer_unique_id', 'nullable', 'string', 'max:255'],
+    ];
+
     public function __construct(
         private readonly SubscriptionService $subscriptions,
     ) {}
@@ -24,9 +35,7 @@ class SubscriptionController extends Controller
             'customer_email'      => ['required', 'email', 'max:255'],
             'customer_name'       => ['nullable', 'string', 'max:255'],
             'customer_unique_id'  => ['nullable', 'string', 'max:255'],
-            'subscription_amount' => ['required', 'numeric', 'decimal:0,2', 'min:0.50', 'max:999999.99'],
-            // Only monthly billing is supported for now.
-            'billing_cycle'       => ['nullable', 'string', 'in:monthly'],
+            'subscription_amount' => self::AMOUNT_RULES,
         ]);
 
         if ($validator->fails()) {
@@ -53,12 +62,7 @@ class SubscriptionController extends Controller
 
     public function unsubscribe(Request $request): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'simphub_reference_id' => ['nullable', 'string', 'max:32'],
-            'customer_unique_id'   => ['nullable', 'string', 'max:255'],
-            'customer_email'       => ['required_without_all:simphub_reference_id,customer_unique_id', 'nullable', 'email', 'max:255'],
-            'customer_name'        => ['required_without_all:simphub_reference_id,customer_unique_id', 'nullable', 'string', 'max:255'],
-        ]);
+        $validator = Validator::make($request->all(), self::LOOKUP_RULES);
 
         if ($validator->fails()) {
             return $this->validationError($validator->errors()->toArray());
@@ -75,6 +79,37 @@ class SubscriptionController extends Controller
                     'status'         => $subscription->status,
                     'cancelled_at'   => $subscription->cancelled_at?->toIso8601ZuluString(),
                     'effective_date' => $subscription->effective_date?->toDateString(),
+                ],
+            ]);
+        });
+    }
+
+    public function updateAmount(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            ...self::LOOKUP_RULES,
+            'subscription_amount' => self::AMOUNT_RULES,
+        ]);
+
+        if ($validator->fails()) {
+            return $this->validationError($validator->errors()->toArray());
+        }
+
+        return $this->handle(function () use ($request, $validator) {
+            $result       = $this->subscriptions->updateAmount($this->client($request), $validator->validated());
+            $subscription = $result['subscription'];
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Subscription amount updated successfully.',
+                'data'    => [
+                    ...$this->customerData($subscription),
+                    'previous_amount'     => round($result['previous_amount_cents'] / 100, 2),
+                    'subscription_amount' => $subscription->amountDecimal(),
+                    'billing_cycle'       => $subscription->billing_cycle,
+                    'status'              => $subscription->status,
+                    // The next payment link (sent on this date) uses the new amount.
+                    'effective_from'      => $subscription->next_billing_on?->toDateString(),
                 ],
             ]);
         });

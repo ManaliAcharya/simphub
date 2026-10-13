@@ -88,7 +88,7 @@ class SubscriptionService
 
     public function unsubscribe(Client $client, array $data): Subscription
     {
-        $subscription = $this->resolveForCancel($client, $data);
+        $subscription = $this->resolveOpen($client, $data, 'Subscription is already cancelled.');
 
         $subscription->forceFill([
             'status'          => Subscription::STATUS_CANCELLED,
@@ -104,6 +104,36 @@ class SubscriptionService
         ]);
 
         return $subscription->fresh();
+    }
+
+    /**
+     * Changes the monthly amount from the next billing cycle on. Links already sent
+     * (including this month's) keep the amount they were sent with.
+     *
+     * @return array{subscription: Subscription, previous_amount_cents: int}
+     */
+    public function updateAmount(Client $client, array $data): array
+    {
+        $subscription  = $this->resolveOpen($client, $data, 'Subscription is cancelled. Subscribe the customer again instead.');
+        $previousCents = $subscription->amount_cents;
+        $newCents      = (int) round(((float) $data['subscription_amount']) * 100);
+
+        if ($newCents !== $previousCents) {
+            $subscription->forceFill(['amount_cents' => $newCents])->save();
+
+            AuditLogger::log('SUBSCRIPTION_AMOUNT_UPDATED', 'subscription', (string) $subscription->id, [
+                'pms_client_id'         => $client->pms_client_id,
+                'reference_id'          => $subscription->reference_id,
+                'previous_amount_cents' => $previousCents,
+                'amount_cents'          => $newCents,
+                'effective_from'        => $subscription->next_billing_on?->toDateString(),
+            ]);
+        }
+
+        return [
+            'subscription'          => $subscription->fresh(),
+            'previous_amount_cents' => $previousCents,
+        ];
     }
 
     /**
@@ -246,7 +276,7 @@ class SubscriptionService
     /**
      * Lookup order: simphub_reference_id, then customer_unique_id, then email + name.
      */
-    private function resolveForCancel(Client $client, array $data): Subscription
+    private function resolveOpen(Client $client, array $data, string $cancelledMessage): Subscription
     {
         $base = fn () => Subscription::query()->where('pms_client_id', $client->pms_client_id);
 
@@ -272,7 +302,7 @@ class SubscriptionService
         $open = $candidates->filter(fn (Subscription $s) => ! $s->isCancelled())->values();
 
         if ($open->isEmpty()) {
-            throw new SubscriptionException('Subscription is already cancelled.', 409);
+            throw new SubscriptionException($cancelledMessage, 409);
         }
 
         if ($open->count() > 1) {
