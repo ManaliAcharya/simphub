@@ -1,6 +1,10 @@
 {{-- Subscription API credentials (Zoho CRM clients). Expects $client and $baseUrl. --}}
 <div class="cc-card">
-    <div class="cc-card-title">API Credentials</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div class="cc-card-title">API Credentials</div>
+        <a href="{{ route('inbound.clients.subscription-api-docs', $client->pms_client_id) }}" target="_blank" rel="noopener"
+           class="cc-copy-btn" style="text-decoration:none;display:inline-block;">API Docs &rarr;</a>
+    </div>
     <div class="cc-card-desc">Share these with the client's CRM developer. The API key authenticates the subscribe and unsubscribe endpoints.</div>
 
     <div style="display:grid;gap:16px;">

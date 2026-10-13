@@ -1,6 +1,6 @@
 {{-- Subscription API docs (Zoho CRM clients). Expects $baseUrl. Styles come from api-docs.blade.php. --}}
 <section class="panel" style="padding:0;overflow:hidden;">
-<div class="doc-nav" style="top:52px;">
+<div class="doc-nav">
     <a href="#auth" class="active" onclick="setActive(this)">Authentication</a>
     <a href="#flow" onclick="setActive(this)">How it works</a>
     <a href="#endpoints" onclick="setActive(this)">Endpoints</a>

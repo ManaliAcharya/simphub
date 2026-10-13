@@ -35,4 +35,18 @@ class CustomPmsController extends Controller
             'availableGateways' => $availableGateways,
         ]);
     }
+
+    /** Standalone subscription API docs for Zoho CRM clients (opened from their config page). */
+    public function subscriptionApiDocs(string $pmsClientId): \Illuminate\View\View
+    {
+        $client = Client::query()
+            ->where('pms_client_id', $pmsClientId)
+            ->where('client_pms', 'ZOHOCRM')
+            ->firstOrFail();
+
+        return view('inbound::clients.subscription-api-docs', [
+            'client'  => $client,
+            'baseUrl' => rtrim(config('app.url'), '/'),
+        ]);
+    }
 }
