@@ -11,6 +11,7 @@ use Modules\Inbound\Services\Connectors\LawcusConnector;
 use Modules\Inbound\Services\Connectors\QuickBooksConnector;
 use Modules\Inbound\Services\Connectors\WaveConnector;
 use Modules\Inbound\Services\Connectors\ZohoConnector;
+use Modules\Inbound\Services\Connectors\ZohoCrmConnector;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
@@ -54,6 +55,7 @@ class InboundServiceProvider extends ModuleServiceProvider
                 $app->make(QuickBooksConnector::class),
                 $app->make(LawcusConnector::class),
                 $app->make(WaveConnector::class),
+                $app->make(ZohoCrmConnector::class),
             ]);
         });
     }

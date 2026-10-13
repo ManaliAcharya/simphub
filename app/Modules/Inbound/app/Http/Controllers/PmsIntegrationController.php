@@ -57,13 +57,6 @@ class PmsIntegrationController extends Controller
         // even after OAuth redirect brings them back to the admin-style URL.
         session(['client_session_id' => $client->pms_client_id]);
 
-        // Zoho CRM has no PMS connection; its config page holds subscriptions, API key and docs.
-        if ($provider === 'zohocrm') {
-            return redirect()->route('inbound.clients.api-docs', [
-                'pms_client_id' => $client->pms_client_id,
-            ]);
-        }
-
         // Mindbody has its own dedicated controller/view
         if ($provider === 'mindbody') {
             return redirect()->route('inbound.mindbody.page', [

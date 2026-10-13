@@ -50,3 +50,13 @@
         </div>
     </div>
 </div>
+
+<script>
+    // Shared with pages that already define it (e.g. the Custom CRM config page).
+    window.copyText = window.copyText || function (id, btn) {
+        navigator.clipboard.writeText(document.getElementById(id).textContent.trim()).then(function () {
+            btn.textContent = 'Copied!';
+            setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+        });
+    };
+</script>

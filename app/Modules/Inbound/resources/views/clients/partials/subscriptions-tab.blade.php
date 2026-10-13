@@ -45,7 +45,7 @@
     <div class="cc-card-title">Subscriptions</div>
     <div class="cc-card-desc">Every customer subscribed through your CRM, with each month's payment status. Open a row's history to see paid and unpaid months.</div>
 
-    <form method="GET" action="{{ route('inbound.clients.api-docs') }}" class="sub-filters">
+    <form method="GET" action="{{ route('inbound.zohocrm.page') }}" class="sub-filters">
         <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
         <input type="hidden" name="tab" value="subscriptions">
         <div>
@@ -63,7 +63,7 @@
         </div>
         <button type="submit" class="button primary" style="font-size:13px;">Filter</button>
         @if (request('q') || request('status'))
-            <a href="{{ route('inbound.clients.api-docs', ['pms_client_id' => $client->pms_client_id, 'tab' => 'subscriptions']) }}" style="font-size:13px;align-self:center;">Clear</a>
+            <a href="{{ route('inbound.zohocrm.page', ['pms_client_id' => $client->pms_client_id, 'tab' => 'subscriptions']) }}" style="font-size:13px;align-self:center;">Clear</a>
         @endif
     </form>
 

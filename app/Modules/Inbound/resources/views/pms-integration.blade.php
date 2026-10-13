@@ -7,6 +7,13 @@
         ['id' => 'email', 'label' => 'Email Settings'],
         ['id' => 'invoices', 'label' => 'Invoice List'],
     ];
+
+    // Zoho CRM calls our subscription API rather than sending webhooks: no Webhooks tab,
+    // and a Subscriptions tab right after Connection.
+    if ($provider === 'zohocrm') {
+        $pmsTabs = array_values(array_filter($pmsTabs, fn ($tab) => $tab['id'] !== 'webhooks'));
+        array_splice($pmsTabs, 1, 0, [['id' => 'subscriptions', 'label' => 'Subscriptions']]);
+    }
 @endphp
 
 <style>
@@ -373,8 +380,13 @@
                                 <div>
                                     <div class="cc-card-title" style="color:#92400e;">{{ $providerLabel }} not
                                         connected</div>
+                                    @if ($provider === 'zohocrm')
+                                    <div style="font-size:13px;color:#78350f;margin-top:2px;">Connecting Zoho CRM is
+                                        not available yet. Subscriptions already work through the API key below.</div>
+                                    @else
                                     <div style="font-size:13px;color:#78350f;margin-top:2px;">Complete the connection to
                                         start processing invoices.</div>
+                                    @endif
                                     @if ($provider === 'quickbooks')
                                         @php $connectEnv = $configured_environment ?? 'sandbox'; @endphp
                                         <div
@@ -392,7 +404,7 @@
                                     @endif
                                 </div>
                             </div>
-                            @if ($connectUrl && $provider !== 'lawcus')
+                            @if ($connectUrl && ! in_array($provider, ['lawcus', 'zohocrm'], true))
                                 <a href="{{ $connectUrl }}" class="button primary">Connect {{ $providerLabel }}</a>
                             @endif
                         </div>
@@ -461,6 +473,11 @@
                                 connected user has access.</div>
                         @endif
                     </div>
+                @endif
+
+                {{-- Subscription API credentials (Zoho CRM) --}}
+                @if ($provider === 'zohocrm' && $client)
+                    @include('inbound::clients.partials.subscription-credentials')
                 @endif
 
                 {{-- Default Account (Clio) --}}
@@ -1027,6 +1044,13 @@
             </div>{{-- end cc-panel-connection --}}
 
             {{-- ── Gateways tab ── --}}
+            @if ($provider === 'zohocrm')
+                {{-- ── Subscriptions tab (Zoho CRM) ── --}}
+                <div id="cc-panel-subscriptions" class="cc-tab-panel">
+                    @include('inbound::clients.partials.subscriptions-tab')
+                </div>
+            @endif
+
             <div id="cc-panel-gateways" class="cc-tab-panel">
                 <x-inbound::client-settings-card :client="$client" :available-gateways="$availableGateways" :show-left-col="false"
                     :show-fees="false" :show-logo="false" :compact="true" />

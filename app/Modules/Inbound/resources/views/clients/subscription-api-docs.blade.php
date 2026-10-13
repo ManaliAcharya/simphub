@@ -15,7 +15,7 @@
 <header class="page-header">
     <div>
         <div class="breadcrumb">
-            <a href="{{ route('inbound.clients.api-docs', ['pms_client_id' => $client->pms_client_id]) }}">{{ $client->client_name }}</a>
+            <a href="{{ route('inbound.zohocrm.page', ['pms_client_id' => $client->pms_client_id]) }}">{{ $client->client_name }}</a>
             &rsaquo; Subscription API
         </div>
         <h1>Subscription API Docs</h1>

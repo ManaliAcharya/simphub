@@ -125,7 +125,7 @@ Route::middleware('web')->group(function (): void {
     });
 
     // OAuth callbacks — initiated by external provider, no session cookie present
-    foreach (['clio', 'zoho', 'lawcus', 'wave'] as $provider) {
+    foreach (['clio', 'zoho', 'zohocrm', 'lawcus', 'wave'] as $provider) {
 
         Route::prefix("inbound/{$provider}")
             ->name("inbound.{$provider}.")

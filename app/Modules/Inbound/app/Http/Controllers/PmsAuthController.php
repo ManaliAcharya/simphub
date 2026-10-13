@@ -26,7 +26,17 @@ class PmsAuthController extends Controller
 
         abort_unless($client, 404, 'Unknown PMS client identifier.');
 
-        return redirect()->away($registry->for($provider)->authorizationUrl($client->pms_client_id));
+        try {
+            $authorizationUrl = $registry->for($provider)->authorizationUrl($client->pms_client_id);
+        } catch (\RuntimeException $e) {
+            // e.g. Zoho CRM, whose connect step is not built yet.
+            return redirect()->route("inbound.{$provider}.page", [
+                'pms_client_id' => $client->pms_client_id,
+                'error'         => $e->getMessage(),
+            ]);
+        }
+
+        return redirect()->away($authorizationUrl);
     }
 
     public function callback(

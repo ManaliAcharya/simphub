@@ -267,6 +267,7 @@ class ClientConfigController extends Controller
         $routeName = match ($provider) {
             'quickbooks' => 'inbound.quickbooks.page',
             'zoho'       => 'inbound.zoho.page',
+            'zohocrm'    => 'inbound.zohocrm.page',
             'lawcus'     => 'inbound.lawcus.page',
             'wave'       => 'inbound.wave.page',
             'mindbody'   => 'inbound.mindbody.page',
@@ -331,9 +332,9 @@ class ClientConfigController extends Controller
             'rotated'       => $rotated,
         ]);
 
-        return redirect()->route('inbound.clients.api-docs', [
+        return redirect()->route('inbound.zohocrm.page', [
             'pms_client_id' => $pmsClientId,
-            'tab'           => 'credentials',
+            'tab'           => 'connection',
         ])
             ->with('success', $rotated ? 'New API key generated. The previous key no longer works.' : 'API key generated.')
             ->with('subscription_api_key', $plainKey);

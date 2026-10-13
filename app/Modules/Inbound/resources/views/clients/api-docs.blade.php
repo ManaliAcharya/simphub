@@ -1,31 +1,18 @@
 @php
-// Zoho CRM clients get the subscription API instead of the Custom CRM invoice API.
-$isSubscriptionApi = $client->client_pms === 'ZOHOCRM';
 $apiDocsTabs = [
     ['id' => 'credentials', 'label' => 'Credentials'],
     ['id' => 'gateways',    'label' => 'Gateways'],
     ['id' => 'fees',        'label' => 'Fee Configuration'],
+    ['id' => 'apidocs',     'label' => 'API Docs'],
 ];
-if ($isSubscriptionApi) {
-    array_unshift($apiDocsTabs, ['id' => 'subscriptions', 'label' => 'Subscriptions']);
-} else {
-    $apiDocsTabs[] = ['id' => 'apidocs', 'label' => 'API Docs'];
-}
 @endphp
 
 <x-inbound::layouts.master>
 @include('inbound::clients.partials.api-docs-styles')
 <x-inbound::client-config-layout
     :client="$client"
-    :provider-label="$isSubscriptionApi ? 'Zoho CRM' : 'Custom CRM'"
+    provider-label="Custom CRM"
     :tabs="$apiDocsTabs">
-
-    @if($isSubscriptionApi)
-    {{-- ── Subscriptions tab ── --}}
-    <div id="cc-panel-subscriptions" class="cc-tab-panel">
-        @include('inbound::clients.partials.subscriptions-tab')
-    </div>
-    @endif
 
     {{-- ── Credentials tab ── --}}
     <div id="cc-panel-credentials" class="cc-tab-panel">
@@ -36,9 +23,6 @@ if ($isSubscriptionApi) {
         </div>
         @endif
 
-        @if($isSubscriptionApi)
-        @include('inbound::clients.partials.subscription-credentials')
-        @else
         {{-- API Credentials card --}}
         <div class="cc-card">
             <div class="cc-card-title">API Credentials</div>
@@ -107,9 +91,6 @@ if ($isSubscriptionApi) {
             </div>
         </div>
 
-        @endif
-
-        @unless($isSubscriptionApi)
         {{-- Environment card --}}
         <div class="cc-card">
             <div class="cc-card-title">Environment</div>
@@ -119,8 +100,6 @@ if ($isSubscriptionApi) {
                 <span style="padding:7px 18px;background:#f9fafb;color:#9ca3af;">Live</span>
             </div>
         </div>
-
-        @endunless
 
         <x-inbound::notification-settings-form
             :client="$client"
@@ -155,7 +134,6 @@ if ($isSubscriptionApi) {
 
     {{-- ── API Docs tab ── --}}
     <div id="cc-panel-apidocs" class="cc-tab-panel">
-    @unless($isSubscriptionApi)
     <section class="panel" style="padding:0;overflow:hidden;">
     {{-- Internal doc-nav: offset top to sit below the sticky shell topnav --}}
     <div class="doc-nav" style="top:52px;">
@@ -739,7 +717,6 @@ if (abs(time() - (int)$timestamp) > 300) {
 
 </div>
 </section>
-    @endunless
 </div>
 <script>
     function toggleEp(id) {
