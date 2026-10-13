@@ -24,7 +24,7 @@ Route::middleware('web')->group(function (): void {
 
     // ── Public / admin routes (no merchant login required) ────────────────
     Route::get('/setup/{provider}/{token}', [PmsIntegrationController::class, 'showByToken'])
-        ->whereIn('provider', ['clio', 'zoho', 'lawcus', 'wave', 'quickbooks', 'mindbody'])
+        ->whereIn('provider', ['clio', 'zoho', 'zohocrm', 'lawcus', 'wave', 'quickbooks', 'mindbody'])
         ->middleware(['merchant.auth', 'no-cache'])
         ->name('inbound.setup.share');
 

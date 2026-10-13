@@ -333,6 +333,7 @@ class ClientConfigController extends Controller
 
         return redirect()->route('inbound.clients.api-docs', [
             'pms_client_id' => $pmsClientId,
+            'tab'           => 'credentials',
         ])
             ->with('success', $rotated ? 'New API key generated. The previous key no longer works.' : 'API key generated.')
             ->with('subscription_api_key', $plainKey);

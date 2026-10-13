@@ -6,7 +6,9 @@ $apiDocsTabs = [
     ['id' => 'gateways',    'label' => 'Gateways'],
     ['id' => 'fees',        'label' => 'Fee Configuration'],
 ];
-if (! $isSubscriptionApi) {
+if ($isSubscriptionApi) {
+    array_unshift($apiDocsTabs, ['id' => 'subscriptions', 'label' => 'Subscriptions']);
+} else {
     $apiDocsTabs[] = ['id' => 'apidocs', 'label' => 'API Docs'];
 }
 @endphp
@@ -17,6 +19,13 @@ if (! $isSubscriptionApi) {
     :client="$client"
     :provider-label="$isSubscriptionApi ? 'Zoho CRM' : 'Custom CRM'"
     :tabs="$apiDocsTabs">
+
+    @if($isSubscriptionApi)
+    {{-- ── Subscriptions tab ── --}}
+    <div id="cc-panel-subscriptions" class="cc-tab-panel">
+        @include('inbound::clients.partials.subscriptions-tab')
+    </div>
+    @endif
 
     {{-- ── Credentials tab ── --}}
     <div id="cc-panel-credentials" class="cc-tab-panel">
