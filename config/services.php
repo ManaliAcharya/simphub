@@ -66,11 +66,11 @@ return [
         'webhook_callback_url' => env('ZOHO_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/zoho'),
     ],
 
-    // Zoho CRM (subscription clients). Defaults to the Zoho Books OAuth app; its redirect
-    // URI list in the Zoho API Console must also include /inbound/zohocrm/callback.
+    // Zoho CRM (subscription clients). Uses the same Zoho OAuth app as Zoho Books; that
+    // app's redirect URIs in the Zoho API Console must also include /inbound/zohocrm/callback.
     'zohocrm' => [
-        'client_id' => env('ZOHO_CRM_CLIENT_ID', env('ZOHO_CLIENT_ID')),
-        'client_secret' => env('ZOHO_CRM_CLIENT_SECRET', env('ZOHO_CLIENT_SECRET')),
+        'client_id' => env('ZOHO_CLIENT_ID'),
+        'client_secret' => env('ZOHO_CLIENT_SECRET'),
         'redirect_uri' => env('ZOHO_CRM_REDIRECT_URI', rtrim(env('APP_URL', 'http://localhost'), '/').'/inbound/zohocrm/callback'),
         'scope' => env('ZOHO_CRM_SCOPE', 'ZohoCRM.modules.contacts.READ,ZohoCRM.modules.contacts.UPDATE,ZohoCRM.settings.fields.ALL,ZohoCRM.org.READ'),
         'api_version' => env('ZOHO_CRM_API_VERSION', 'v8'),
