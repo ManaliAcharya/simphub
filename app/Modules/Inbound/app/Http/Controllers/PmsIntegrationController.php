@@ -7,6 +7,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Str;
+use Modules\Audit\Services\AuditLogger;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\EmailConfiguration;
 use Modules\Inbound\Models\ClioConnection;
@@ -183,6 +184,11 @@ class PmsIntegrationController extends Controller
             ->first(fn (array $a): bool => (string) ($a['account_id'] ?? '') === (string) $validated['lawcus_default_bank_account_id']);
 
         abort_unless(is_array($selected), 422, 'Selected bank account is invalid. Please choose from the dropdown.');
+        abort_if(
+            strtoupper((string) ($selected['account_type'] ?? '')) === 'TRUST',
+            422,
+            'A trust account cannot be the default account. Choose it under Trust Requests instead.'
+        );
 
         $client->forceFill([
             'lawcus_default_bank_account_id'   => (string) $selected['account_id'],
@@ -192,6 +198,68 @@ class PmsIntegrationController extends Controller
         return redirect()->route('inbound.lawcus.page', [
             'pms_client_id' => $client->pms_client_id,
             'success'       => 'Default Lawcus bank account saved.',
+        ]);
+    }
+
+    /**
+     * Trust Request settings: the Lawcus trust account their payments are recorded to,
+     * and whether their payment links are emailed (off until the firm approves wording).
+     */
+    public function saveLawcusTrustSettings(
+        Request $request,
+        LawcusOAuthService $lawcusOAuth,
+        LawcusApiClient $lawcusApi,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'pms_client_id'                => ['required', 'string'],
+            'lawcus_trust_bank_account_id' => ['nullable', 'string', 'max:100'],
+            'lawcus_send_trust_links'      => ['nullable', 'boolean'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'LAWCUS', 422, 'Trust settings are only supported for Lawcus clients.');
+
+        $trustAccountId   = null;
+        $trustAccountName = null;
+
+        if (! empty($validated['lawcus_trust_bank_account_id'])) {
+            $connection = LawcusConnection::query()
+                ->where('provider', 'lawcus')
+                ->where('pms_client_id', $client->pms_client_id)
+                ->latest('created_at')
+                ->firstOrFail();
+
+            $selected = collect($lawcusApi->fetchBankAccounts($lawcusOAuth->ensureValidAccessToken($connection)))
+                ->first(fn (array $a): bool => (string) ($a['account_id'] ?? '') === (string) $validated['lawcus_trust_bank_account_id']);
+
+            abort_unless(
+                is_array($selected) && strtoupper((string) ($selected['account_type'] ?? '')) === 'TRUST',
+                422,
+                'Choose a Lawcus account of type Trust.'
+            );
+
+            $trustAccountId   = (string) $selected['account_id'];
+            $trustAccountName = (string) ($selected['account_name'] ?? '');
+        }
+
+        $client->forceFill([
+            'lawcus_trust_bank_account_id'   => $trustAccountId,
+            'lawcus_trust_bank_account_name' => $trustAccountName,
+            'lawcus_send_trust_links'        => (bool) ($validated['lawcus_send_trust_links'] ?? false),
+        ])->save();
+
+        AuditLogger::log('LAWCUS_TRUST_SETTINGS_UPDATED', 'client', (string) $client->id, [
+            'pms_client_id'           => $client->pms_client_id,
+            'trust_bank_account_id'   => $trustAccountId,
+            'send_trust_links'        => $client->lawcus_send_trust_links,
+        ]);
+
+        return redirect()->route('inbound.lawcus.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => 'Trust Request settings saved.',
         ]);
     }
 
@@ -542,6 +610,7 @@ class PmsIntegrationController extends Controller
                 ->select([
                     'id',
                     'invoice_number',
+                    'fund_type',
                     'recipient_emails',
                     'currency',
                     'amount_cents',

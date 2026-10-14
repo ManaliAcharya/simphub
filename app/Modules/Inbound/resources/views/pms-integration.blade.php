@@ -525,11 +525,22 @@
                 {{-- Default Account (Lawcus) --}}
                 @if ($provider === 'lawcus' && $client && $connection)
                     <div class="cc-card">
+                        @php
+                            $lawcusAccounts = collect($lawcus_bank_accounts ?? []);
+                            $isTrustAccount = fn ($a) => strtoupper((string) ($a['account_type'] ?? '')) === 'TRUST';
+                            $lawcusOperatingAccounts = $lawcusAccounts->reject($isTrustAccount);
+                            $lawcusTrustAccounts = $lawcusAccounts->filter($isTrustAccount);
+                            $defaultIsTrust = $lawcusTrustAccounts->contains(fn ($a) => (string) $a['account_id'] === (string) $client->lawcus_default_bank_account_id);
+                        @endphp
                         <div class="cc-card-title">Default Lawcus Bank Account</div>
-                        <div class="cc-card-desc">Bank account used when recording payments back to Lawcus.</div>
+                        <div class="cc-card-desc">Operating account used when recording invoice payments back to Lawcus. Trust Request payments use the trust account below.</div>
                         @if ($client->lawcus_default_bank_account_name)
                             <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">Currently:
                                 {{ $client->lawcus_default_bank_account_name }}</div>
+                        @endif
+                        @if ($defaultIsTrust)
+                            <div class="cc-notice error" role="alert" style="margin-bottom:12px;">The default account is a trust account, so
+                                regular invoice payments would be recorded into trust. Choose an operating account.</div>
                         @endif
                         @if (!empty($lawcus_bank_account_load_error))
                             <div class="cc-notice error">{{ $lawcus_bank_account_load_error }}</div>
@@ -541,7 +552,7 @@
                                     <label>Select bank account</label>
                                     <select name="lawcus_default_bank_account_id" required>
                                         <option value="">Choose account…</option>
-                                        @foreach ($lawcus_bank_accounts as $account)
+                                        @foreach ($lawcusOperatingAccounts as $account)
                                             <option value="{{ $account['account_id'] }}" @selected((string) $client->lawcus_default_bank_account_id === (string) $account['account_id'])>
                                                 {{ $account['account_name'] }}{{ $account['account_type'] ? ' (' . $account['account_type'] . ')' : '' }}
                                             </option>
@@ -554,6 +565,43 @@
                         @else
                             <div class="cc-notice error">No Lawcus bank accounts returned. Reconnect or verify the user
                                 has access.</div>
+                        @endif
+                    </div>
+
+                    {{-- Trust Requests (Lawcus) --}}
+                    <div class="cc-card">
+                        <div class="cc-card-title">Trust Requests</div>
+                        <div class="cc-card-desc">Lawcus Trust Requests are paid to the IOLTA MID (the routing rule with fund type
+                            Trust) and recorded to this Lawcus trust account.</div>
+                        @if (empty($lawcus_bank_account_load_error))
+                            <form method="POST" action="{{ route('inbound.lawcus.trust-settings') }}">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <div class="cc-field">
+                                    <label for="lawcus-trust-account">Trust bank account</label>
+                                    @if ($lawcusTrustAccounts->isEmpty())
+                                        <div class="cc-notice error">No Lawcus account of type Trust found. Create the trust
+                                            account in Lawcus first; until then trust payments are not recorded back.</div>
+                                    @else
+                                        <select id="lawcus-trust-account" name="lawcus_trust_bank_account_id">
+                                            <option value="">Not set — trust payments won't be recorded</option>
+                                            @foreach ($lawcusTrustAccounts as $account)
+                                                <option value="{{ $account['account_id'] }}" @selected((string) $client->lawcus_trust_bank_account_id === (string) $account['account_id'])>{{ $account['account_name'] }}</option>
+                                            @endforeach
+                                        </select>
+                                    @endif
+                                </div>
+                                <div class="cc-field">
+                                    <input type="hidden" name="lawcus_send_trust_links" value="0">
+                                    <label style="display:flex;align-items:center;gap:8px;font-weight:500;">
+                                        <input type="checkbox" name="lawcus_send_trust_links" value="1" @checked($client->lawcus_send_trust_links)>
+                                        Email payment links for Trust Requests
+                                    </label>
+                                    <div style="font-size:12px;color:#6b7280;margin-top:4px;">Off: Trust Requests appear in the Invoice
+                                        List but no email is sent (use Resend to send one). Turn on once the trust email wording is approved.</div>
+                                </div>
+                                <button type="submit" class="button primary" style="font-size:13px;">Save trust settings</button>
+                            </form>
                         @endif
                     </div>
                 @endif
@@ -2358,7 +2406,12 @@
                                 @forelse ($invoices as $invoice)
                                     <tr>
 
-                                        <td>{{ $invoice->invoice_number ? '#' . $invoice->invoice_number : '-' }}</td>
+                                        <td>
+                                            {{ $invoice->invoice_number ? '#' . $invoice->invoice_number : '-' }}
+                                            @if ($invoice->fund_type === 'TRUST')
+                                                <span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:#ede9fe;color:#5b21b6;font-size:11px;font-weight:600;">Trust</span>
+                                            @endif
+                                        </td>
                                         <td>{{ $invoice->recipient_email_list ?: '-' }}</td>
 
                                         <td>

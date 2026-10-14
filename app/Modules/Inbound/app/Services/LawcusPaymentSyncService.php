@@ -42,11 +42,7 @@ class LawcusPaymentSyncService
                 throw new RuntimeException('Lawcus is not connected for this client.');
             }
 
-            $accountId = trim((string) $client->lawcus_default_bank_account_id);
-
-            if ($accountId === '') {
-                throw new RuntimeException('No default Lawcus bank account configured for this client.');
-            }
+            $accountId = $this->destinationAccountId($client, $invoice);
 
             $invoiceUuid = (string) $invoice->external_invoice_id;
             $reference   = $this->reference($transaction);
@@ -76,7 +72,12 @@ class LawcusPaymentSyncService
                 'destination_id'        => $accountId,
                 'source_type'           => $this->sourceType((string) $transaction->gateway),
                 'note'                  => $reference,
-                'matter_id'             => null,
+                // Trust money must land on the matter's trust balance so the firm can later
+                // apply it with "use matter trust balance"; without it Lawcus credits the
+                // client's trust account with no matter.
+                'matter_id'             => $invoice->fund_type === 'TRUST' && is_numeric($invoice->external_matter_id)
+                    ? (int) $invoice->external_matter_id
+                    : null,
                 'destination_item_id'   => null,
                 'destination_item_type' => null,
             ]);
@@ -111,6 +112,32 @@ class LawcusPaymentSyncService
 
             return false;
         }
+    }
+
+    /**
+     * Trust Request payments go to the client's Lawcus trust account; everything else
+     * to the default (operating) account. A trust payment never falls back to the
+     * operating account — commingling client trust funds is an IOLTA violation.
+     */
+    private function destinationAccountId(Client $client, Invoice $invoice): string
+    {
+        if ($invoice->fund_type === 'TRUST') {
+            $accountId = trim((string) $client->lawcus_trust_bank_account_id);
+
+            if ($accountId === '') {
+                throw new RuntimeException('No Lawcus trust bank account configured for this client; trust payment not recorded.');
+            }
+
+            return $accountId;
+        }
+
+        $accountId = trim((string) $client->lawcus_default_bank_account_id);
+
+        if ($accountId === '') {
+            throw new RuntimeException('No default Lawcus bank account configured for this client.');
+        }
+
+        return $accountId;
     }
 
     /**

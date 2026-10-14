@@ -48,7 +48,11 @@ class PaymentCheckoutService
         );
 
         if ($options->isEmpty()) {
-            throw new RuntimeException('No routing rule available for this payment session.');
+            // Trust payments need a TRUST (IOLTA) routing rule; tell the payer plainly
+            // instead of exposing routing internals.
+            throw new RuntimeException($invoice->fund_type === 'TRUST'
+                ? 'This trust payment cannot be taken online yet. Please contact the firm.'
+                : 'No routing rule available for this payment session.');
         }
 
         // Load client credentials once — needed to enrich hostedFieldsConfig
