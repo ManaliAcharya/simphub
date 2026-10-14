@@ -60,7 +60,8 @@ Route::middleware('web')->group(function (): void {
             Route::post('/{pms_client_id}/qb-settings', [ClientConfigController::class, 'updateQbSettings'])->name('update-qb-settings');
             Route::post('/{pms_client_id}/reminder-settings', [ClientConfigController::class, 'updateReminderSettings'])->name('update-reminder-settings');
             Route::post('/{pms_client_id}/mid-routes', [ClientConfigController::class, 'saveMidRoutes'])->name('save-mid-routes');
-            Route::get('/{pms_client_id}/fluidpay-processors', [ClientConfigController::class, 'fluidpayProcessors'])->name('fluidpay-processors');
+            Route::post('/{pms_client_id}/fluidpay-merchants', [ClientConfigController::class, 'fluidpayMerchants'])->name('fluidpay-merchants');
+            Route::post('/{pms_client_id}/fluidpay-processors', [ClientConfigController::class, 'fluidpayProcessors'])->name('fluidpay-processors');
             Route::post('/{pms_client_id}/fluidpay-test-credentials', [ClientConfigController::class, 'testFluidpayCredentials'])->name('fluidpay-test-credentials');
             Route::post('/{pms_client_id}/logo', [ClientConfigController::class, 'uploadLogo'])->name('upload-logo');
             Route::delete('/{pms_client_id}/logo', [ClientConfigController::class, 'removeLogo'])->name('remove-logo');

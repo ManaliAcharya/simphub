@@ -7,19 +7,25 @@ use Modules\Inbound\DTOs\PmsCallbackResult;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Services\SubscriptionHistoryService;
-use RuntimeException;
+use Modules\Inbound\Services\ZohoCrmApiClient;
+use Modules\Inbound\Services\ZohoCrmOAuthService;
+use Modules\Inbound\Services\ZohoCrmPaymentSyncService;
+use Throwable;
 
 /**
  * Zoho CRM clients call our subscription API instead of sending invoice webhooks.
- * The Zoho CRM OAuth connection is not built yet, so this connector only feeds the
- * shared config page (API key, subscriptions); connecting is not available.
+ * Connecting is optional: once connected, each subscription payment is written
+ * back to the customer's Contact (see ZohoCrmPaymentSyncService).
  */
 class ZohoCrmConnector implements PmsConnectorInterface
 {
-    public const PROVIDER = 'zohocrm';
+    public const PROVIDER = ZohoCrmOAuthService::PROVIDER;
 
     public function __construct(
         private readonly SubscriptionHistoryService $history,
+        private readonly ZohoCrmOAuthService $oauth,
+        private readonly ZohoCrmApiClient $api,
+        private readonly ZohoCrmPaymentSyncService $paymentSync,
     ) {}
 
     public function key(): string
@@ -34,12 +40,43 @@ class ZohoCrmConnector implements PmsConnectorInterface
 
     public function authorizationUrl(string $pmsClientId): string
     {
-        throw new RuntimeException('Connecting Zoho CRM is not available yet.');
+        return $this->oauth->authorizationUrl($pmsClientId);
     }
 
     public function completeAuthorization(string $code, string $pmsClientId): PmsCallbackResult
     {
-        throw new RuntimeException('Connecting Zoho CRM is not available yet.');
+        $connection = $this->oauth->exchangeCode($code, $pmsClientId);
+
+        try {
+            $organization = $this->api->fetchOrganization($connection);
+
+            $connection->forceFill(['meta' => [
+                ...((array) $connection->meta),
+                'organization_id' => $organization['id'] ?? null,
+                'organization_name' => $organization['company_name'] ?? null,
+            ]])->save();
+        } catch (Throwable $e) {
+            logger()->warning('Zoho CRM: could not fetch organization', [
+                'pms_client_id' => $pmsClientId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        try {
+            $this->paymentSync->ensureContactFields($connection->fresh(), recheck: true);
+            $message = 'Zoho CRM connected. Payment fields were added to Contacts.';
+        } catch (Throwable $e) {
+            logger()->error('Zoho CRM: contact field setup failed', [
+                'pms_client_id' => $pmsClientId,
+                'error' => $e->getMessage(),
+            ]);
+            $message = 'Zoho CRM connected, but the payment fields could not be added to Contacts automatically. See the instructions below.';
+        }
+
+        return new PmsCallbackResult(
+            connection: $connection->fresh(),
+            successMessage: $message,
+        );
     }
 
     public function webhookMode(): string
@@ -67,6 +104,18 @@ class ZohoCrmConnector implements PmsConnectorInterface
         }
 
         return [
+            'organization_name'    => data_get($connection?->meta, 'organization_name'),
+            'organization_id'      => data_get($connection?->meta, 'organization_id'),
+            'crmFieldsSetup'       => data_get($connection?->meta, 'contact_fields_setup'),
+            'crmFieldsSetupError'  => data_get($connection?->meta, 'contact_fields_setup_error'),
+            'crmFields'            => collect(ZohoCrmPaymentSyncService::FIELDS)
+                ->map(fn (array $field, string $key) => [
+                    'label'    => $field['field_label'],
+                    'type'     => $field['data_type'],
+                    'api_name' => data_get($connection?->meta, "contact_fields.{$key}"),
+                ])
+                ->values()
+                ->all(),
             'webhook_instructions' => [],
             'baseUrl'              => rtrim(config('app.url'), '/'),
             'subscriptions'        => $this->history->paginate($client, request()->query('q'), request()->query('status')),

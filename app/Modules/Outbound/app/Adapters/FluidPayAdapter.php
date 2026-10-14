@@ -259,12 +259,61 @@ class FluidPayAdapter implements GatewayAdapterInterface
     }
 
     /**
+     * List the FluidPay merchant accounts (MIDs) an API key can act for, so the Multi-MID UI
+     * can offer MID Identifier as a picker. FluidPay ties each key to one user, and a
+     * merchant-type user belongs to exactly one merchant, so this normally returns a single
+     * MID — a client with several FluidPay merchant accounts has one key per account. Never
+     * falls back to the env-config key: that would list the platform's own merchant.
+     */
+    public function listMerchants(array $midCredentials): array
+    {
+        $resolved = $this->resolveCredentials($midCredentials);
+        ['api_key' => $apiKey, 'base_url' => $baseUrl, 'source' => $credSource] = $resolved;
+
+        if ($credSource !== 'mid_credentials_override' || trim($apiKey) === '') {
+            return ['merchants' => [], 'error' => 'Enter the FluidPay Private Key first.'];
+        }
+
+        $keyHint    = substr($apiKey, 0, 8).'...('.strlen($apiKey).' chars)';
+        $logContext = ['api_key_prefix' => substr($apiKey, 0, 8).'...'];
+
+        $startedAt = microtime(true);
+        try {
+            $userResponse = Http::withHeaders(['Authorization' => $apiKey])
+                ->acceptJson()
+                ->timeout(20)
+                ->get("{$baseUrl}/api/user");
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            $this->logConnectionError('list merchants', $baseUrl, $startedAt, $e, $logContext);
+
+            return ['merchants' => [], 'error' => 'Could not reach FluidPay: '.$e->getMessage().' [key: '.$keyHint.']'];
+        }
+
+        $accountType = (string) ($userResponse->json('data.account_type') ?? '');
+        $merchantId  = trim((string) ($userResponse->json('data.account_type_id') ?? ''));
+
+        $this->logApiCall('list merchants', $userResponse, $baseUrl, $startedAt, $logContext + [
+            'account_type' => $accountType,
+            'merchant_id'  => $merchantId,
+        ]);
+
+        if (! $userResponse->successful()) {
+            return ['merchants' => [], 'error' => 'FluidPay did not return the account for this key (HTTP '.$userResponse->status().').'
+                .$this->correlationSuffix($this->correlationId($userResponse)).' Enter the MID manually.'];
+        }
+
+        if ($accountType !== 'merchant' || $merchantId === '') {
+            return ['merchants' => [], 'error' => 'This key belongs to a FluidPay '.($accountType ?: 'unknown').' account, not a merchant. Use a merchant API key or enter the MID manually.'];
+        }
+
+        return ['merchants' => [['id' => $merchantId]], 'error' => null];
+    }
+
+    /**
      * List the processors configured on a FluidPay merchant account (Manage → Processors),
      * so admin UIs can offer processor_id as a picker instead of free text. $merchantId is
      * the MID itself — "MID" is short for Merchant ID, and FluidPay's own processors
-     * endpoint is keyed on merchant_id, so no separate self-lookup call is needed (and the
-     * per-merchant transaction key isn't authorized for account self-lookup anyway — only
-     * for /api/transaction*).
+     * endpoint is keyed on merchant_id.
      */
     public function listProcessors(array $midCredentials, string $merchantId): array
     {
