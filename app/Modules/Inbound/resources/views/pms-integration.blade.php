@@ -381,8 +381,9 @@
                                     <div class="cc-card-title" style="color:#92400e;">{{ $providerLabel }} not
                                         connected</div>
                                     @if ($provider === 'zohocrm')
-                                    <div style="font-size:13px;color:#78350f;margin-top:2px;">Connecting Zoho CRM is
-                                        not available yet. Subscriptions already work through the API key below.</div>
+                                    <div style="font-size:13px;color:#78350f;margin-top:2px;">Connect Zoho CRM to
+                                        record each subscription payment on the customer's Contact. Subscriptions
+                                        work through the API key below either way.</div>
                                     @else
                                     <div style="font-size:13px;color:#78350f;margin-top:2px;">Complete the connection to
                                         start processing invoices.</div>
@@ -404,7 +405,7 @@
                                     @endif
                                 </div>
                             </div>
-                            @if ($connectUrl && ! in_array($provider, ['lawcus', 'zohocrm'], true))
+                            @if ($connectUrl && $provider !== 'lawcus')
                                 <a href="{{ $connectUrl }}" class="button primary">Connect {{ $providerLabel }}</a>
                             @endif
                         </div>
@@ -473,6 +474,11 @@
                                 connected user has access.</div>
                         @endif
                     </div>
+                @endif
+
+                {{-- Contact fields written after each payment (Zoho CRM) --}}
+                @if ($provider === 'zohocrm' && $client && $connection)
+                    @include('inbound::clients.partials.zohocrm-contact-fields')
                 @endif
 
                 {{-- Subscription API credentials (Zoho CRM) --}}

@@ -19,6 +19,7 @@ use Modules\Inbound\Services\QuickBooksOAuthService;
 use Modules\Inbound\Services\WaveApiClient;
 use Modules\Inbound\Services\WaveOAuthService;
 use Modules\Inbound\Services\ZohoApiClient;
+use Modules\Inbound\Services\ZohoCrmPaymentSyncService;
 use Modules\Inbound\Services\ZohoOAuthService;
 use Modules\Inbound\Services\AdvancedMdApiClient;
 use Modules\Inbound\Services\AdvancedMdSessionService;
@@ -39,6 +40,7 @@ class SyncInvoicePaidListener
         private readonly AdvancedMdSessionService $advancedMdSession,
         private readonly AdvancedMdApiClient $advancedMdApi,
         private readonly LawcusPaymentSyncService $lawcusPaymentSync,
+        private readonly ZohoCrmPaymentSyncService $zohoCrmPaymentSync,
     ) {}
 
     public function handle(PaymentApproved $event): void
@@ -63,6 +65,7 @@ class SyncInvoicePaidListener
 
         match (strtolower((string) $invoice->pms_source)) {
             'zoho'       => $this->syncToZoho($transaction, $invoice, $client),
+            'zohocrm'    => $this->zohoCrmPaymentSync->sync($transaction, $invoice),
             'clio'       => $this->syncToClio($transaction, $invoice, $client),
             'quickbooks' => $this->syncToQuickBooks($transaction, $invoice, $client),
             'lawcus'     => $this->syncToLawcus($transaction, $invoice, $client),

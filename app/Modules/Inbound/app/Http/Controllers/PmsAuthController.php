@@ -29,7 +29,7 @@ class PmsAuthController extends Controller
         try {
             $authorizationUrl = $registry->for($provider)->authorizationUrl($client->pms_client_id);
         } catch (\RuntimeException $e) {
-            // e.g. Zoho CRM, whose connect step is not built yet.
+            // e.g. missing OAuth configuration for the provider.
             return redirect()->route("inbound.{$provider}.page", [
                 'pms_client_id' => $client->pms_client_id,
                 'error'         => $e->getMessage(),

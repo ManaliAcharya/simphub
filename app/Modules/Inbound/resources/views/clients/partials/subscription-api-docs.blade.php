@@ -59,7 +59,7 @@
                     <tr><th>Field</th><th>Type</th><th>Description</th><th>Required</th></tr>
                     <tr><td><code>customer_email</code></td><td>email</td><td>Where payment links are sent. Stored in lowercase.</td><td><span class="badge-req">Required</span></td></tr>
                     <tr><td><code>customer_name</code></td><td>string</td><td>Shown on the payment page and email. Max 255.</td><td><span class="badge-opt">Optional</span></td></tr>
-                    <tr><td><code>customer_unique_id</code></td><td>string</td><td>Your CRM's ID for the customer. Strongly recommended: it identifies the customer for duplicate checks and unsubscribe. Max 255.</td><td><span class="badge-opt">Optional</span></td></tr>
+                    <tr><td><code>customer_unique_id</code></td><td>string</td><td>Your CRM's ID for the customer. Strongly recommended: it identifies the customer for duplicate checks and unsubscribe. With Zoho CRM connected, send the Zoho Contact record ID so payments are written to the right Contact (otherwise the Contact is matched by email). Max 255.</td><td><span class="badge-opt">Optional</span></td></tr>
                     <tr><td><code>subscription_amount</code></td><td>decimal</td><td>Monthly amount in USD, up to 2 decimals. <code>0.50</code> – <code>999999.99</code>.</td><td><span class="badge-req">Required</span></td></tr>
                 </table>
 

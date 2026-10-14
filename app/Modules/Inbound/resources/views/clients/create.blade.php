@@ -231,7 +231,7 @@
                 </div>
 
                 {{-- Zoho region (shown only when Zoho is selected) --}}
-                <div class="tile-row" id="zoho-region-field" style="{{ old('client_pms') === 'ZOHO' ? '' : 'display:none;' }}">
+                <div class="tile-row" id="zoho-region-field" style="{{ in_array(old('client_pms'), ['ZOHO', 'ZOHOCRM'], true) ? '' : 'display:none;' }}">
                     <span class="field-label" style="color:#2563eb;">Zoho Account Region</span>
                     <input type="hidden" name="zoho_region" id="zoho_region_input" value="{{ old('zoho_region') }}">
                     <div class="tile-grid">
@@ -370,7 +370,7 @@
 
     // ── Zoho region ─────────────────────────────────────────
     function toggleZohoRegion() {
-        const show = pmsInput.value === 'ZOHO';
+        const show = pmsInput.value === 'ZOHO' || pmsInput.value === 'ZOHOCRM';
         zohoRegionField.style.display = show ? '' : 'none';
         if (!show) {
             zohoRegionInput.value = '';

@@ -40,6 +40,17 @@ class ZohoRegionResolver
         'CA' => 'https://www.zohoapis.ca/invoice/v3',
     ];
 
+    public const API_DOMAINS = [
+        'US' => 'https://www.zohoapis.com',
+        'AU' => 'https://www.zohoapis.com.au',
+        'EU' => 'https://www.zohoapis.eu',
+        'IN' => 'https://www.zohoapis.in',
+        'CN' => 'https://www.zohoapis.com.cn',
+        'JP' => 'https://www.zohoapis.jp',
+        'SA' => 'https://www.zohoapis.sa',
+        'CA' => 'https://www.zohoapis.ca',
+    ];
+
     public function options(): array
     {
         return [
@@ -92,6 +103,23 @@ class ZohoRegionResolver
         $region = $this->normalize($client?->zoho_region);
 
         return self::INVOICE_API_BASE_URLS[$region];
+    }
+
+    /** Zoho returns api_domain with the token; fall back to the client's region. */
+    public function apiDomainForConnection(PmsConnection $connection): string
+    {
+        $apiDomain = data_get($connection->meta, 'api_domain');
+
+        // Only ever send the token to a Zoho API host.
+        if (is_string($apiDomain) && preg_match('#^https://[a-z0-9.-]*zohoapis\.[a-z.]+/?$#i', $apiDomain)) {
+            return rtrim($apiDomain, '/');
+        }
+
+        $client = Client::query()
+            ->where('pms_client_id', $connection->pms_client_id)
+            ->first();
+
+        return self::API_DOMAINS[$this->normalize($client?->zoho_region)];
     }
 
     public function normalize(?string $region): string

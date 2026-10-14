@@ -129,7 +129,8 @@ class ClientConfigController extends Controller
             'client_email'               => ['required', 'email', 'max:255', 'unique:client_accounts,email_lower'],
         ]);
 
-        $isZoho = strtoupper($validated['client_pms']) === 'ZOHO';
+        // Zoho Books and Zoho CRM both sign in through the region's Zoho accounts server.
+        $isZoho = in_array(strtoupper($validated['client_pms']), ['ZOHO', 'ZOHOCRM'], true);
 
         if ($isZoho && empty($validated['zoho_region'])) {
             return back()
