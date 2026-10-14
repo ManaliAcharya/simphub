@@ -599,43 +599,77 @@ class ClientConfigController extends Controller
     }
 
     /**
-     * List the processors for a FluidPay MID, so the Multi-MID Routing UI can offer
-     * processor_id as a picker. "MID" is short for Merchant ID — FluidPay's processors
-     * endpoint is keyed on merchant_id, so the MID Identifier the admin already typed for
-     * that row is passed straight through as $merchantId; no separate lookup needed.
+     * List the FluidPay MIDs a Multi-MID row's key can act for, so MID Identifier can be
+     * picked instead of typed. Read-only.
      */
-    public function fluidpayProcessors(Request $request, string $pmsClientId): JsonResponse
+    public function fluidpayMerchants(Request $request, string $pmsClientId): JsonResponse
     {
-        $request->validate(['merchant_id' => ['required', 'string', 'max:100']]);
-        $merchantId = trim((string) $request->query('merchant_id'));
+        $request->validate([
+            'route_type' => ['required', 'string', Rule::in(['fees_on', 'fees_off'])],
+            'api_key'    => ['nullable', 'string', 'max:1000'],
+        ]);
 
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
 
-        $midRoute = ClientMidRoute::query()
-            ->where('client_id', $client->id)
-            ->where('gateway', 'fluidpay')
-            ->get()
-            ->first(fn (ClientMidRoute $r) => trim((string) ($r->credentials['api_key'] ?? '')) !== '');
+        $result = app(FluidPayAdapter::class)->listMerchants($this->midRowFluidpayCredentials($request, $client));
 
-        $gwCreds     = (array) ($client->gateway_credentials['fluidpay'] ?? []);
-        $environment = $midRoute->environment ?? ($client->gateway_credentials['environment'] ?? 'sandbox');
+        return response()->json([
+            'success'   => $result['error'] === null,
+            'merchants' => $result['merchants'],
+            'message'   => $result['error'],
+        ]);
+    }
 
-        $midCredentials = array_filter(
-            array_merge(
-                ['environment' => $environment],
-                $gwCreds,                                   // client-level shared default
-                (array) ($midRoute?->credentials ?? []),     // per-MID override, takes priority
-            ),
-            fn ($v) => $v !== null && $v !== '',
-        );
+    /**
+     * List the processors for a FluidPay MID, so the Multi-MID Routing UI can offer
+     * processor_id as a picker. "MID" is short for Merchant ID — FluidPay's processors
+     * endpoint is keyed on merchant_id, so the row's selected MID Identifier is passed
+     * straight through as $merchantId, using the same key the MID list came from.
+     */
+    public function fluidpayProcessors(Request $request, string $pmsClientId): JsonResponse
+    {
+        $request->validate([
+            'merchant_id' => ['required', 'string', 'max:100'],
+            'route_type'  => ['required', 'string', Rule::in(['fees_on', 'fees_off'])],
+            'api_key'     => ['nullable', 'string', 'max:1000'],
+        ]);
+        $merchantId = trim((string) $request->input('merchant_id'));
 
-        $result = app(FluidPayAdapter::class)->listProcessors($midCredentials, $merchantId);
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        $result = app(FluidPayAdapter::class)->listProcessors($this->midRowFluidpayCredentials($request, $client), $merchantId);
 
         return response()->json([
             'success'    => $result['error'] === null,
             'processors' => $result['processors'],
             'message'    => $result['error'],
         ]);
+    }
+
+    /**
+     * FluidPay credentials for one Multi-MID row: the key typed in the row (not saved yet),
+     * else the row's saved key, else the client-level key from Gateway Credentials (rows
+     * often share it). Environment always comes from Gateway Credentials, as the Multi-MID
+     * form saves it onto the route.
+     */
+    private function midRowFluidpayCredentials(Request $request, Client $client): array
+    {
+        $clientGw = (array) ($client->gateway_credentials ?? []);
+
+        $saved = (array) (ClientMidRoute::query()
+            ->where('client_id', $client->id)
+            ->where('route_type', $request->input('route_type'))
+            ->where('gateway', 'fluidpay')
+            ->first()?->credentials ?? []);
+
+        $apiKey = trim((string) $request->input('api_key'))
+            ?: trim((string) ($saved['api_key'] ?? ''))
+            ?: trim((string) ($clientGw['fluidpay']['api_key'] ?? ''));
+
+        return array_filter([
+            'environment' => $clientGw['environment'] ?? 'sandbox',
+            'api_key'     => $apiKey,
+        ], fn ($v) => $v !== '');
     }
 
     /**

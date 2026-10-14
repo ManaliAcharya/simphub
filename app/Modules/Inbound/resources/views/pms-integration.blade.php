@@ -1365,7 +1365,7 @@
                                                                         <input type="checkbox"
                                                                             name="routes[{{ $idx }}][remove]"
                                                                             value="1"
-                                                                            onchange="var f=document.getElementById('mid-fields-{{ $idx }}'); f.style.opacity=this.checked?'0.4':'1'; f.querySelectorAll('input').forEach(function(el){ el.disabled=this.checked; }, this);">
+                                                                            onchange="var f=document.getElementById('mid-fields-{{ $idx }}'); f.style.opacity=this.checked?'0.4':'1'; f.querySelectorAll('input, select').forEach(function(el){ el.disabled=this.checked; }, this);">
                                                                         Remove this configuration
                                                                     </label>
                                                                 @endif
@@ -1491,12 +1491,32 @@
                                                                 <div
                                                                     style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
                                                                     <div class="cc-field" style="margin:0;">
-                                                                        <label>MID Identifier</label>
-                                                                        <input type="text"
-                                                                            id="mid-identifier-{{ $idx }}"
-                                                                            name="routes[{{ $idx }}][mid_identifier]"
-                                                                            value="{{ old("routes.$idx.mid_identifier", $existing?->mid_identifier) }}"
-                                                                            placeholder="e.g. MID_001">
+                                                                        <label for="mid-identifier-{{ $idx }}">MID Identifier</label>
+                                                                        @php $currentMid = old("routes.$idx.mid_identifier", $existing?->mid_identifier); @endphp
+                                                                        @if ($gw === 'fluidpay')
+                                                                            {{-- Filled from FluidPay with the MIDs this row's Private Key can act for. --}}
+                                                                            <select
+                                                                                id="mid-identifier-{{ $idx }}"
+                                                                                class="fluidpay-mid-select"
+                                                                                name="routes[{{ $idx }}][mid_identifier]"
+                                                                                data-route-type="{{ $routeType }}"
+                                                                                data-api-input="cred-{{ $idx }}-api_key"
+                                                                                data-status="mid-status-{{ $idx }}"
+                                                                                data-current="{{ $currentMid }}">
+                                                                                <option value="">Select MID…</option>
+                                                                                @if ($currentMid)
+                                                                                    <option value="{{ $currentMid }}" selected>{{ $currentMid }} (saved)</option>
+                                                                                @endif
+                                                                            </select>
+                                                                            <div id="mid-status-{{ $idx }}" role="status" aria-live="polite"
+                                                                                style="font-size:11px;color:var(--cc-text-2);margin-top:4px;"></div>
+                                                                        @else
+                                                                            <input type="text"
+                                                                                id="mid-identifier-{{ $idx }}"
+                                                                                name="routes[{{ $idx }}][mid_identifier]"
+                                                                                value="{{ $currentMid }}"
+                                                                                placeholder="e.g. MID_001">
+                                                                        @endif
                                                                     </div>
                                                                     <div class="cc-field" style="margin:0;">
                                                                         <label>MID Label <span
@@ -1514,6 +1534,8 @@
                                                                         <select
                                                                             class="fluidpay-processor-select"
                                                                             data-mid-input="mid-identifier-{{ $idx }}"
+                                                                            data-route-type="{{ $routeType }}"
+                                                                            data-api-input="cred-{{ $idx }}-api_key"
                                                                             data-current="{{ $currentProcessorId }}"
                                                                             name="routes[{{ $idx }}][processor_id]">
                                                                             <option value="">Select processor…</option>
@@ -1583,35 +1605,169 @@
                                 });
                             </script>
 
-                            {{-- Populate each row's Processor ID dropdown from FluidPay, keyed on that
-                                 row's own MID Identifier (MID = Merchant ID = FluidPay's merchant_id). --}}
+                            {{-- FluidPay rows: fill MID Identifier with the MIDs the row's Private Key can act
+                                 for, then fill Processor ID with the selected MID's processors (MID = Merchant
+                                 ID = FluidPay's merchant_id). Both use the key typed in the row, else the saved one. --}}
                             <script>
                                 (function() {
-                                    var processorSelects = document.querySelectorAll(
-                                        '.fluidpay-processor-select');
-                                    if (!processorSelects.length) return;
+                                    var form = document.getElementById('mid-routes-form');
+                                    var midSelects = document.querySelectorAll('.fluidpay-mid-select');
+                                    var processorSelects = document.querySelectorAll('.fluidpay-processor-select');
+                                    if (!form || (!midSelects.length && !processorSelects.length)) return;
 
-                                    var baseUrl =
+                                    var merchantsUrl =
+                                        '{{ route('inbound.clients.fluidpay-merchants', $client->pms_client_id) }}';
+                                    var processorsUrl =
                                         '{{ route('inbound.clients.fluidpay-processors', $client->pms_client_id) }}';
-                                    var cache = {};
+                                    var csrf = form.querySelector('input[name=_token]');
+                                    var processorCache = {};
+
+                                    function typedKey(el) {
+                                        var input = document.getElementById(el.dataset.apiInput);
+                                        return input ? input.value.trim() : '';
+                                    }
+
+                                    function post(url, body) {
+                                        return fetch(url, {
+                                            method: 'POST',
+                                            headers: {
+                                                'Accept': 'application/json',
+                                                'Content-Type': 'application/json',
+                                                'X-CSRF-TOKEN': csrf ? csrf.value : '',
+                                            },
+                                            body: JSON.stringify(body),
+                                        }).then(function(r) {
+                                            return r.json();
+                                        });
+                                    }
+
+                                    function addOption(select, value, text, selected) {
+                                        var opt = document.createElement('option');
+                                        opt.value = value;
+                                        opt.textContent = text;
+                                        opt.selected = !!selected;
+                                        select.appendChild(opt);
+                                    }
+
+                                    // ── MID Identifier ──
+
+                                    function setStatus(select, message, isError) {
+                                        var box = document.getElementById(select.dataset.status);
+                                        if (!box) return;
+                                        box.textContent = message || '';
+                                        box.style.color = isError ? '#dc2626' : 'var(--cc-text-2)';
+                                        if (isError) {
+                                            var link = document.createElement('button');
+                                            link.type = 'button';
+                                            link.className = 'button';
+                                            link.style.cssText = 'font-size:11px;padding:2px 8px;margin-left:6px;';
+                                            link.textContent = 'Enter MID manually';
+                                            link.addEventListener('click', function() {
+                                                switchToManual(select);
+                                            });
+                                            box.appendChild(link);
+                                        }
+                                    }
+
+                                    // Lookup failed (e.g. a partner key) — swap the dropdown for a text box with
+                                    // the same id/name, so saving and the processor picker keep working.
+                                    function switchToManual(select) {
+                                        var input = document.createElement('input');
+                                        input.type = 'text';
+                                        input.id = select.id;
+                                        input.name = select.name;
+                                        input.value = select.value || select.dataset.current || '';
+                                        input.placeholder = 'FluidPay merchant ID';
+                                        select.parentNode.replaceChild(input, select);
+                                        setStatus(select, '');
+                                        input.focus();
+                                    }
+
+                                    function loadMerchants(select) {
+                                        setStatus(select, 'Fetching MIDs from FluidPay…');
+                                        post(merchantsUrl, {
+                                                route_type: select.dataset.routeType,
+                                                api_key: typedKey(select) || null,
+                                            })
+                                            .then(function(data) {
+                                                if (!document.body.contains(select)) return;
+                                                if (!data.success) {
+                                                    setStatus(select, data.message || 'Could not fetch MIDs from FluidPay.', true);
+                                                    return;
+                                                }
+                                                renderMerchants(select, data.merchants || []);
+                                            })
+                                            .catch(function() {
+                                                setStatus(select, 'Could not fetch MIDs from FluidPay.', true);
+                                            });
+                                    }
+
+                                    function renderMerchants(select, merchants) {
+                                        var current = select.value || select.dataset.current || '';
+                                        var found = false;
+
+                                        select.innerHTML = '';
+                                        addOption(select, '', 'Select MID…', false);
+                                        merchants.forEach(function(m) {
+                                            if (m.id === current) found = true;
+                                            addOption(select, m.id, m.id, m.id === current);
+                                        });
+
+                                        // Keep an already-saved MID selectable even if this key can't see it,
+                                        // so saving again doesn't silently drop it.
+                                        if (current && !found) {
+                                            addOption(select, current, current + ' (saved — not on this key)', true);
+                                        }
+
+                                        // One MID and nothing chosen yet: pick it, which loads its processors.
+                                        if (!current && merchants.length === 1) {
+                                            select.value = merchants[0].id;
+                                            select.dispatchEvent(new Event('change', {
+                                                bubbles: true
+                                            }));
+                                        }
+
+                                        setStatus(select, merchants.length === 1 ?
+                                            '1 MID found for this key.' :
+                                            merchants.length + ' MIDs found for this key.');
+                                    }
+
+                                    midSelects.forEach(function(select) {
+                                        var apiInput = document.getElementById(select.dataset.apiInput);
+                                        if (apiInput) {
+                                            var timer = null;
+                                            apiInput.addEventListener('input', function() {
+                                                clearTimeout(timer);
+                                                var v = apiInput.value.trim();
+                                                // Wait for something shaped like a full key (or a cleared field).
+                                                if (v !== '' && (v.indexOf('api_') !== 0 || v.length < 12)) return;
+                                                timer = setTimeout(function() {
+                                                    var current = document.getElementById(select.id);
+                                                    if (current && current.tagName === 'SELECT') loadMerchants(current);
+                                                }, 600);
+                                            });
+                                        }
+                                        loadMerchants(select);
+                                    });
+
+                                    // ── Processor ID ──
 
                                     function loadProcessors(select) {
                                         var midInput = document.getElementById(select.dataset.midInput);
                                         var merchantId = midInput ? midInput.value.trim() : '';
                                         if (!merchantId) return;
 
-                                        if (cache[merchantId]) {
-                                            renderOptions(select, cache[merchantId]);
+                                        var key = typedKey(select);
+                                        var cacheKey = merchantId + '|' + key;
+                                        if (processorCache[cacheKey]) {
+                                            renderProcessors(select, processorCache[cacheKey]);
                                             return;
                                         }
 
-                                        fetch(baseUrl + '?merchant_id=' + encodeURIComponent(merchantId), {
-                                                headers: {
-                                                    'Accept': 'application/json'
-                                                }
-                                            })
-                                            .then(function(r) {
-                                                return r.json();
+                                        post(processorsUrl, {
+                                                merchant_id: merchantId,
+                                                route_type: select.dataset.routeType,
+                                                api_key: key || null,
                                             })
                                             .then(function(data) {
                                                 if (!data.success) {
@@ -1619,63 +1775,54 @@
                                                         'unknown error'));
                                                     return;
                                                 }
-                                                cache[merchantId] = data.processors || [];
-                                                renderOptions(select, cache[merchantId]);
+                                                processorCache[cacheKey] = data.processors || [];
+                                                renderProcessors(select, processorCache[cacheKey]);
                                             })
                                             .catch(function(err) {
                                                 console.warn('FluidPay processors fetch failed', err);
                                             });
                                     }
 
-                                    function renderOptions(select, processors) {
+                                    function renderProcessors(select, processors) {
                                         var current = select.dataset.current || '';
                                         var found = false;
 
                                         select.innerHTML = '';
+                                        addOption(select, '', 'Select processor…', false);
 
                                         processors.forEach(function(p) {
-                                            var opt = document.createElement('option');
-                                            opt.value = p.id;
-                                            opt.textContent = p.name + (p.status ? ' (' + p.status + ')' :
-                                                '');
-                                            if (p.id === current) {
-                                                opt.selected = true;
-                                                found = true;
-                                            }
-                                            select.appendChild(opt);
+                                            if (p.id === current) found = true;
+                                            addOption(select, p.id, p.name + (p.status ? ' (' + p.status + ')' : ''),
+                                                p.id === current);
                                         });
 
                                         // Keep an already-saved processor_id selectable even if it's not in
                                         // the current processor list, so saving again doesn't silently drop it.
                                         if (current && !found) {
-                                            var savedOpt = document.createElement('option');
-                                            savedOpt.value = current;
-                                            savedOpt.textContent = current + ' (saved)';
-                                            savedOpt.selected = true;
-                                            select.appendChild(savedOpt);
+                                            addOption(select, current, current + ' (saved)', true);
                                         }
                                     }
 
+                                    // Delegated, so it keeps working after a MID dropdown is swapped for a text box.
+                                    function onMidChanged(e, delay) {
+                                        processorSelects.forEach(function(select) {
+                                            if (select.dataset.midInput !== e.target.id) return;
+                                            clearTimeout(select._loadTimer);
+                                            select._loadTimer = setTimeout(function() {
+                                                loadProcessors(select);
+                                            }, delay);
+                                        });
+                                    }
+                                    form.addEventListener('change', function(e) {
+                                        onMidChanged(e, 0);
+                                    });
+                                    form.addEventListener('input', function(e) {
+                                        if (e.target.tagName === 'INPUT') onMidChanged(e, 400);
+                                    });
+
                                     processorSelects.forEach(function(select) {
                                         var midInput = document.getElementById(select.dataset.midInput);
-                                        if (!midInput) return;
-
-                                        // Live-fetch as the MID is typed, don't wait for blur/save.
-                                        var debounceTimer = null;
-                                        midInput.addEventListener('input', function() {
-                                            clearTimeout(debounceTimer);
-                                            debounceTimer = setTimeout(function() {
-                                                loadProcessors(select);
-                                            }, 400);
-                                        });
-                                        midInput.addEventListener('change', function() {
-                                            clearTimeout(debounceTimer);
-                                            loadProcessors(select);
-                                        });
-
-                                        if (midInput.value.trim()) {
-                                            loadProcessors(select);
-                                        }
+                                        if (midInput && midInput.value.trim()) loadProcessors(select);
                                     });
                                 })();
                             </script>
