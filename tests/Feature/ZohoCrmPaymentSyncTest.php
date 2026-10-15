@@ -12,6 +12,7 @@ use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Models\Subscription;
 use Modules\Inbound\Services\SubscriptionService;
+use Modules\Inbound\Services\ZohoCrmOAuthService;
 use Modules\Inbound\Services\ZohoCrmPaymentSyncService;
 use Tests\TestCase;
 
@@ -179,6 +180,34 @@ class ZohoCrmPaymentSyncTest extends TestCase
         $this->assertFalse(app(ZohoCrmPaymentSyncService::class)->sync($this->transaction(), $invoice));
         $this->assertSame('SYNCED', $invoice->fresh()->pms_sync_status);
         Http::assertNothingSent();
+    }
+
+    public function test_connect_takes_over_a_stale_connection_from_another_provider(): void
+    {
+        config(['services.zohocrm.client_id' => 'test-client', 'services.zohocrm.client_secret' => 'test-secret']);
+
+        $stale = PmsConnection::query()->create([
+            'provider' => 'zoho',
+            'pms_client_id' => $this->client->pms_client_id,
+            'access_token' => 'old-books-token',
+            'refresh_token' => 'old-books-refresh',
+            'meta' => ['webhook_id' => 'wh-1', 'webhook_auto_setup' => 'failed'],
+        ]);
+
+        Http::fake(['*/oauth/v2/token' => Http::response([
+            'access_token' => 'crm-access',
+            'refresh_token' => 'crm-refresh',
+            'expires_in' => 3600,
+            'api_domain' => 'https://www.zohoapis.com',
+        ])]);
+
+        $connection = app(ZohoCrmOAuthService::class)->exchangeCode('auth-code', $this->client->pms_client_id);
+
+        $this->assertSame($stale->id, $connection->id);
+        $this->assertSame('zohocrm', $connection->provider);
+        $this->assertSame('crm-refresh', $connection->refresh_token);
+        $this->assertNull(data_get($connection->meta, 'webhook_id'));
+        $this->assertSame(1, PmsConnection::query()->where('pms_client_id', $this->client->pms_client_id)->count());
     }
 
     private function contactFields(): array

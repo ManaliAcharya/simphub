@@ -107,10 +107,10 @@ class ZohoCrmOAuthService
             throw new RuntimeException("Unknown client for PMS client identifier [{$pmsClientId}].");
         }
 
-        $connection ??= PmsConnection::query()->firstOrNew([
-            'provider' => self::PROVIDER,
-            'pms_client_id' => $pmsClientId,
-        ]);
+        $connection ??= PmsConnection::query()
+            ->where('provider', self::PROVIDER)
+            ->where('pms_client_id', $pmsClientId)
+            ->first() ?? $this->takeOverStaleConnection($pmsClientId);
 
         $connection->fill([
             'access_token' => $payload['access_token'],
@@ -128,6 +128,33 @@ class ZohoCrmOAuthService
         $connection->save();
 
         return $connection->fresh();
+    }
+
+    /**
+     * pms_connections allows one row per client. A row left by another PMS's connect
+     * (e.g. a Zoho CRM client that once went through the Zoho Books flow) is stale, so
+     * it is reused as this client's Zoho CRM connection with its old tokens and meta dropped.
+     */
+    private function takeOverStaleConnection(string $pmsClientId): PmsConnection
+    {
+        $stale = PmsConnection::query()->where('pms_client_id', $pmsClientId)->first();
+
+        if (! $stale) {
+            return new PmsConnection(['provider' => self::PROVIDER, 'pms_client_id' => $pmsClientId]);
+        }
+
+        logger()->warning('Zoho CRM: replacing a stale connection from another provider', [
+            'pms_client_id' => $pmsClientId,
+            'previous_provider' => $stale->provider,
+            'connection_id' => $stale->id,
+        ]);
+
+        return $stale->forceFill([
+            'provider' => self::PROVIDER,
+            'refresh_token' => null,
+            'token_expires_at' => null,
+            'meta' => [],
+        ]);
     }
 
     private function requiredConfig(string $key): string
