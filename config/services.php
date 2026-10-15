@@ -74,13 +74,8 @@ return [
         'redirect_uri' => env('ZOHO_CRM_REDIRECT_URI', rtrim(env('APP_URL', 'http://localhost'), '/').'/inbound/zohocrm/callback'),
         'scope' => env('ZOHO_CRM_SCOPE', 'ZohoCRM.modules.contacts.READ,ZohoCRM.modules.contacts.UPDATE,ZohoCRM.settings.fields.ALL,ZohoCRM.org.READ'),
         'api_version' => env('ZOHO_CRM_API_VERSION', 'v8'),
-        // Optional Contact field API names to write to instead of the SimpHub custom
-        // fields (e.g. existing fields for testing). Unset = find/create the custom fields.
-        'contact_fields' => [
-            'simphub_id' => env('ZOHO_CRM_FIELD_SIMPHUB_ID'),
-            'payment_link' => env('ZOHO_CRM_FIELD_PAYMENT_LINK'),
-            'last_payment_date' => env('ZOHO_CRM_FIELD_LAST_PAYMENT_DATE'),
-        ],
+        // Which Contact fields receive the payment values is mapped per client on the
+        // config page (see ZohoCrmPaymentSyncService).
     ],
 
     'quickbooks' => [

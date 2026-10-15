@@ -64,7 +64,9 @@ class ZohoCrmConnector implements PmsConnectorInterface
 
         try {
             $this->paymentSync->ensureContactFields($connection->fresh(), recheck: true);
-            $message = 'Zoho CRM connected. Payment fields were added to Contacts.';
+            $message = $this->paymentSync->isManuallyMapped($connection->fresh())
+                ? 'Zoho CRM connected. Your Contact field mapping was kept.'
+                : 'Zoho CRM connected. Payment fields were added to Contacts.';
         } catch (Throwable $e) {
             logger()->error('Zoho CRM: contact field setup failed', [
                 'pms_client_id' => $pmsClientId,
@@ -103,16 +105,36 @@ class ZohoCrmConnector implements PmsConnectorInterface
             return [];
         }
 
+        // Contact fields for the mapping dropdowns, read live so new Zoho fields show up.
+        $fieldOptions = null;
+        $fieldOptionsError = null;
+
+        if ($connection) {
+            try {
+                $fieldOptions = $this->paymentSync->mappableFields($connection);
+            } catch (Throwable $e) {
+                $fieldOptionsError = $e->getMessage();
+                logger()->warning('Zoho CRM: could not load Contact fields', [
+                    'pms_client_id' => $client->pms_client_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
         return [
             'organization_name'    => data_get($connection?->meta, 'organization_name'),
             'organization_id'      => data_get($connection?->meta, 'organization_id'),
             'crmFieldsSetup'       => data_get($connection?->meta, 'contact_fields_setup'),
             'crmFieldsSetupError'  => data_get($connection?->meta, 'contact_fields_setup_error'),
-            'crmFields'            => collect(ZohoCrmPaymentSyncService::FIELDS)
-                ->map(fn (array $field, string $key) => [
-                    'label'    => $field['field_label'],
-                    'type'     => $field['data_type'],
-                    'api_name' => data_get($connection?->meta, "contact_fields.{$key}"),
+            'crmFieldsManual'      => $connection && $this->paymentSync->isManuallyMapped($connection),
+            'crmFieldOptionsError' => $fieldOptionsError,
+            'crmFields'            => collect(ZohoCrmPaymentSyncService::VALUES)
+                ->map(fn (array $value, string $key) => [
+                    'key'         => $key,
+                    'label'       => $value['label'],
+                    'description' => $value['description'],
+                    'api_name'    => data_get($connection?->meta, "contact_fields.{$key}"),
+                    'options'     => $fieldOptions[$key] ?? [],
                 ])
                 ->values()
                 ->all(),

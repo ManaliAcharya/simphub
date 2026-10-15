@@ -18,9 +18,11 @@ use Throwable;
 
 /**
  * Lawcus webhooks don't work with pasted API tokens, so new invoices are found by
- * polling the Accounts Receivable report (sent, unpaid invoices) and handing each one
- * we haven't seen to LawcusInvoiceIngestionService — the same path a webhook would
- * take, which creates the payment session and emails the payment link once.
+ * polling the invoice list (POST /v2/invoices) for sent, unpaid invoices and handing
+ * each one we haven't seen to LawcusInvoiceIngestionService — the same path a webhook
+ * would take, which creates the payment session and emails the payment link once.
+ * The list is used rather than the AR report because the report leaves out Trust
+ * Requests (type TRUST), which route to the firm's IOLTA MID.
  */
 class PollLawcusInvoicesJob implements ShouldQueue
 {
@@ -36,6 +38,9 @@ class PollLawcusInvoicesJob implements ShouldQueue
      * many the connection is skipped until someone replaces the token, which resets it.
      */
     private const MAX_CONSECUTIVE_FAILURES = 3;
+
+    /** Statuses never billed even if Lawcus still shows an amount due. */
+    private const NOT_PAYABLE_STATUSES = ['PAID', 'DRAFT', 'VOID', 'VOIDED', 'DELETED', 'WRITTEN_OFF', 'CANCELLED'];
 
     public function handle(
         LawcusApiClient $api,
@@ -70,8 +75,10 @@ class PollLawcusInvoicesJob implements ShouldQueue
             return;
         }
 
+        $since = $this->pollingBaseline($connection);
+
         try {
-            $outstanding = $api->fetchOutstandingInvoices($connection);
+            $outstanding = $api->fetchInvoicesCreatedSince($connection, $since);
             $oauth->recordApiSuccess($connection);
         } catch (Throwable $e) {
             $oauth->recordApiFailure($connection, $e);
@@ -84,15 +91,15 @@ class PollLawcusInvoicesJob implements ShouldQueue
             return;
         }
 
-        $since = $this->pollingBaseline($connection);
-
-        // Only invoices issued since the firm connected — otherwise connecting a firm
-        // would email payment links for its entire existing receivables backlog.
+        // Only sent, unpaid invoices issued since the firm connected — otherwise connecting
+        // a firm would email payment links for its entire existing receivables backlog.
         $candidates = collect($outstanding)->filter(function (array $invoice) use ($since): bool {
             $issued = $this->parseDate($invoice['issue_date'] ?? null);
 
             return $issued !== null
                 && $issued->greaterThanOrEqualTo($since)
+                && ! empty($invoice['sent_at'])
+                && ! in_array(strtoupper((string) ($invoice['status'] ?? '')), self::NOT_PAYABLE_STATUSES, true)
                 && (float) ($invoice['amount_due'] ?? 0) > 0;
         });
 
@@ -113,7 +120,7 @@ class PollLawcusInvoicesJob implements ShouldQueue
             try {
                 $result = $ingestion->ingest((string) $invoice['id'], [
                     'pms_client_id' => $connection->pms_client_id,
-                    'event_name'    => 'poll.invoice.outstanding',
+                    'event_name'    => 'poll.invoice.sent',
                 ]);
 
                 Log::info('Lawcus invoice poll ingested invoice', [

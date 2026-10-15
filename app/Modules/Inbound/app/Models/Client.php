@@ -50,6 +50,7 @@ class Client extends Model
             'reminders_enabled'              => 'boolean',
             'reminder_schedule_days'         => 'array',
             'subscription_api_key_created_at' => 'datetime',
+            'lawcus_send_trust_links'         => 'boolean',
         ];
     }
 

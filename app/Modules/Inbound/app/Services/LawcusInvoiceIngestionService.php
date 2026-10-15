@@ -99,6 +99,20 @@ class LawcusInvoiceIngestionService
             ];
         });
 
+        // Trust Request links are held until the firm approves the trust email wording and
+        // the client turns sending on; staff can still send one with Resend.
+        if ($result['invoice']->fund_type === 'TRUST' && ! $this->sendsTrustLinks($pmsClientId)) {
+            AuditLogger::log('PAYMENT_LINK_HELD', 'payment_session', $result['payment_session']->id, [
+                'invoice_id'    => $result['invoice']->id,
+                'pms_client_id' => $pmsClientId,
+                'reason'        => 'trust_links_disabled',
+            ]);
+
+            $result['emails_sent'] = 0;
+
+            return $result;
+        }
+
         $emailsSent = $this->paymentLinks->sendInvoiceLinkOnce(
             $result['invoice'],
             $result['payment_session'],
@@ -117,6 +131,11 @@ class LawcusInvoiceIngestionService
         $result['emails_sent'] = $emailsSent;
 
         return $result;
+    }
+
+    private function sendsTrustLinks(string $pmsClientId): bool
+    {
+        return (bool) Client::query()->where('pms_client_id', $pmsClientId)->value('lawcus_send_trust_links');
     }
 
     private function fetchBillTracked(LawcusConnection $connection, string $externalInvoiceId, string $pmsClientId): array
@@ -209,11 +228,15 @@ class LawcusInvoiceIngestionService
 
         // Bill what's still owed — a partially paid invoice should not be charged in full.
         $total    = Arr::get($data, 'amount_due') ?? Arr::get($data, 'total', Arr::get($data, 'balance', 0));
-        $fundType = strtoupper((string) (
-            Arr::get($data, 'fund_type')
-            ?? Arr::get($triggerPayload, 'fund_type')
-            ?? 'OPERATING'
-        ));
+        // Lawcus marks Trust Requests with type TRUST (regular invoices are DEFAULT);
+        // TRUST routes the payment to the firm's IOLTA MID.
+        $fundType = strtoupper((string) Arr::get($data, 'type')) === 'TRUST'
+            ? 'TRUST'
+            : strtoupper((string) (
+                Arr::get($data, 'fund_type')
+                ?? Arr::get($triggerPayload, 'fund_type')
+                ?? 'OPERATING'
+            ));
 
         return [
             'external_invoice_id' => (string) $id,

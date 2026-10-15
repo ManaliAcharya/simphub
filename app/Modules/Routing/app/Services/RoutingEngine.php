@@ -26,7 +26,13 @@ class RoutingEngine
             ->where('is_active', true)
             ->where('merchant_id', $context->merchantId)
             ->whereIn('payment_method', [$context->paymentMethod, 'ANY'])
-            ->whereIn('fund_type', [$context->fundType, 'ANY'])
+            // Trust (IOLTA) money may only use a rule set up for TRUST: an ANY rule is the
+            // operating MID, and using it would commingle client trust funds.
+            ->when(
+                strtoupper($context->fundType) === 'TRUST',
+                fn ($query) => $query->where('fund_type', 'TRUST'),
+                fn ($query) => $query->whereIn('fund_type', [$context->fundType, 'ANY'])
+            )
             ->where('min_amount_cents', '<=', $context->amountInCents)
             ->where(function ($query) use ($context) {
                 $query->whereNull('max_amount_cents')

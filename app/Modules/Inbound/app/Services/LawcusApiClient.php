@@ -99,6 +99,61 @@ class LawcusApiClient
     }
 
     /**
+     * Invoices created on/after $since, newest first, from POST /v2/invoices — the list
+     * the Lawcus web app's Invoices page uses. Unlike the AR / invoice-history reports it
+     * includes Trust Requests (type TRUST; regular invoices are type DEFAULT). Lawcus
+     * ignores type/status filters here, so callers filter the rows themselves.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    public function fetchInvoicesCreatedSince(LawcusConnection $connection, \DateTimeInterface $since, int $maxPages = 20): array
+    {
+        $pageSize = 100;
+        $rows     = [];
+
+        for ($page = 0; $page < $maxPages; $page++) {
+            $payload = $this->apiTokenRequest($connection)
+                ->post('/v2/invoices', [
+                    'pagination'    => ['skip' => $page * $pageSize, 'take' => $pageSize],
+                    'multi_sorting' => [['order' => 'desc', 'field' => 'created_at']],
+                ])
+                ->throw()
+                ->json();
+
+            $list = is_array($payload) ? ($payload['list'] ?? null) : null;
+
+            if (! is_array($list)) {
+                throw new RuntimeException('Lawcus returned an unexpected invoice list response.');
+            }
+
+            $reachedOlder = false;
+
+            foreach ($list as $invoice) {
+                if (! is_array($invoice) || empty($invoice['id'])) {
+                    continue;
+                }
+
+                $created = strtotime((string) ($invoice['created_at'] ?? ''));
+
+                if ($created !== false && $created < $since->getTimestamp()) {
+                    $reachedOlder = true;
+
+                    continue;
+                }
+
+                $rows[] = $invoice;
+            }
+
+            // Sorted newest first: once a page reaches older invoices, or runs short, we're done.
+            if ($reachedOlder || count($list) < $pageSize) {
+                break;
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
      * Pasted Lawcus API tokens are only accepted on the public REST host
      * (api.us/api.eu) and only via the LAWCUS-X-API-KEY header — Bearer is
      * rejected. The token works across regions, so the US host is used.

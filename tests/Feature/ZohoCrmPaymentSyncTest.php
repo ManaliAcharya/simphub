@@ -12,6 +12,7 @@ use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Models\Subscription;
 use Modules\Inbound\Services\SubscriptionService;
+use Modules\Inbound\Services\ZohoCrmOAuthService;
 use Modules\Inbound\Services\ZohoCrmPaymentSyncService;
 use Tests\TestCase;
 
@@ -75,33 +76,71 @@ class ZohoCrmPaymentSyncTest extends TestCase
         });
     }
 
-    public function test_writes_to_configured_existing_fields_without_creating_any(): void
+    public function test_writes_to_manually_mapped_fields_and_skips_unmapped_values(): void
     {
-        config(['services.zohocrm.contact_fields' => [
-            'simphub_id' => 'Department',
-            'payment_link' => 'Description',
-            'last_payment_date' => 'Date_of_Birth',
-        ]]);
-
-        $this->connection();
+        $connection = $this->connection();
         [$invoice, $subscription] = $this->subscriptionInvoice('5725767000000412001');
 
         Http::fake([
+            self::API.'/settings/fields*' => Http::response(['fields' => $this->contactFields()]),
             self::API.'/Contacts/5725767000000412001?*' => Http::response(['data' => [['id' => '5725767000000412001']]]),
             self::API.'/Contacts/5725767000000412001' => Http::response(['data' => [['code' => 'SUCCESS', 'status' => 'success']]]),
         ]);
 
-        $this->assertTrue(app(ZohoCrmPaymentSyncService::class)->sync($this->transaction(), $invoice));
+        $service = app(ZohoCrmPaymentSyncService::class);
+        $service->saveMapping($connection, [
+            'simphub_id' => 'Department',
+            'payment_link' => '',
+            'last_payment_date' => 'Last_Paid_At',
+        ]);
 
-        Http::assertNotSent(fn (Request $r) => str_contains($r->url(), '/settings/fields'));
+        $this->assertTrue($service->sync($this->transaction(), $invoice));
+
+        // A saved mapping is used as-is: nothing is created in Zoho.
+        Http::assertNotSent(fn (Request $r) => $r->method() === 'POST');
         Http::assertSent(function (Request $r) use ($subscription) {
             $fields = $r->data()['data'][0] ?? [];
 
             return $r->method() === 'PUT'
                 && $fields['Department'] === $subscription->reference_id
-                && str_contains($fields['Description'], '/')
-                && $fields['Date_of_Birth'] === '2026-10-14';
+                && str_starts_with($fields['Last_Paid_At'], '2026-10-14T10:00:00')
+                && count($fields) === 2;
         });
+    }
+
+    public function test_reconnect_keeps_a_manual_mapping(): void
+    {
+        $connection = $this->connection();
+
+        Http::fake([self::API.'/settings/fields*' => Http::response(['fields' => $this->contactFields()])]);
+
+        $service = app(ZohoCrmPaymentSyncService::class);
+        $service->saveMapping($connection, ['simphub_id' => 'Department']);
+
+        $this->assertSame(['simphub_id' => 'Department'], $service->ensureContactFields($connection->fresh(), recheck: true));
+        Http::assertNotSent(fn (Request $r) => $r->method() === 'POST');
+    }
+
+    public function test_rejects_incompatible_read_only_or_duplicate_fields(): void
+    {
+        $connection = $this->connection();
+
+        Http::fake([self::API.'/settings/fields*' => Http::response(['fields' => $this->contactFields()])]);
+
+        $service = app(ZohoCrmPaymentSyncService::class);
+
+        foreach ([
+            ['simphub_id' => 'Lead_Source'],                                 // picklist: incompatible type
+            ['simphub_id' => 'Created_By_Name'],                             // read-only
+            ['simphub_id' => 'Department', 'payment_link' => 'Department'], // same field twice
+        ] as $selection) {
+            try {
+                $service->saveMapping($connection, $selection);
+                $this->fail('Expected mapping to be rejected: '.json_encode($selection));
+            } catch (\RuntimeException) {
+                $this->addToAssertionCount(1);
+            }
+        }
     }
 
     public function test_falls_back_to_email_and_uses_name_when_several_contacts_share_it(): void
@@ -141,6 +180,44 @@ class ZohoCrmPaymentSyncTest extends TestCase
         $this->assertFalse(app(ZohoCrmPaymentSyncService::class)->sync($this->transaction(), $invoice));
         $this->assertSame('SYNCED', $invoice->fresh()->pms_sync_status);
         Http::assertNothingSent();
+    }
+
+    public function test_connect_takes_over_a_stale_connection_from_another_provider(): void
+    {
+        config(['services.zohocrm.client_id' => 'test-client', 'services.zohocrm.client_secret' => 'test-secret']);
+
+        $stale = PmsConnection::query()->create([
+            'provider' => 'zoho',
+            'pms_client_id' => $this->client->pms_client_id,
+            'access_token' => 'old-books-token',
+            'refresh_token' => 'old-books-refresh',
+            'meta' => ['webhook_id' => 'wh-1', 'webhook_auto_setup' => 'failed'],
+        ]);
+
+        Http::fake(['*/oauth/v2/token' => Http::response([
+            'access_token' => 'crm-access',
+            'refresh_token' => 'crm-refresh',
+            'expires_in' => 3600,
+            'api_domain' => 'https://www.zohoapis.com',
+        ])]);
+
+        $connection = app(ZohoCrmOAuthService::class)->exchangeCode('auth-code', $this->client->pms_client_id);
+
+        $this->assertSame($stale->id, $connection->id);
+        $this->assertSame('zohocrm', $connection->provider);
+        $this->assertSame('crm-refresh', $connection->refresh_token);
+        $this->assertNull(data_get($connection->meta, 'webhook_id'));
+        $this->assertSame(1, PmsConnection::query()->where('pms_client_id', $this->client->pms_client_id)->count());
+    }
+
+    private function contactFields(): array
+    {
+        return [
+            ['field_label' => 'Department', 'api_name' => 'Department', 'data_type' => 'text'],
+            ['field_label' => 'Last Paid At', 'api_name' => 'Last_Paid_At', 'data_type' => 'datetime'],
+            ['field_label' => 'Lead Source', 'api_name' => 'Lead_Source', 'data_type' => 'picklist'],
+            ['field_label' => 'Created By', 'api_name' => 'Created_By_Name', 'data_type' => 'text', 'read_only' => true],
+        ];
     }
 
     private function connection(bool $withFields = false): PmsConnection

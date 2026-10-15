@@ -83,6 +83,9 @@ Route::middleware('web')->group(function (): void {
         Route::post('/inbound/zoho/default-account', [PmsIntegrationController::class, 'saveZohoDefaultAccount'])
             ->name('inbound.zoho.default-account');
 
+        Route::post('/inbound/zohocrm/contact-fields', [PmsIntegrationController::class, 'saveZohoCrmContactFields'])
+            ->name('inbound.zohocrm.contact-fields');
+
         Route::post('/inbound/clio/default-bank-account', [PmsIntegrationController::class, 'saveClioDefaultBankAccount'])
             ->name('inbound.clio.default-bank-account');
 
@@ -112,6 +115,9 @@ Route::middleware('web')->group(function (): void {
 
         Route::post('/inbound/lawcus/default-bank-account', [PmsIntegrationController::class, 'saveLawcusDefaultBankAccount'])
             ->name('inbound.lawcus.default-bank-account');
+
+        Route::post('/inbound/lawcus/trust-settings', [PmsIntegrationController::class, 'saveLawcusTrustSettings'])
+            ->name('inbound.lawcus.trust-settings');
 
         Route::post('/inbound/lawcus/connect-token', [PmsAuthController::class, 'connectLawcusToken'])
             ->name('inbound.lawcus.connect-token');
