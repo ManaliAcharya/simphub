@@ -17,17 +17,42 @@ use Throwable;
  * After a subscription payment, writes this month's payment link, the payment date
  * and the SimpHub subscription id onto the customer's Contact in Zoho CRM.
  *
- * The three custom fields are created on the Contacts module at connect time (or
- * found by label if the client created them); their API names live in the
- * connection meta under contact_fields.
+ * By default three custom fields are created on the Contacts module at connect time
+ * (or found by label if the client created them). The client can instead map each
+ * value to any compatible Contact field on the config page, or choose not to sync it.
+ * The API names live in the connection meta under contact_fields, their Zoho data
+ * types under contact_field_types, and contact_fields_mapping is 'manual' once the
+ * client has saved a mapping (reconnecting then keeps it).
  */
 class ZohoCrmPaymentSyncService
 {
+    /** Field definitions sent to Zoho when creating the default SimpHub fields. */
     public const FIELDS = [
         'simphub_id' => ['field_label' => 'SimpHub ID', 'data_type' => 'text', 'length' => 255],
         'payment_link' => ['field_label' => 'SimpHub Payment Link', 'data_type' => 'website'],
         'last_payment_date' => ['field_label' => 'SimpHub Last Payment Date', 'data_type' => 'date'],
     ];
+
+    /** What each value is, and the Zoho field types it can be written to. */
+    public const VALUES = [
+        'simphub_id' => [
+            'label' => 'SimpHub ID',
+            'description' => 'Subscription reference, e.g. SH-SUB-000123',
+            'types' => ['text', 'textarea'],
+        ],
+        'payment_link' => [
+            'label' => 'Payment Link',
+            'description' => 'Payment page link for this month\'s invoice',
+            'types' => ['website', 'text', 'textarea'],
+        ],
+        'last_payment_date' => [
+            'label' => 'Last Payment Date',
+            'description' => 'Date of the latest subscription payment',
+            'types' => ['date', 'datetime', 'text'],
+        ],
+    ];
+
+    public const MAPPING_MANUAL = 'manual';
 
     public function __construct(
         private readonly ZohoCrmOAuthService $oauth,
@@ -37,36 +62,26 @@ class ZohoCrmPaymentSyncService
 
     /**
      * Finds or creates the custom Contact fields and stores their API names.
-     * $recheck ignores the stored names (used on connect/reconnect).
+     * $recheck ignores the stored names (used on connect/reconnect). A mapping the
+     * client saved on the config page is always used as-is.
      *
      * @return array<string, string> field key => Zoho API name
      */
     public function ensureContactFields(PmsConnection $connection, bool $recheck = false): array
     {
-        $stored = (array) data_get($connection->meta, 'contact_fields', []);
-        $configured = $this->configuredFields();
+        $stored = array_filter((array) data_get($connection->meta, 'contact_fields', []));
 
-        // Every field mapped in config (e.g. existing Contact fields while testing):
-        // use them as-is, nothing is looked up or created in Zoho.
-        if (count($configured) === count(self::FIELDS)) {
-            if ($stored !== $configured || data_get($connection->meta, 'contact_fields_setup') !== 'success') {
-                $this->saveMeta($connection, [
-                    'contact_fields' => $configured,
-                    'contact_fields_setup' => 'success',
-                    'contact_fields_setup_error' => null,
-                ]);
-            }
-
-            return $configured;
+        if ($this->isManuallyMapped($connection)) {
+            return $stored;
         }
 
-        if (! $recheck && count(array_filter($stored)) === count(self::FIELDS)) {
+        if (! $recheck && count($stored) === count(self::FIELDS)) {
             return $stored;
         }
 
         try {
             $connection = $this->oauth->ensureValidAccessToken($connection);
-            $map = $configured + $this->matchFields($this->api->fetchContactFields($connection));
+            $map = $this->matchFields($this->api->fetchContactFields($connection));
             $missing = array_diff_key(self::FIELDS, $map);
 
             foreach ($missing as $definition) {
@@ -74,7 +89,7 @@ class ZohoCrmPaymentSyncService
             }
 
             if ($missing !== []) {
-                $map = $configured + $this->matchFields($this->api->fetchContactFields($connection));
+                $map = $this->matchFields($this->api->fetchContactFields($connection));
             }
 
             if ($stillMissing = array_diff_key(self::FIELDS, $map)) {
@@ -84,6 +99,7 @@ class ZohoCrmPaymentSyncService
 
             $this->saveMeta($connection, [
                 'contact_fields' => $map,
+                'contact_field_types' => array_map(fn (array $field) => $field['data_type'], self::FIELDS),
                 'contact_fields_setup' => 'success',
                 'contact_fields_setup_error' => null,
             ]);
@@ -97,6 +113,88 @@ class ZohoCrmPaymentSyncService
 
             throw $e;
         }
+    }
+
+    public function isManuallyMapped(PmsConnection $connection): bool
+    {
+        return data_get($connection->meta, 'contact_fields_mapping') === self::MAPPING_MANUAL;
+    }
+
+    /**
+     * The writable Contact fields each value can be mapped to, for the config page dropdowns.
+     *
+     * @return array<string, array<int, array{api_name: string, label: string, type: string}>> value key => options
+     */
+    public function mappableFields(PmsConnection $connection): array
+    {
+        $connection = $this->oauth->ensureValidAccessToken($connection);
+        $fields = [];
+
+        foreach ($this->api->fetchContactFields($connection) as $field) {
+            $apiName = (string) ($field['api_name'] ?? '');
+
+            if ($apiName === '' || ! empty($field['read_only']) || ! empty($field['field_read_only'])) {
+                continue;
+            }
+
+            $fields[] = [
+                'api_name' => $apiName,
+                'label' => (string) ($field['field_label'] ?? $field['display_label'] ?? $apiName),
+                'type' => (string) ($field['data_type'] ?? ''),
+            ];
+        }
+
+        usort($fields, fn (array $a, array $b) => strcasecmp($a['label'], $b['label']));
+
+        return array_map(
+            fn (array $value) => array_values(array_filter($fields, fn (array $f) => in_array($f['type'], $value['types'], true))),
+            self::VALUES
+        );
+    }
+
+    /**
+     * Saves the client's mapping. Each selection must be a compatible Contact field
+     * (checked against Zoho) or empty for "don't sync"; one field can't take two values.
+     *
+     * @param  array<string, ?string>  $selection  value key => Zoho API name
+     * @return array<string, string> the saved mapping
+     */
+    public function saveMapping(PmsConnection $connection, array $selection): array
+    {
+        $options = $this->mappableFields($connection);
+        $map = [];
+        $types = [];
+
+        foreach (self::VALUES as $key => $value) {
+            $apiName = trim((string) ($selection[$key] ?? ''));
+
+            if ($apiName === '') {
+                continue;
+            }
+
+            $field = collect($options[$key])->firstWhere('api_name', $apiName);
+
+            if (! $field) {
+                throw new RuntimeException("\"{$apiName}\" is not a Contact field that can hold the {$value['label']}. Choose one from the list.");
+            }
+
+            $map[$key] = $apiName;
+            $types[$key] = $field['type'];
+        }
+
+        if (count($map) !== count(array_unique($map))) {
+            throw new RuntimeException('Each Zoho CRM field can only be mapped to one SimpHub value.');
+        }
+
+        $this->saveMeta($connection->fresh(), [
+            'contact_fields' => $map,
+            'contact_field_types' => $types,
+            'contact_fields_mapping' => self::MAPPING_MANUAL,
+            'contact_fields_setup' => 'success',
+            'contact_fields_setup_error' => null,
+        ]);
+
+        return $map;
     }
 
     /**
@@ -121,6 +219,12 @@ class ZohoCrmPaymentSyncService
             $subscription = Subscription::query()->findOrFail($subscriptionId);
             $connection = $this->oauth->ensureValidAccessToken($connection);
             $fields = $this->ensureContactFields($connection);
+
+            // The client chose not to sync any value.
+            if ($fields === []) {
+                return false;
+            }
+
             $contactId = $this->resolveContactId($connection, $subscription);
 
             $session = PaymentSession::query()
@@ -128,11 +232,26 @@ class ZohoCrmPaymentSyncService
                 ->latest('created_at')
                 ->first();
 
-            $this->api->updateContact($connection, $contactId, array_filter([
-                $fields['simphub_id'] => $subscription->reference_id,
-                $fields['payment_link'] => $session ? $this->paymentLinks->urlForSession($session) : null,
-                $fields['last_payment_date'] => ($transaction->created_at ?? now())->toDateString(),
-            ]));
+            $paidAt = $transaction->created_at ?? now();
+            $values = [
+                'simphub_id' => $subscription->reference_id,
+                'payment_link' => $session ? $this->paymentLinks->urlForSession($session) : null,
+                'last_payment_date' => data_get($connection->meta, 'contact_field_types.last_payment_date') === 'datetime'
+                    ? $paidAt->toIso8601String()
+                    : $paidAt->toDateString(),
+            ];
+
+            $data = [];
+
+            foreach ($fields as $key => $apiName) {
+                if (($values[$key] ?? null) !== null) {
+                    $data[$apiName] = $values[$key];
+                }
+            }
+
+            if ($data !== []) {
+                $this->api->updateContact($connection, $contactId, $data);
+            }
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
 
@@ -217,17 +336,6 @@ class ZohoCrmPaymentSyncService
         }
 
         return $map;
-    }
-
-    /** @return array<string, string> field key => API name set in services.zohocrm.contact_fields */
-    private function configuredFields(): array
-    {
-        $configured = array_map(
-            fn ($apiName) => is_string($apiName) ? trim($apiName) : '',
-            array_intersect_key((array) config('services.zohocrm.contact_fields', []), self::FIELDS)
-        );
-
-        return array_filter($configured, fn (string $apiName) => $apiName !== '');
     }
 
     private function saveMeta(PmsConnection $connection, array $values): void

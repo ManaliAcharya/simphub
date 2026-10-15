@@ -27,6 +27,7 @@ use Modules\Inbound\Models\WaveConnection;
 use Modules\Inbound\Services\WaveApiClient;
 use Modules\Inbound\Services\WaveOAuthService;
 use Modules\Inbound\Services\ZohoApiClient;
+use Modules\Inbound\Services\ZohoCrmPaymentSyncService;
 use Modules\Inbound\Services\ZohoOAuthService;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
@@ -113,6 +114,46 @@ class PmsIntegrationController extends Controller
         return redirect()->route('inbound.zoho.page', [
             'pms_client_id' => $client->pms_client_id,
             'success' => 'Default Zoho deposit account saved.',
+        ]);
+    }
+
+    public function saveZohoCrmContactFields(Request $request, ZohoCrmPaymentSyncService $paymentSync): RedirectResponse
+    {
+        $validated = $request->validate([
+            'pms_client_id'    => ['required', 'string'],
+            'contact_fields'   => ['nullable', 'array'],
+            'contact_fields.*' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'ZOHOCRM', 422, 'Contact field mapping is only supported for Zoho CRM clients.');
+
+        $connection = PmsConnection::query()
+            ->where('provider', 'zohocrm')
+            ->where('pms_client_id', $client->pms_client_id)
+            ->latest('created_at')
+            ->firstOrFail();
+
+        try {
+            $map = $paymentSync->saveMapping($connection, (array) ($validated['contact_fields'] ?? []));
+        } catch (\Throwable $e) {
+            return redirect()->route('inbound.zohocrm.page', [
+                'pms_client_id' => $client->pms_client_id,
+                'error'         => 'Contact field mapping not saved: '.$e->getMessage(),
+            ]);
+        }
+
+        AuditLogger::log('ZOHOCRM_CONTACT_FIELDS_MAPPED', 'client', (string) $client->id, [
+            'pms_client_id'  => $client->pms_client_id,
+            'contact_fields' => $map,
+        ]);
+
+        return redirect()->route('inbound.zohocrm.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => 'Zoho CRM Contact field mapping saved.',
         ]);
     }
 
