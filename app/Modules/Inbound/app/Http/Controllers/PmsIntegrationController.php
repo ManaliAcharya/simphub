@@ -6,6 +6,7 @@ use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Str;
 use Modules\Audit\Services\AuditLogger;
 use Modules\Inbound\Models\Client;
@@ -34,11 +35,20 @@ use Modules\Billing\Models\PaymentSession;
 
 class PmsIntegrationController extends Controller
 {
-    public function show(string $provider, PmsConnectorRegistry $registry): View
+    public function show(string $provider, PmsConnectorRegistry $registry): View|RedirectResponse
     {
+        $pmsClientId = (string) request()->query('pms_client_id', '');
+        $clientPms = strtolower((string) Client::query()->where('pms_client_id', $pmsClientId)->value('client_pms'));
+
+        // A client always sees its own PMS page (e.g. a Zoho CRM client never gets the
+        // Zoho Books page); messages such as an OAuth callback error are carried over.
+        if ($clientPms !== '' && $clientPms !== $provider && Route::has("inbound.{$clientPms}.page")) {
+            return redirect()->route("inbound.{$clientPms}.page", request()->query());
+        }
+
         return $this->render(
             $provider,
-            (string) request()->query('pms_client_id', ''),
+            $pmsClientId,
             $registry,
             false,
         );
