@@ -1609,8 +1609,8 @@
                                                                         <label>Rate (%)</label>
                                                                         <input type="number"
                                                                             name="routes[{{ $idx }}][rate_percent]"
-                                                                            step="0.01" min="0"
-                                                                            max="99.99" placeholder="0.00"
+                                                                            step="0.00001" min="0"
+                                                                            max="99.99999" placeholder="0.00000"
                                                                             value="{{ old("routes.$idx.rate_percent", $existing?->rate_percent) }}">
                                                                     </div>
                                                                     <div class="cc-field" style="margin:0;">

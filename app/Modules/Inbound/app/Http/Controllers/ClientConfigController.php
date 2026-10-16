@@ -737,7 +737,7 @@ class ClientConfigController extends Controller
             'routes.*.mid_identifier'       => ['nullable', 'string', 'max:100'],
             'routes.*.mid_label'            => ['nullable', 'string', 'max:255'],
             'routes.*.processor_id'         => ['nullable', 'string', 'max:100'],
-            'routes.*.rate_percent'         => ['nullable', 'numeric', 'min:0', 'max:99.99'],
+            'routes.*.rate_percent'         => ['nullable', 'numeric', 'min:0', 'max:99.99999', 'decimal:0,5'],
             'routes.*.environment'          => ['nullable', 'string', Rule::in(['sandbox', 'production'])],
             'routes.*.credentials'          => ['nullable', 'array'],
             'routes.*.credentials.*'        => ['nullable', 'string', 'max:1000'],

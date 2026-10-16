@@ -17,7 +17,7 @@ class ClientMidRoute extends Model
     protected function casts(): array
     {
         return [
-            'rate_percent' => 'decimal:2',
+            'rate_percent' => 'decimal:5',
             'is_active'    => 'boolean',
             'credentials'  => 'encrypted:array',
         ];
