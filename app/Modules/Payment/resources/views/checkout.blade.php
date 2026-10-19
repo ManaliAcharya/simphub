@@ -118,14 +118,6 @@
                                 <option value="savings">Savings</option>
                             </select>
                         </div>
-                        <div class="field">
-                            <label for="paya-sec-code">Account Holder Type</label>
-                            <select id="paya-sec-code" style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid rgba(16,33,58,.12);font:inherit;background:#fff;">
-                                <option value="">Select account holder type</option>
-                                <option value="PPD">Personal account (PPD)</option>
-                                <option value="CCD">Business account (CCD)</option>
-                            </select>
-                        </div>
                     </div>
 
                     {{-- Paya-hosted AccountForm iframe (shown when PAYA_DEVELOPER_ID is configured) --}}
@@ -292,7 +284,6 @@
             payaRouting: document.getElementById('paya-routing'),
             payaAccount: document.getElementById('paya-account'),
             payaAccountType: document.getElementById('paya-account-type'),
-            payaSecCode: document.getElementById('paya-sec-code'),
             tokenInput: document.getElementById('token-input'),
             submitButton: document.getElementById('submit-button'),
             submitStatus: document.getElementById('submit-status'),
@@ -1009,7 +1000,6 @@
                     routing_rule_id: state.selectedOption.routing_rule_id,
                     payment_method: state.selectedOption.payment_method || state.selectedOption.hosted_fields.metadata.payment_method || 'CARD',
                     ...(state.payaBankToken ? { paya_bank_token: state.payaBankToken } : {}),
-                    ...(state.payaBankToken && els.payaSecCode && els.payaSecCode.value ? { ach_sec_code: els.payaSecCode.value } : {}),
                     ...(state.cardholder ? state.cardholder : {}),
                 }),
             });
@@ -1083,10 +1073,6 @@
                 }
                 if (!account || account.length < 4) {
                     els.submitStatus.textContent = 'Please enter a valid account number.';
-                    return;
-                }
-                if (els.payaSecCode && !els.payaSecCode.value) {
-                    els.submitStatus.textContent = 'Please select whether this is a personal or business account.';
                     return;
                 }
                 els.submitButton.disabled = true;
