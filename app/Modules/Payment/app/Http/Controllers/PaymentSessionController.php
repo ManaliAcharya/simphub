@@ -120,7 +120,8 @@ class PaymentSessionController extends Controller
             'payment_method'         => ['nullable', 'string'],
             'routing_rule_id'        => ['required', 'string'],
             'paya_bank_token'        => ['nullable', 'string'],
-            'first_name'             => ['required', 'string', 'max:100'],
+            'ach_sec_code'           => ['nullable', 'string', 'in:PPD,CCD'],
+            'first_name'           => ['required', 'string', 'max:100'],
             'last_name'              => ['required', 'string', 'max:100'],
             'billing_address'        => ['required', 'array'],
             'billing_address.address1' => ['required', 'string', 'max:255'],
@@ -132,6 +133,10 @@ class PaymentSessionController extends Controller
         $extraBilling = [];
         if ($request->filled('paya_bank_token')) {
             $extraBilling = ['paya_bank_token' => (string) $request->input('paya_bank_token')];
+
+            if ($request->filled('ach_sec_code')) {
+                $extraBilling['ach_sec_code'] = (string) $request->input('ach_sec_code');
+            }
         }
 
         if ($request->filled('first_name') || $request->filled('last_name')) {
