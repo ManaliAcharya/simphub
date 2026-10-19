@@ -308,14 +308,11 @@ class PaymentCheckoutService
                 $applyFee = false;
             } else {
                 // Override is ON → the per-invoice field decides directly, via the standard
-                // cc/ach percentages below. Only an exact "Yes" charges a fee — No, a typo, or
-                // the field being unset all mean the merchant absorbs it, so a data-entry mistake
-                // never accidentally charges a customer. Multi-MID Routing (if also enabled) can
-                // still replace this with a per-gateway rate further down — see resolveQbMidRoute().
-                $fieldName  = (string) ($feeClient->qb_fee_override_field ?? 'Cash Discount');
-                $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
-
-                $applyFee = $fieldValue !== null && strtolower(trim($fieldValue)) === 'yes';
+                // cc/ach percentages below: "Yes" passes the fee, "No" or a typo absorbs it, and a
+                // blank field follows the merchant's default (see QbFeeOverride). Multi-MID Routing
+                // (if also enabled) can still replace this with a per-gateway rate further down —
+                // see resolveQbMidRoute().
+                $applyFee = QbFeeOverride::passesFee($feeClient, $invoice);
             }
         }
 
@@ -493,6 +490,11 @@ class PaymentCheckoutService
                         'routing_number' => $bankDetails['routing_number'],
                     ];
                 }
+            }
+
+            // SEC code the payer picked on the checkout page (PPD = personal, CCD = business).
+            if (in_array($extraBilling['ach_sec_code'] ?? null, ['PPD', 'CCD'], true)) {
+                $billing['ach_sec_code'] = $extraBilling['ach_sec_code'];
             }
         } elseif ($cardholderFirstName && $cardholderLastName) {
             // Card gateways (FluidPay/NMI): pass the cardholder name (+ optional billing
@@ -712,9 +714,7 @@ class PaymentCheckoutService
             if (! $feeClient->qb_fee_override_enabled) {
                 $applyFee = false;
             } else {
-                $fieldName  = (string) ($feeClient->qb_fee_override_field ?? 'Cash Discount');
-                $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
-                $applyFee   = $fieldValue !== null && strtolower(trim($fieldValue)) === 'yes';
+                $applyFee = QbFeeOverride::passesFee($feeClient, $invoice);
             }
         }
 
@@ -757,13 +757,9 @@ class PaymentCheckoutService
             return null;
         }
 
-        // Multi-MID ON → read the fee-override field. Only an exact "Yes" routes to the
-        // fees_on MID — No, a typo, or the field being unset all route to fees_off, matching
-        // the merchant-absorbs default applied above.
-        $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
-        $fieldValue = $this->extractQbCustomField($invoice, $fieldName);
-
-        $routeType = ($fieldValue !== null && strtolower(trim($fieldValue)) === 'yes') ? 'fees_on' : 'fees_off';
+        // Multi-MID ON → the same fee-override decision picks the MID: passing the fee routes
+        // to fees_on, absorbing it to fees_off (see QbFeeOverride for the Yes/No/blank rules).
+        $routeType = QbFeeOverride::passesFee($client, $invoice) ? 'fees_on' : 'fees_off';
 
         return ClientMidRoute::query()
             ->where('client_id',  $client->id)
@@ -771,39 +767,6 @@ class PaymentCheckoutService
             ->where('gateway',    strtolower($gateway))
             ->where('is_active',  true)
             ->first();
-    }
-
-    /**
-     * Extract a QuickBooks invoice custom field value by name.
-     * QB stores custom fields as: CustomField[{Name: "...", StringValue: "..."}]
-     */
-    private function extractQbCustomField(Invoice $invoice, string $fieldName): ?string
-    {
-        $payload = (array) ($invoice->raw_payload ?? []);
-
-        // Check all possible locations — invoice-level first, then customer-level, then top-level (test)
-        $candidates = [
-            $payload['invoice']['Invoice']['CustomField'] ?? [],   // transaction-level field
-            $payload['customer']['Customer']['CustomField'] ?? [],  // customer-level field
-            $payload['CustomField'] ?? [],                          // manually created test invoices
-        ];
-
-        foreach ($candidates as $fields) {
-            if (! is_array($fields) || empty($fields)) {
-                continue;
-            }
-            foreach ($fields as $field) {
-                $name  = $field['Name'] ?? $field['name'] ?? '';
-                $value = $field['StringValue'] ?? $field['string_value'] ?? $field['value'] ?? null;
-                if (strcasecmp((string) $name, $fieldName) === 0
-                    && $value !== null
-                    && trim((string) $value) !== '') {
-                    return trim((string) $value);
-                }
-            }
-        }
-
-        return null;
     }
 
     private function makeRoutingContext(PaymentSession $session, string $paymentMethod): RoutingContext

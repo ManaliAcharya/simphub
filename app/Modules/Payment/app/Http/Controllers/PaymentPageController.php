@@ -8,6 +8,7 @@ use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClientMidRoute;
+use Modules\Payment\Services\QbFeeOverride;
 
 class PaymentPageController extends Controller
 {
@@ -66,15 +67,11 @@ class PaymentPageController extends Controller
                 // Configuration.
                 $feeEnabled = false;
             } else {
-                // Override is ON → the per-invoice field decides directly. Only an exact "Yes"
-                // enables the fee — No, a typo, or the field being unset all mean the merchant
-                // absorbs it, so a data-entry mistake never accidentally charges a customer.
-                // $routeType is used below to further refine per-gateway rates when Multi-MID
-                // is ALSO on.
-                $fieldName  = (string) ($client->qb_fee_override_field ?? 'Cash Discount');
-                $fieldValue = $this->extractQbField($invoice, $fieldName);
-
-                $feeEnabled = $fieldValue !== null && strtolower(trim($fieldValue)) === 'yes';
+                // Override is ON → the per-invoice field decides directly: "Yes" passes the fee,
+                // "No" or a typo absorbs it, and a blank field follows the merchant's default
+                // (see QbFeeOverride). $routeType is used below to further refine per-gateway
+                // rates when Multi-MID is ALSO on.
+                $feeEnabled = QbFeeOverride::passesFee($client, $invoice);
                 $routeType  = $feeEnabled ? 'fees_on' : 'fees_off';
             }
         }
@@ -150,37 +147,5 @@ class PaymentPageController extends Controller
         }
 
         return $safe;
-    }
-
-    /**
-     * Extract a QuickBooks invoice custom field value by name.
-     */
-    private function extractQbField(Invoice $invoice, string $fieldName): ?string
-    {
-        $payload = (array) ($invoice->raw_payload ?? []);
-
-        // Check all possible locations — invoice-level first, then customer-level, then top-level (test)
-        $candidates = [
-            $payload['invoice']['Invoice']['CustomField'] ?? [],   // transaction-level field
-            $payload['customer']['Customer']['CustomField'] ?? [],  // customer-level field
-            $payload['CustomField'] ?? [],                          // manually created test invoices
-        ];
-
-        foreach ($candidates as $fields) {
-            if (! is_array($fields) || empty($fields)) {
-                continue;
-            }
-            foreach ($fields as $field) {
-                $name  = $field['Name'] ?? $field['name'] ?? '';
-                $value = $field['StringValue'] ?? $field['string_value'] ?? $field['value'] ?? null;
-                if (strcasecmp((string) $name, $fieldName) === 0
-                    && $value !== null
-                    && trim((string) $value) !== '') {
-                    return trim((string) $value);
-                }
-            }
-        }
-
-        return null;
     }
 }

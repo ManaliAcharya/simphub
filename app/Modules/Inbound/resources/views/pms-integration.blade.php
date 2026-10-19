@@ -1190,6 +1190,29 @@
                                             the exact custom field name on the QuickBooks invoice template.</div>
                                     </div>
 
+                                    {{-- What a blank field means --}}
+                                    @php
+                                        $qbBlankDefault = old('qb_fee_override_blank_default', $client->qb_fee_override_blank_default ?? 'absorb');
+                                    @endphp
+                                    <fieldset class="cc-field" style="margin-bottom:14px;border:none;padding:0;">
+                                        <legend style="font-size:13px;font-weight:600;color:var(--cc-text);margin-bottom:6px;">
+                                            When the field is blank</legend>
+                                        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:6px;cursor:pointer;">
+                                            <input type="radio" name="qb_fee_override_blank_default" value="absorb"
+                                                @checked($qbBlankDefault !== 'pass')>
+                                            Merchant absorbs fees (same as "No")
+                                        </label>
+                                        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+                                            <input type="radio" name="qb_fee_override_blank_default" value="pass"
+                                                @checked($qbBlankDefault === 'pass')>
+                                            Pass fees to customer (same as "Yes")
+                                        </label>
+                                        <div style="font-size:12px;color:var(--cc-text-3);margin-top:6px;">
+                                            Set "No" on an invoice or customer to absorb the fee for them. Changing this
+                                            applies straight away to every unpaid invoice whose field is blank, including
+                                            payment links already sent.</div>
+                                    </fieldset>
+
                                     {{-- How to set up the custom field in QuickBooks --}}
                                     <div
                                         style="padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--cc-r-md);margin-bottom:14px;">
@@ -1258,12 +1281,21 @@
                                                 </tr>
                                                 <tr style="border-top:1px solid var(--cc-border-light);">
                                                     <td style="padding:9px 12px;"><code
-                                                            style="background:#f3f4f6;color:var(--cc-text-2);padding:2px 7px;border-radius:4px;font-size:12px;">Not
-                                                            set / anything else</code></td>
+                                                            style="background:#f3f4f6;color:var(--cc-text-2);padding:2px 7px;border-radius:4px;font-size:12px;">Blank
+                                                            / not set</code></td>
+                                                    <td
+                                                        style="padding:9px 12px;color:var(--cc-text-2);font-size:13px;">
+                                                        Follows "When the field is blank" above (currently:
+                                                        {{ $qbBlankDefault === 'pass' ? 'pass fees to customer' : 'merchant absorbs fees' }})</td>
+                                                </tr>
+                                                <tr style="border-top:1px solid var(--cc-border-light);">
+                                                    <td style="padding:9px 12px;"><code
+                                                            style="background:#f3f4f6;color:var(--cc-text-2);padding:2px 7px;border-radius:4px;font-size:12px;">Anything
+                                                            else</code></td>
                                                     <td
                                                         style="padding:9px 12px;color:var(--cc-text-2);font-size:13px;">
                                                         Merchant absorbs fees — flat amount shown (treated the same as
-                                                        "No")</td>
+                                                        "No", so a typo never charges a customer)</td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -1609,8 +1641,8 @@
                                                                         <label>Rate (%)</label>
                                                                         <input type="number"
                                                                             name="routes[{{ $idx }}][rate_percent]"
-                                                                            step="0.01" min="0"
-                                                                            max="99.99" placeholder="0.00"
+                                                                            step="0.00001" min="0"
+                                                                            max="99.99999" placeholder="0.00000"
                                                                             value="{{ old("routes.$idx.rate_percent", $existing?->rate_percent) }}">
                                                                     </div>
                                                                     <div class="cc-field" style="margin:0;">

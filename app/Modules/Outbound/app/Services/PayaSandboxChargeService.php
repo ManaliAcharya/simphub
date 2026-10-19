@@ -129,6 +129,9 @@ class PayaSandboxChargeService
         ];
     }
 
+    // No SEC_CODE element in either packet: Paya fixes the SEC code (PPD, CCD, WEB, ...) per Terminal ID
+    // and validates against that SEC code's schema, so CHECK rejects it. See
+    // https://github.com/PayaDev/PayaServices/blob/main/Authorization%20Gateway/Process.md#what-are-the-different-standard-entry-class-sec-codes
     private function makeTokenChargeDataPacket(string $payaToken, object $paymentInfo, string $amount, string $terminalId): string
     {
         $dom = new DOMDocument('1.0', 'ISO-8859-1');
