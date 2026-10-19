@@ -42,7 +42,7 @@ class PayaSandboxChargeService
         $amount = $sign . number_format($request->amountInCents / 100, 2, '.', '');
 
         $client = $this->makeSoapClient($config);
-        $xml    = $this->makeDataPacket($paymentInfo, $amount, $config['terminal_id'], $this->secCode($request));
+        $xml    = $this->makeDataPacket($paymentInfo, $amount, $config['terminal_id']);
 
         $terminalSettingsMethod = $config['terminal_settings_method'] ?: 'GetCertificationTerminalSettings';
         $processMethod          = $config['process_method'] ?: 'ProcessSingleCertificationCheck';
@@ -77,7 +77,7 @@ class PayaSandboxChargeService
         $amount = $sign . number_format($request->amountInCents / 100, 2, '.', '');
 
         $client = $this->makeSoapClient($config);
-        $xml    = $this->makeTokenChargeDataPacket($payaToken, $paymentInfo, $amount, $config['terminal_id'], $this->secCode($request));
+        $xml    = $this->makeTokenChargeDataPacket($payaToken, $paymentInfo, $amount, $config['terminal_id']);
 
         $terminalSettingsMethod  = $config['terminal_settings_method'] ?: 'GetCertificationTerminalSettings';
         $processMethod           = ($config['process_method'] ?: 'ProcessSingleCertificationCheck') . 'WithToken';
@@ -129,7 +129,10 @@ class PayaSandboxChargeService
         ];
     }
 
-    private function makeTokenChargeDataPacket(string $payaToken, object $paymentInfo, string $amount, string $terminalId, ?string $secCode = null): string
+    // No SEC_CODE element in either packet: Paya fixes the SEC code (PPD, CCD, WEB, ...) per Terminal ID
+    // and validates against that SEC code's schema, so CHECK rejects it. See
+    // https://github.com/PayaDev/PayaServices/blob/main/Authorization%20Gateway/Process.md#what-are-the-different-standard-entry-class-sec-codes
+    private function makeTokenChargeDataPacket(string $payaToken, object $paymentInfo, string $amount, string $terminalId): string
     {
         $dom = new DOMDocument('1.0', 'ISO-8859-1');
         $dom->formatOutput = true;
@@ -176,9 +179,6 @@ class PayaSandboxChargeService
 
         $check = $dom->createElement('CHECK');
         $check->appendChild($dom->createElement('CHECK_AMOUNT', $amount));
-        if ($secCode !== null) {
-            $check->appendChild($dom->createElement('SEC_CODE', $secCode));
-        }
         $packet->appendChild($check);
 
         $transaction->appendChild($packet);
@@ -210,7 +210,7 @@ class PayaSandboxChargeService
         return $client;
     }
 
-    private function makeDataPacket(object $paymentInfo, string $amount, string $terminalId, ?string $secCode = null): string
+    private function makeDataPacket(object $paymentInfo, string $amount, string $terminalId): string
     {
         $dom = new DOMDocument('1.0', 'ISO-8859-1');
         $dom->formatOutput = true;
@@ -261,26 +261,12 @@ class PayaSandboxChargeService
 
         $check = $dom->createElement('CHECK');
         $check->appendChild($dom->createElement('CHECK_AMOUNT', $amount));
-        if ($secCode !== null) {
-            $check->appendChild($dom->createElement('SEC_CODE', $secCode));
-        }
         $packet->appendChild($check);
 
         $transaction->appendChild($packet);
         $auth->appendChild($transaction);
 
         return $dom->saveXML($auth);
-    }
-
-    /**
-     * SEC code the payer chose on the checkout page, or null when none was given
-     * (refunds, PMS-sourced bank details), in which case SEC_CODE is omitted.
-     */
-    private function secCode(ChargeRequest $request): ?string
-    {
-        $secCode = strtoupper(trim((string) ($request->billing['ach_sec_code'] ?? '')));
-
-        return in_array($secCode, ['PPD', 'CCD'], true) ? $secCode : null;
     }
 
     private function isCertified(string $xml): bool
