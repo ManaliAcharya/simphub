@@ -491,11 +491,6 @@ class PaymentCheckoutService
                     ];
                 }
             }
-
-            // SEC code the payer picked on the checkout page (PPD = personal, CCD = business).
-            if (in_array($extraBilling['ach_sec_code'] ?? null, ['PPD', 'CCD'], true)) {
-                $billing['ach_sec_code'] = $extraBilling['ach_sec_code'];
-            }
         } elseif ($cardholderFirstName && $cardholderLastName) {
             // Card gateways (FluidPay/NMI): pass the cardholder name (+ optional billing
             // address) through to the processor so the sale is fully processed.
