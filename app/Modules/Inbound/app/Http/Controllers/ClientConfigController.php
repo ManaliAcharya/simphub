@@ -20,6 +20,7 @@ use Modules\Inbound\Models\EmailConfiguration;
 use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Services\SubscriptionService;
 use Modules\Inbound\Services\ZohoRegionResolver;
+use Modules\Payment\Services\QbFeeOverride;
 use Modules\Routing\Models\RoutingRule;
 use Modules\Routing\Models\TerminalConfiguration;
 use Modules\Auth\Models\ClientAccount;
@@ -551,6 +552,7 @@ class ClientConfigController extends Controller
         $validated = $request->validate([
             'qb_fee_override_enabled' => ['nullable', 'boolean'],
             'qb_fee_override_field'   => ['nullable', 'string', 'max:100'],
+            'qb_fee_override_blank_default' => ['nullable', Rule::in([QbFeeOverride::BLANK_ABSORB, QbFeeOverride::BLANK_PASS])],
             'qb_multi_mid_enabled'    => ['nullable', 'boolean'],
             'ready_to_send_enabled'   => ['nullable', 'boolean'],
         ]);
@@ -560,7 +562,18 @@ class ClientConfigController extends Controller
             'qb_fee_override_field'   => $validated['qb_fee_override_field'] ?? 'Cash Discount',
             'qb_multi_mid_enabled'    => (bool) ($validated['qb_multi_mid_enabled'] ?? false),
             'ready_to_send_enabled'   => (bool) ($validated['ready_to_send_enabled'] ?? false),
+            // Only the override form sends this; other forms posting here leave it as it is.
+            ...(isset($validated['qb_fee_override_blank_default'])
+                ? ['qb_fee_override_blank_default' => $validated['qb_fee_override_blank_default']]
+                : []),
         ]);
+
+        if ($client->wasChanged('qb_fee_override_blank_default')) {
+            AuditLogger::log('QB_FEE_OVERRIDE_BLANK_DEFAULT_CHANGED', 'client', (string) $client->id, [
+                'pms_client_id' => $client->pms_client_id,
+                'blank_default' => $client->qb_fee_override_blank_default,
+            ]);
+        }
 
         return redirect()->back()->with('success', 'QuickBooks settings saved.');
     }
