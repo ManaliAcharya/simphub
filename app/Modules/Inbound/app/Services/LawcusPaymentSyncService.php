@@ -22,6 +22,7 @@ class LawcusPaymentSyncService
 {
     public function __construct(
         private readonly LawcusApiClient $api,
+        private readonly LawcusMatterActivityService $matterActivity,
     ) {}
 
     /**
@@ -99,6 +100,9 @@ class LawcusPaymentSyncService
                 'amount'              => $amount,
             ]);
 
+            // Only logged when the payment is newly recorded, so retries don't repeat it.
+            $this->matterActivity->logPaymentRecorded($transaction, $invoice, $amount, $this->destinationAccountName($client, $invoice));
+
             return true;
         } catch (Throwable $exception) {
             $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
@@ -138,6 +142,15 @@ class LawcusPaymentSyncService
         }
 
         return $accountId;
+    }
+
+    private function destinationAccountName(Client $client, Invoice $invoice): string
+    {
+        $name = $invoice->fund_type === 'TRUST'
+            ? trim((string) $client->lawcus_trust_bank_account_name)
+            : trim((string) $client->lawcus_default_bank_account_name);
+
+        return $name !== '' ? $name : ($invoice->fund_type === 'TRUST' ? 'Trust' : 'Operating');
     }
 
     /**

@@ -24,6 +24,7 @@ class LawcusInvoiceIngestionService
         private readonly LawcusOAuthService $oauth,
         private readonly PaymentSessionService $paymentSessions,
         private readonly PaymentLinkService $paymentLinks,
+        private readonly LawcusMatterActivityService $matterActivity,
     ) {}
 
     public function ingest(string $externalInvoiceId, array $triggerPayload = []): array
@@ -126,6 +127,8 @@ class LawcusInvoiceIngestionService
                 'emails_sent'      => $emailsSent,
                 'recipient_emails' => $recipientEmails,
             ]);
+
+            $this->matterActivity->logInvoiceSent($result['invoice'], $recipientEmails);
         }
 
         $result['emails_sent'] = $emailsSent;
