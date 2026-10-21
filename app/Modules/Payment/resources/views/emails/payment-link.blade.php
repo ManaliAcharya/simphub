@@ -17,7 +17,7 @@
             @endif
 
             @if(!empty($bodyHeader))
-            <div style="margin-bottom: 20px; color: #374151; font-size: 14px;">{{ $bodyHeader }}</div>
+            <div style="margin-bottom: 20px; color: #374151; font-size: 14px;">{!! nl2br(e($bodyHeader)) !!}</div>
             @endif
 
             <h2 style="color: #14213d; margin: 0 0 16px; font-size: 20px;">Invoice ready for payment</h2>
@@ -53,7 +53,7 @@
             <p style="color: #6b7280; font-size: 12px; margin: 0 0 16px;">If the button does not work, copy this link into your browser:<br>{{ $paymentUrl }}</p>
 
             @if(!empty($bodyFooter))
-            <div style="margin-top: 20px; color: #6b7280; font-size: 13px; border-top: 1px solid #e5e7eb; padding-top: 16px;">{{ $bodyFooter }}</div>
+            <div style="margin-top: 20px; color: #6b7280; font-size: 13px; border-top: 1px solid #e5e7eb; padding-top: 16px;">{!! nl2br(e($bodyFooter)) !!}</div>
             @endif
 
             @if(!empty($merchantName))
