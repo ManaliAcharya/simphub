@@ -9,15 +9,17 @@ use Tests\TestCase;
 
 class MerchantNotificationLawcusMatterTest extends TestCase
 {
-    private function render(string $pmsSource, ?string $matterId): string
+    private const MATTER_UUID = '34b58a90-b8be-11f1-9433-6583f0484da9';
+
+    private function render(string $pmsSource, array $invoiceData): string
     {
         $invoice = (new Invoice)->forceFill([
-            'pms_source'         => $pmsSource,
-            'invoice_number'     => '123',
-            'external_matter_id' => $matterId,
-            'amount_cents'       => 90000,
-            'currency'           => 'USD',
-            'customer'           => ['name' => 'Test Client', 'email' => 'client@example.com'],
+            'pms_source'     => $pmsSource,
+            'invoice_number' => '123',
+            'amount_cents'   => 90000,
+            'currency'       => 'USD',
+            'customer'       => ['name' => 'Test Client', 'email' => 'client@example.com'],
+            'raw_payload'    => ['invoice' => ['data' => $invoiceData]],
         ]);
 
         $transaction = (new Transaction)->forceFill([
@@ -29,31 +31,32 @@ class MerchantNotificationLawcusMatterTest extends TestCase
         return (new MerchantPaymentNotificationMail($transaction, $invoice))->render();
     }
 
-    public function test_lawcus_invoice_links_to_its_matter(): void
+    public function test_lawcus_invoice_links_to_its_matter_by_uuid(): void
     {
-        config(['services.lawcus.matter_url' => 'https://app.lawcus.com/matters/{matter_id}']);
-
-        $html = $this->render('lawcus', '218149');
+        $html = $this->render('lawcus', ['matter_id' => 1949408, 'matter_uuid' => self::MATTER_UUID]);
 
         $this->assertStringContainsString('Open matter in Lawcus', $html);
-        $this->assertStringContainsString('https://app.lawcus.com/matters/218149', $html);
+        $this->assertStringContainsString('https://app.lawcus.com/matter/'.self::MATTER_UUID, $html);
     }
 
-    public function test_no_button_without_a_configured_url_or_a_matter(): void
+    public function test_falls_back_to_the_embedded_matter_uuid(): void
     {
-        config(['services.lawcus.matter_url' => null]);
-        $this->assertStringNotContainsString('Open matter in Lawcus', $this->render('lawcus', '218149'));
+        $html = $this->render('lawcus', ['matter' => ['id' => 1949408, 'uuid' => self::MATTER_UUID]]);
 
-        config(['services.lawcus.matter_url' => 'https://app.lawcus.com/matters/{matter_id}']);
-        $this->assertStringNotContainsString('Open matter in Lawcus', $this->render('lawcus', null));
+        $this->assertStringContainsString('https://app.lawcus.com/matter/'.self::MATTER_UUID, $html);
+    }
+
+    public function test_no_button_when_the_invoice_has_no_matter(): void
+    {
+        $this->assertStringNotContainsString('Open matter in Lawcus', $this->render('lawcus', []));
     }
 
     public function test_other_pms_emails_are_unchanged(): void
     {
-        config(['services.lawcus.matter_url' => 'https://app.lawcus.com/matters/{matter_id}']);
-
         foreach (['clio', 'quickbooks', 'zoho', 'wave', 'custom'] as $pms) {
-            $this->assertStringNotContainsString('Open matter in Lawcus', $this->render($pms, '218149'), $pms);
+            $html = $this->render($pms, ['matter_uuid' => self::MATTER_UUID]);
+
+            $this->assertStringNotContainsString('Open matter in Lawcus', $html, $pms);
         }
     }
 }

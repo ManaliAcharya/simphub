@@ -71,18 +71,26 @@ class MerchantPaymentNotificationMail extends Mailable
 
     /**
      * Lawcus invoices are always created from a matter, so the firm can jump straight
-     * to it. Null for every other PMS, or while LAWCUS_MATTER_URL isn't configured.
+     * to it. Matter pages are addressed by the matter's UUID, and app.lawcus.com opens
+     * them for any firm (it redirects to the firm's own subdomain). Null for every
+     * other PMS, or when the invoice carries no matter UUID.
      */
     private function lawcusMatterUrl(Invoice $invoice): ?string
     {
-        $template = trim((string) config('services.lawcus.matter_url'));
-        $matterId = trim((string) $invoice->external_matter_id);
-
-        if (strtolower((string) $invoice->pms_source) !== 'lawcus' || $template === '' || $matterId === '') {
+        if (strtolower((string) $invoice->pms_source) !== 'lawcus') {
             return null;
         }
 
-        return str_replace('{matter_id}', rawurlencode($matterId), $template);
+        $data       = (array) data_get($invoice->raw_payload, 'invoice.data', []);
+        $matterUuid = trim((string) (
+            $data['matter_uuid'] ?? $data['matteruuid'] ?? data_get($data, 'matter.uuid') ?? ''
+        ));
+
+        if ($matterUuid === '') {
+            return null;
+        }
+
+        return config('services.lawcus.base_url').'/matter/'.rawurlencode($matterUuid);
     }
 
     private function gatewayLabel(string $gateway): string
