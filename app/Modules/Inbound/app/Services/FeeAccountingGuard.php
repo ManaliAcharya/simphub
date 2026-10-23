@@ -10,8 +10,8 @@ use Modules\Inbound\Models\ClientMidRoute;
  * the payment sync can split it out: QuickBooks and Wave record the invoice amount
  * as the payment and post the fee to a surcharge income account, which needs the
  * surcharge split on, a surcharge account and a deposit account. Without them the
- * fee lands as an unapplied customer credit (or isn't recorded at all), so a client
- * on these PMSs can't charge fees until all three are set.
+ * fee lands as an unapplied customer credit (or isn't recorded at all), so the
+ * settings pages warn whenever a client charges fees without all three.
  *
  * Zoho, Clio, AdvancedMD and Lawcus have no fee account setting, so there's
  * nothing to require for them.
@@ -93,9 +93,9 @@ class FeeAccountingGuard
     {
         $pms = strtoupper((string) $client->client_pms) === 'WAVE' ? 'Wave' : 'QuickBooks';
 
-        return "Fees can't be charged until the {$pms} integration has "
+        return "Surcharge fees won't be synced to {$pms} correctly: the {$pms} integration needs "
             .$this->join($missing)
-            .". Without them the fee is booked to the customer's balance instead of fee income.";
+            .". Until then each fee is recorded with the invoice payment (a customer credit) instead of as fee income.";
     }
 
     /**
