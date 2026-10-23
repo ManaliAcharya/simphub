@@ -516,18 +516,6 @@ class ClientConfigController extends Controller
                     ->withErrors(['cc_fee_percent' => 'When processing fee is enabled, at least one gateway fee must be greater than 0.'])
                     ->withInput();
             }
-
-            $feeGuard = app(FeeAccountingGuard::class);
-            $missing  = $feeGuard->missingSettings($client, [
-                'fee_surcharge_enabled' => true,
-                'cc_fee_percent'        => $ccFee,
-                'ach_fee_percent'       => $achFee,
-            ]);
-            if ($missing !== []) {
-                return redirect()->back()
-                    ->withErrors(['cc_fee_percent' => $feeGuard->message($client, $missing)])
-                    ->withInput();
-            }
         }
 
         $cashDetails = null;
@@ -555,7 +543,22 @@ class ClientConfigController extends Controller
             'cash_discount_details'  => !empty($cashDetails) ? $cashDetails : null,
         ]);
 
-        return redirect()->back()->with('success', 'Processing fee configuration saved.');
+        return $this->withFeeSyncWarning(
+            redirect()->back()->with('success', 'Processing fee configuration saved.'),
+            $client,
+        );
+    }
+
+    /**
+     * Fees are saved regardless, but when the PMS can't book them to a surcharge income
+     * account (QuickBooks/Wave surcharge setup incomplete) the merchant is warned.
+     */
+    private function withFeeSyncWarning(RedirectResponse $response, Client $client): RedirectResponse
+    {
+        $feeGuard = app(FeeAccountingGuard::class);
+        $missing  = $feeGuard->missingSettings($client->fresh());
+
+        return $missing === [] ? $response : $response->with('warning', $feeGuard->message($client, $missing));
     }
 
     public function updateQbSettings(Request $request, string $pmsClientId): RedirectResponse
@@ -569,19 +572,6 @@ class ClientConfigController extends Controller
             'qb_multi_mid_enabled'    => ['nullable', 'boolean'],
             'ready_to_send_enabled'   => ['nullable', 'boolean'],
         ]);
-
-        // Turning Multi-MID on activates any saved Fees On rate. Only that is checked here
-        // (other forms post to this action too), so unrelated settings still save.
-        if (! $client->qb_multi_mid_enabled && ($validated['qb_multi_mid_enabled'] ?? false)) {
-            $feeGuard = app(FeeAccountingGuard::class);
-            $missing  = $feeGuard->missingSettings($client, [
-                'fee_surcharge_enabled' => false,
-                'qb_multi_mid_enabled'  => true,
-            ]);
-            if ($missing !== []) {
-                return redirect()->back()->withInput()->with('error', $feeGuard->message($client, $missing));
-            }
-        }
 
         $client->update([
             'qb_fee_override_enabled' => (bool) ($validated['qb_fee_override_enabled'] ?? false),
@@ -601,7 +591,10 @@ class ClientConfigController extends Controller
             ]);
         }
 
-        return redirect()->back()->with('success', 'QuickBooks settings saved.');
+        return $this->withFeeSyncWarning(
+            redirect()->back()->with('success', 'QuickBooks settings saved.'),
+            $client,
+        );
     }
 
     public function updateReminderSettings(Request $request, string $pmsClientId): RedirectResponse
@@ -763,24 +756,6 @@ class ClientConfigController extends Controller
     public function saveMidRoutes(Request $request, string $pmsClientId): RedirectResponse
     {
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
-
-        // A Fees On route with a rate adds a fee, which QuickBooks can only book correctly
-        // once the surcharge accounts are set — checked before anything is saved.
-        $submittedRoutes = (array) $request->input('routes', []);
-        $feeGuard        = app(FeeAccountingGuard::class);
-        $missing         = $feeGuard->missingSettings($client, [
-            // Only the Multi-MID fee is this form's to check.
-            'fee_surcharge_enabled' => false,
-            'qb_multi_mid_enabled'  => $request->boolean('qb_multi_mid_enabled'),
-            ...($submittedRoutes === [] ? [] : ['has_mid_route_fee' => collect($submittedRoutes)->contains(
-                fn ($route) => empty($route['remove'])
-                    && ($route['route_type'] ?? '') === 'fees_on'
-                    && (float) ($route['rate_percent'] ?? 0) > 0
-            )]),
-        ]);
-        if ($missing !== []) {
-            return redirect()->back()->withInput()->with('error', $feeGuard->message($client, $missing));
-        }
 
         // Save the toggle flag immediately — independent of route validation
         $client->update([
@@ -948,7 +923,7 @@ class ClientConfigController extends Controller
             $successMessage .= ' ' . $missingProcessorIdWarning;
         }
 
-        return redirect()->back()->with('success', $successMessage);
+        return $this->withFeeSyncWarning(redirect()->back()->with('success', $successMessage), $client);
     }
 
     public function uploadLogo(Request $request, string $pmsClientId): RedirectResponse

@@ -92,8 +92,8 @@ class FeeAccountingGuardTest extends TestCase
         $client = $this->client('QUICKBOOKS');
 
         $this->assertSame(
-            "Fees can't be charged until the QuickBooks integration has a surcharge income account and a deposit account. "
-            ."Without them the fee is booked to the customer's balance instead of fee income.",
+            "Surcharge fees won't be synced to QuickBooks correctly: the QuickBooks integration needs a surcharge income account and a deposit account. "
+            .'Until then each fee is recorded with the invoice payment (a customer credit) instead of as fee income.',
             (new FeeAccountingGuard)->message($client, ['a surcharge income account', 'a deposit account']),
         );
     }

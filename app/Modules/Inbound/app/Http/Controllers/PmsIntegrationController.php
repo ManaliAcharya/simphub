@@ -409,13 +409,12 @@ class PmsIntegrationController extends Controller
 
         abort_unless(strtoupper((string) $client->client_pms) === 'WAVE', 422, 'Surcharge toggle is only for Wave clients.');
 
-        if (! $validated['wave_surcharge_enabled'] && app(FeeAccountingGuard::class)->chargesFees($client)) {
-            return redirect()->back()->with('error', 'The surcharge split can\'t be turned off while this client charges a processing fee — the fee would be booked to the customer\'s balance. Turn the fee off first.');
-        }
-
         $client->forceFill(['wave_surcharge_enabled' => (bool) $validated['wave_surcharge_enabled']])->save();
 
-        return redirect()->back()->with('success', 'Surcharge split ' . ($validated['wave_surcharge_enabled'] ? 'enabled' : 'disabled') . '.');
+        return $this->withFeeSyncWarning(
+            redirect()->back()->with('success', 'Surcharge split ' . ($validated['wave_surcharge_enabled'] ? 'enabled' : 'disabled') . '.'),
+            $client,
+        );
     }
 
     public function saveWaveSurchargeAccount(
@@ -472,13 +471,24 @@ class PmsIntegrationController extends Controller
 
         abort_unless(strtoupper((string) $client->client_pms) === 'QUICKBOOKS', 422, 'Surcharge toggle is only for QuickBooks clients.');
 
-        if (! $validated['qb_surcharge_enabled'] && app(FeeAccountingGuard::class)->chargesFees($client)) {
-            return redirect()->back()->with('error', 'The surcharge split can\'t be turned off while this client charges a processing fee — the fee would be booked to the customer\'s balance. Turn the fee off first.');
-        }
-
         $client->forceFill(['qb_surcharge_enabled' => (bool) $validated['qb_surcharge_enabled']])->save();
 
-        return redirect()->back()->with('success', 'Surcharge split ' . ($validated['qb_surcharge_enabled'] ? 'enabled' : 'disabled') . '.');
+        return $this->withFeeSyncWarning(
+            redirect()->back()->with('success', 'Surcharge split ' . ($validated['qb_surcharge_enabled'] ? 'enabled' : 'disabled') . '.'),
+            $client,
+        );
+    }
+
+    /**
+     * Fees are allowed regardless, but when this client charges them without the full
+     * QuickBooks/Wave surcharge setup the merchant is warned that they won't sync correctly.
+     */
+    private function withFeeSyncWarning(RedirectResponse $response, Client $client): RedirectResponse
+    {
+        $feeGuard = app(FeeAccountingGuard::class);
+        $missing  = $feeGuard->missingSettings($client->fresh());
+
+        return $missing === [] ? $response : $response->with('warning', $feeGuard->message($client, $missing));
     }
 
     public function saveQbPdfMode(Request $request): RedirectResponse
