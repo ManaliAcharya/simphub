@@ -29,12 +29,6 @@ use Throwable;
  */
 class InvoicePdfService
 {
-    /**
-     * Bump when a fix changes what data the PDF shows (line items, dates…): saved PDFs
-     * are then regenerated on their next send. Branding changes don't bump it.
-     */
-    private const DATA_VERSION = 2;
-
     public function __construct(
         private readonly ClioApiClient $clioApi,
         private readonly ClioOAuthService $clioOAuth,
@@ -45,46 +39,9 @@ class InvoicePdfService
     ) {}
 
     /**
-     * The PDF is generated once per invoice and reused for every later send (resends,
-     * reminders), so branding or settings changes apply to new invoices only. It's
-     * regenerated only when the invoice itself changes (number, amount, line items) or
-     * its payment link does — an attachment never shows outdated figures.
+     * Generated at send time from the invoice's current data — nothing is stored.
      */
     public function generate(Invoice $invoice, string $paymentUrl): ?string
-    {
-        $disk = Storage::disk('local');
-        $dir  = 'invoice-pdfs/'.$invoice->id;
-        $path = $dir.'/'.$this->contentFingerprint($invoice, $paymentUrl).'.pdf';
-
-        if ($disk->exists($path)) {
-            return $disk->get($path);
-        }
-
-        $pdf = $this->render($invoice, $paymentUrl);
-
-        if ($pdf !== null) {
-            $disk->deleteDirectory($dir); // an earlier version, from before the invoice changed
-            $disk->put($path, $pdf);
-        }
-
-        return $pdf;
-    }
-
-    private function contentFingerprint(Invoice $invoice, string $paymentUrl): string
-    {
-        $payload = (array) $invoice->raw_payload;
-
-        return sha1((string) json_encode([
-            self::DATA_VERSION,
-            $invoice->invoice_number,
-            $invoice->amount_cents,
-            $invoice->currency,
-            $payload['invoice'] ?? $payload,
-            $paymentUrl,
-        ]));
-    }
-
-    private function render(Invoice $invoice, string $paymentUrl): ?string
     {
         try {
             $client = $invoice->pms_client_id
