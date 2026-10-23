@@ -73,6 +73,8 @@ class SyncInvoicePaidListener
             'advancedmd' => $this->syncToAdvancedMd($transaction, $invoice, $client),
             default      => null,
         };
+
+        $this->recordFeeSyncWithoutSplitSupport($transaction, $invoice);
     }
 
     private function syncToZoho(Transaction $transaction, mixed $invoice, mixed $client): void
@@ -288,6 +290,10 @@ class SyncInvoicePaidListener
                     'qb_journalentry_id' => $qbJournalEntryId !== null && $qbJournalEntryId !== '' ? $qbJournalEntryId : null,
                 ])->save();
 
+                $hasDepositAccount
+                    ? $this->recordFeeSync($transaction, $invoice, $feeCents, 'quickbooks', Transaction::FEE_SPLIT)
+                    : $this->recordFeeSync($transaction, $invoice, $feeCents, 'quickbooks', Transaction::FEE_NOT_RECORDED, 'no deposit account: fee not recorded');
+
                 AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
                     'pms_source'           => 'quickbooks',
                     'transaction_id'       => $transaction->id,
@@ -334,6 +340,8 @@ class SyncInvoicePaidListener
             $transaction->forceFill([
                 'qb_payment_id' => $qbPaymentId !== '' ? $qbPaymentId : null,
             ])->save();
+
+            $this->recordFeeSync($transaction, $invoice, $feeCents, 'quickbooks', Transaction::FEE_NOT_SPLIT, 'no surcharge account: fee booked as customer credit');
 
             AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
                 'pms_source'          => 'quickbooks',
@@ -433,6 +441,10 @@ class SyncInvoicePaidListener
 
                 $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
 
+                $clientAccountId !== null
+                    ? $this->recordFeeSync($transaction, $invoice, $feeCents, 'wave', Transaction::FEE_SPLIT)
+                    : $this->recordFeeSync($transaction, $invoice, $feeCents, 'wave', Transaction::FEE_NOT_RECORDED, 'no deposit account: fee not recorded');
+
                 AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
                     'pms_source'           => 'wave',
                     'transaction_id'       => $transaction->id,
@@ -464,6 +476,8 @@ class SyncInvoicePaidListener
             );
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
+
+            $this->recordFeeSync($transaction, $invoice, $feeCents, 'wave', Transaction::FEE_NOT_SPLIT, 'no surcharge account: fee recorded as part of the invoice payment');
 
             AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
                 'pms_source'          => 'wave',
@@ -501,6 +515,59 @@ class SyncInvoicePaidListener
             'fluidpay' => 'Credit Card',
             default    => 'Credit Card',
         };
+    }
+
+    /**
+     * Records where the fee ended up in the PMS once the payment is recorded there, so
+     * fees that weren't split out to a surcharge income account can be found and fixed
+     * later (`php artisan fees:unsynced`). No-op when no fee was charged.
+     */
+    private function recordFeeSync(Transaction $transaction, mixed $invoice, int $feeCents, string $pmsSource, string $status, ?string $reason = null): void
+    {
+        if ($feeCents <= 0) {
+            return;
+        }
+
+        $transaction->forceFill(['fee_sync_status' => $status])->save();
+
+        if ($status === Transaction::FEE_SPLIT) {
+            return;
+        }
+
+        AuditLogger::log('PMS_FEE_NOT_SPLIT', 'invoice', $invoice->id, [
+            'pms_source'      => $pmsSource,
+            'transaction_id'  => $transaction->id,
+            'gateway_txn_id'  => $transaction->gateway_txn_id,
+            'fee_amount'      => round($feeCents / 100, 2),
+            'fee_sync_status' => $status,
+            'reason'          => $reason,
+        ]);
+    }
+
+    /**
+     * PMSs with no fee account setting (Zoho, Zoho CRM, Clio, AdvancedMD record the
+     * full amount; Lawcus only the invoice portion) — tracked once the payment is in.
+     */
+    private function recordFeeSyncWithoutSplitSupport(Transaction $transaction, mixed $invoice): void
+    {
+        $invoice = $invoice->fresh();
+        $pms     = strtolower((string) $invoice->pms_source);
+
+        if (in_array($pms, ['quickbooks', 'wave'], true)
+            || $invoice->pms_sync_status !== 'SYNCED'
+            || $transaction->fresh()->fee_sync_status !== null) {
+            return;
+        }
+
+        $feeCents = (int) ($transaction->fee_cents ?? 0);
+
+        if ($feeCents === 0 && (int) $transaction->amount_cents > (int) $invoice->amount_cents) {
+            $feeCents = (int) $transaction->amount_cents - (int) $invoice->amount_cents;
+        }
+
+        $pms === 'lawcus'
+            ? $this->recordFeeSync($transaction, $invoice, $feeCents, $pms, Transaction::FEE_NOT_RECORDED, 'Lawcus records only the invoice amount')
+            : $this->recordFeeSync($transaction, $invoice, $feeCents, $pms, Transaction::FEE_NOT_SPLIT, 'no fee account setting for this PMS: fee recorded as part of the payment');
     }
 
     private function wavePaymentMethod(string $gateway): string
