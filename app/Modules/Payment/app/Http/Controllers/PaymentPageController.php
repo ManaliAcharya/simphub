@@ -62,10 +62,9 @@ class PaymentPageController extends Controller
 
         if ($isQuickBooksInvoice) {
             if (! $client->qb_fee_override_enabled) {
-                // Per-Invoice Fee Override is off → never show/apply a fee for QuickBooks
-                // invoices, on any gateway/payment method, regardless of Processing Fee
-                // Configuration.
-                $feeEnabled = false;
+                // Per-Invoice Fee Override is off → Processing Fee Configuration applies to every
+                // QuickBooks invoice, as for any other PMS ($feeEnabled already holds it).
+                $feeEnabled = (bool) $client->fee_surcharge_enabled;
             } else {
                 // Override is ON → the per-invoice field decides directly: "Yes" passes the fee,
                 // "No" or a typo absorbs it, and a blank field follows the merchant's default

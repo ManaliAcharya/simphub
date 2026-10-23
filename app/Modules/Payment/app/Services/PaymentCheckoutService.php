@@ -303,9 +303,9 @@ class PaymentCheckoutService
 
         if ($feeClient && $isQuickBooksInvoice) {
             if (! $feeClient->qb_fee_override_enabled) {
-                // Per-Invoice Fee Override is off → never charge a fee on QuickBooks invoices,
-                // on any gateway/payment method, regardless of Processing Fee Configuration.
-                $applyFee = false;
+                // Per-Invoice Fee Override is off → Processing Fee Configuration applies to every
+                // QuickBooks invoice, as for any other PMS.
+                $applyFee = (bool) $feeClient->fee_surcharge_enabled;
             } else {
                 // Override is ON → the per-invoice field decides directly, via the standard
                 // cc/ach percentages below: "Yes" passes the fee, "No" or a typo absorbs it, and a
@@ -707,7 +707,7 @@ class PaymentCheckoutService
 
         if ($isQuickBooksInvoice) {
             if (! $feeClient->qb_fee_override_enabled) {
-                $applyFee = false;
+                $applyFee = (bool) $feeClient->fee_surcharge_enabled;
             } else {
                 $applyFee = QbFeeOverride::passesFee($feeClient, $invoice);
             }
