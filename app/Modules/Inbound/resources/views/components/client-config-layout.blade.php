@@ -371,12 +371,6 @@ $activeTab — default active tab id (first tab if not set)
         border: 1px solid #fecaca;
     }
 
-    .cc-notice.warning {
-        background: #fffbeb;
-        color: #92400e;
-        border: 1px solid #fde68a;
-    }
-
     @media(max-width:640px) {
         .cc-topnav {
             padding: 0 16px;
@@ -726,9 +720,6 @@ $activeTab — default active tab id (first tab if not set)
         @endif
         @if (session('error') || (isset($error) && $error))
             <div class="cc-notice error">{{ session('error') ?? $error }}</div>
-        @endif
-        @if (session('warning'))
-            <div class="cc-notice warning" role="status">&#9888; {{ session('warning') }}</div>
         @endif
         {{-- ── Tab bar ── --}}
         <div class="cc-tabs" role="tablist">
