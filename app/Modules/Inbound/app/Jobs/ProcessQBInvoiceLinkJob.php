@@ -215,6 +215,11 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         // the sole writer of the invoice's stored amount_cents.
         $invoice->amount_cents = (int) round($liveBalance * 100);
 
+        // Same for everything else the generated PDF shows (line items, dates, addresses,
+        // memo): the stored payload can still be the previous version of the invoice, so
+        // give it the live QuickBooks invoice — also in-memory only.
+        $invoice->raw_payload = array_merge((array) $invoice->raw_payload, ['invoice' => $liveData]);
+
         // If this session has never actually sent yet (e.g. its first real "Yes" only
         // happened on this later edit, having been gated blank on the initial sync),
         // route through sendInvoiceLinkOnce so first_email_sent_at/reminders get seeded

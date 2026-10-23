@@ -29,6 +29,12 @@ use Throwable;
  */
 class InvoicePdfService
 {
+    /**
+     * Bump when a fix changes what data the PDF shows (line items, dates…): saved PDFs
+     * are then regenerated on their next send. Branding changes don't bump it.
+     */
+    private const DATA_VERSION = 2;
+
     public function __construct(
         private readonly ClioApiClient $clioApi,
         private readonly ClioOAuthService $clioOAuth,
@@ -69,6 +75,7 @@ class InvoicePdfService
         $payload = (array) $invoice->raw_payload;
 
         return sha1((string) json_encode([
+            self::DATA_VERSION,
             $invoice->invoice_number,
             $invoice->amount_cents,
             $invoice->currency,
@@ -111,7 +118,7 @@ class InvoicePdfService
                 'customerAddress'  => $this->resolveBillingAddress($invoice),
                 'shippingAddress'  => $this->resolveShippingAddress($invoice),
                 'invoiceNumber'    => (string) ($invoice->invoice_number ?? $invoice->external_invoice_id ?? ''),
-                'issueDate'        => $invoice->created_at?->format('F j, Y'),
+                'issueDate'        => $this->resolveIssueDate($invoice),
                 'dueDate'          => $this->resolveDueDate($invoice),
                 'terms'            => $this->resolveTerms($invoice),
                 'customerMemo'     => $this->resolveCustomerMemo($invoice),
@@ -187,6 +194,14 @@ class InvoicePdfService
 
         $qbLines = Arr::get($raw, 'invoice.Invoice.Line');
         if (is_array($qbLines)) {
+            // Bundles (GroupLineDetail) carry their items in GroupLineDetail.Line — list
+            // those items rather than dropping the bundle.
+            $qbLines = collect($qbLines)
+                ->flatMap(fn ($line) => ($line['DetailType'] ?? null) === 'GroupLineDetail'
+                    ? (array) Arr::get($line, 'GroupLineDetail.Line', [])
+                    : [$line])
+                ->all();
+
             $items = [];
             foreach ($qbLines as $line) {
                 if (($line['DetailType'] ?? null) !== 'SalesItemLineDetail') {
@@ -359,6 +374,31 @@ class InvoicePdfService
 
             return [];
         }
+    }
+
+    /**
+     * The invoice's own date from the PMS (QuickBooks TxnDate etc.); the date SimpHub
+     * received it is only a fallback — it can be later than the due date.
+     */
+    private function resolveIssueDate(Invoice $invoice): ?string
+    {
+        $raw = $invoice->raw_payload ?? [];
+
+        $issueDate = Arr::get($raw, 'invoice.Invoice.TxnDate')
+            ?? Arr::get($raw, 'invoice.invoice.date')
+            ?? Arr::get($raw, 'invoice.data.issued_at')
+            ?? Arr::get($raw, 'invoice.data.issue_date')
+            ?? Arr::get($raw, 'invoice.data.invoiceDate');
+
+        if (is_string($issueDate) && trim($issueDate) !== '') {
+            try {
+                return Carbon::parse($issueDate)->format('F j, Y');
+            } catch (Throwable) {
+                return $issueDate;
+            }
+        }
+
+        return $invoice->created_at?->format('F j, Y');
     }
 
     private function resolveDueDate(Invoice $invoice): ?string
