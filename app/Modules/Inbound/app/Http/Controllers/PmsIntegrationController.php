@@ -17,7 +17,6 @@ use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
-use Modules\Inbound\Services\FeeAccountingGuard;
 use Modules\Inbound\Services\LawcusApiClient;
 use Modules\Inbound\Services\LawcusOAuthService;
 use Modules\Inbound\Services\PmsConnectorRegistry;
@@ -411,10 +410,7 @@ class PmsIntegrationController extends Controller
 
         $client->forceFill(['wave_surcharge_enabled' => (bool) $validated['wave_surcharge_enabled']])->save();
 
-        return $this->withFeeSyncWarning(
-            redirect()->back()->with('success', 'Surcharge split ' . ($validated['wave_surcharge_enabled'] ? 'enabled' : 'disabled') . '.'),
-            $client,
-        );
+        return redirect()->back()->with('success', 'Surcharge split ' . ($validated['wave_surcharge_enabled'] ? 'enabled' : 'disabled') . '.');
     }
 
     public function saveWaveSurchargeAccount(
@@ -473,22 +469,7 @@ class PmsIntegrationController extends Controller
 
         $client->forceFill(['qb_surcharge_enabled' => (bool) $validated['qb_surcharge_enabled']])->save();
 
-        return $this->withFeeSyncWarning(
-            redirect()->back()->with('success', 'Surcharge split ' . ($validated['qb_surcharge_enabled'] ? 'enabled' : 'disabled') . '.'),
-            $client,
-        );
-    }
-
-    /**
-     * Fees are allowed regardless, but when this client charges them without the full
-     * QuickBooks/Wave surcharge setup the merchant is warned that they won't sync correctly.
-     */
-    private function withFeeSyncWarning(RedirectResponse $response, Client $client): RedirectResponse
-    {
-        $feeGuard = app(FeeAccountingGuard::class);
-        $missing  = $feeGuard->missingSettings($client->fresh());
-
-        return $missing === [] ? $response : $response->with('warning', $feeGuard->message($client, $missing));
+        return redirect()->back()->with('success', 'Surcharge split ' . ($validated['qb_surcharge_enabled'] ? 'enabled' : 'disabled') . '.');
     }
 
     public function saveQbPdfMode(Request $request): RedirectResponse

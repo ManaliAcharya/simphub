@@ -18,7 +18,6 @@ use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClientMidRoute;
 use Modules\Inbound\Models\EmailConfiguration;
 use Modules\Inbound\Models\PmsConnection;
-use Modules\Inbound\Services\FeeAccountingGuard;
 use Modules\Inbound\Services\SubscriptionService;
 use Modules\Inbound\Services\ZohoRegionResolver;
 use Modules\Payment\Services\QbFeeOverride;
@@ -543,22 +542,7 @@ class ClientConfigController extends Controller
             'cash_discount_details'  => !empty($cashDetails) ? $cashDetails : null,
         ]);
 
-        return $this->withFeeSyncWarning(
-            redirect()->back()->with('success', 'Processing fee configuration saved.'),
-            $client,
-        );
-    }
-
-    /**
-     * Fees are saved regardless, but when the PMS can't book them to a surcharge income
-     * account (QuickBooks/Wave surcharge setup incomplete) the merchant is warned.
-     */
-    private function withFeeSyncWarning(RedirectResponse $response, Client $client): RedirectResponse
-    {
-        $feeGuard = app(FeeAccountingGuard::class);
-        $missing  = $feeGuard->missingSettings($client->fresh());
-
-        return $missing === [] ? $response : $response->with('warning', $feeGuard->message($client, $missing));
+        return redirect()->back()->with('success', 'Processing fee configuration saved.');
     }
 
     public function updateQbSettings(Request $request, string $pmsClientId): RedirectResponse
@@ -591,10 +575,7 @@ class ClientConfigController extends Controller
             ]);
         }
 
-        return $this->withFeeSyncWarning(
-            redirect()->back()->with('success', 'QuickBooks settings saved.'),
-            $client,
-        );
+        return redirect()->back()->with('success', 'QuickBooks settings saved.');
     }
 
     public function updateReminderSettings(Request $request, string $pmsClientId): RedirectResponse
@@ -923,7 +904,7 @@ class ClientConfigController extends Controller
             $successMessage .= ' ' . $missingProcessorIdWarning;
         }
 
-        return $this->withFeeSyncWarning(redirect()->back()->with('success', $successMessage), $client);
+        return redirect()->back()->with('success', $successMessage);
     }
 
     public function uploadLogo(Request $request, string $pmsClientId): RedirectResponse

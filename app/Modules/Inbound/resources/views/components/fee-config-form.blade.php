@@ -22,20 +22,10 @@
     $cardGateways = array_values(array_filter($gateways, fn($g) => $g !== 'paya'));
 
     $ns = 'fcf-' . substr(md5($client->pms_client_id), 0, 6); // unique namespace per client
-
-    // QuickBooks/Wave only: fees are charged but can't be booked as fee income yet.
-    $feeGuard       = app(\Modules\Inbound\Services\FeeAccountingGuard::class);
-    $feeSyncMissing = $feeGuard->missingSettings($client);
 @endphp
 
 <form method="POST" action="{{ $formAction }}" id="{{ $ns }}-form">
     @csrf
-
-    @if ($feeSyncMissing !== [])
-        <div role="status" style="padding:10px 13px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;font-size:12.5px;color:#92400e;margin-bottom:14px;line-height:1.5;">
-            &#9888; {{ $feeGuard->message($client, $feeSyncMissing) }}
-        </div>
-    @endif
 
     {{-- ── Enable toggle ── --}}
     <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 13px;background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:12px;margin-bottom:14px;">
