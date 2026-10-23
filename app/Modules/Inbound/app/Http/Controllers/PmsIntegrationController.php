@@ -17,6 +17,7 @@ use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
+use Modules\Inbound\Services\FeeAccountingGuard;
 use Modules\Inbound\Services\LawcusApiClient;
 use Modules\Inbound\Services\LawcusOAuthService;
 use Modules\Inbound\Services\PmsConnectorRegistry;
@@ -408,6 +409,10 @@ class PmsIntegrationController extends Controller
 
         abort_unless(strtoupper((string) $client->client_pms) === 'WAVE', 422, 'Surcharge toggle is only for Wave clients.');
 
+        if (! $validated['wave_surcharge_enabled'] && app(FeeAccountingGuard::class)->chargesFees($client)) {
+            return redirect()->back()->with('error', 'The surcharge split can\'t be turned off while this client charges a processing fee — the fee would be booked to the customer\'s balance. Turn the fee off first.');
+        }
+
         $client->forceFill(['wave_surcharge_enabled' => (bool) $validated['wave_surcharge_enabled']])->save();
 
         return redirect()->back()->with('success', 'Surcharge split ' . ($validated['wave_surcharge_enabled'] ? 'enabled' : 'disabled') . '.');
@@ -466,6 +471,10 @@ class PmsIntegrationController extends Controller
             ->firstOrFail();
 
         abort_unless(strtoupper((string) $client->client_pms) === 'QUICKBOOKS', 422, 'Surcharge toggle is only for QuickBooks clients.');
+
+        if (! $validated['qb_surcharge_enabled'] && app(FeeAccountingGuard::class)->chargesFees($client)) {
+            return redirect()->back()->with('error', 'The surcharge split can\'t be turned off while this client charges a processing fee — the fee would be booked to the customer\'s balance. Turn the fee off first.');
+        }
 
         $client->forceFill(['qb_surcharge_enabled' => (bool) $validated['qb_surcharge_enabled']])->save();
 

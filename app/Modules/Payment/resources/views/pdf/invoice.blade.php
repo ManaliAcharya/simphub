@@ -3,14 +3,30 @@
 <head>
 <meta charset="utf-8">
 @php
-    $accentColor = $primaryColor ?: '#16243d';
+    // The client's brand colour (Email Settings) drives every accent, as on the email's
+    // pay button. Text on it switches to dark for light brand colours (e.g. yellow) so it
+    // keeps WCAG contrast — whichever of white / dark contrasts more.
+    $accentColor = preg_match('/^#[0-9a-fA-F]{6}$/', (string) $primaryColor) ? $primaryColor : '#16243d';
+    $luminance   = function (string $hex): float {
+        $channels = array_map(function (string $pair): float {
+            $c = hexdec($pair) / 255;
+
+            return $c <= 0.03928 ? $c / 12.92 : (($c + 0.055) / 1.055) ** 2.4;
+        }, str_split(ltrim($hex, '#'), 2));
+
+        return 0.2126 * $channels[0] + 0.7152 * $channels[1] + 0.0722 * $channels[2];
+    };
+    $accentLum      = $luminance($accentColor);
+    $contrastWhite  = 1.05 / ($accentLum + 0.05);
+    $contrastDark   = ($accentLum + 0.05) / ($luminance('#16243d') + 0.05);
+    $accentTextColor = $contrastWhite >= $contrastDark ? '#ffffff' : '#16243d';
 @endphp
 <style>
     body { font-family: Georgia, 'Times New Roman', serif; color: #1c2530; font-size: 13px; background: #ffffff; margin: 0; }
     .sheet { background: #ffffff; padding: 8px 12px; }
 
     .title { text-align: center; letter-spacing: 0.28em; font-size: 26px; color: #16243d; margin: 0; font-weight: bold; }
-    .title-rule { width: 60px; height: 3px; background: #2f8f7d; margin: 14px auto 10px; }
+    .title-rule { width: 60px; height: 3px; background: {{ $accentColor }}; margin: 14px auto 10px; }
     .doc-meta { text-align: center; margin-bottom: 26px; }
     .doc-meta div { font-size: 14px; color: #16243d; line-height: 1.7; }
 
@@ -21,7 +37,7 @@
     table.parties .detail { color: #5b6675; }
 
     table.items { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
-    table.items th { background: {{ $accentColor }}; color: #ffffff; text-align: left; font-family: Arial, sans-serif; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 9px 10px; font-weight: bold; }
+    table.items th { background: {{ $accentColor }}; color: {{ $accentTextColor }}; text-align: left; font-family: Arial, sans-serif; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; padding: 9px 10px; font-weight: bold; }
     table.items th.num { text-align: right; }
     table.items td { padding: 9px 10px; font-size: 12.5px; border-bottom: 1px solid #e2e6ec; }
     table.items td.num { text-align: right; white-space: nowrap; }
@@ -33,9 +49,9 @@
     table.totals td.val { text-align: right; white-space: nowrap; width: 130px; }
     table.totals tr.grand td { border-top: 2px solid #16243d; font-size: 15px; font-weight: bold; color: #16243d; padding-top: 10px; }
 
-    .payblock { margin-top: 24px; border: 1px solid #e2e6ec; border-top: 3px solid #2f8f7d; text-align: center; padding: 20px 16px; background: #fcfdfe; }
+    .payblock { margin-top: 24px; border: 1px solid #e2e6ec; border-top: 3px solid {{ $accentColor }}; text-align: center; padding: 20px 16px; background: #fcfdfe; }
     .payblock p { margin: 0 0 14px; color: #5b6675; font-size: 12px; }
-    .pay-button { display: inline-block; background: {{ $accentColor }}; color: #ffffff; text-decoration: none; font-family: Arial, sans-serif; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: bold; padding: 12px 26px; }
+    .pay-button { display: inline-block; background: {{ $accentColor }}; color: {{ $accentTextColor }}; text-decoration: none; font-family: Arial, sans-serif; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; font-weight: bold; padding: 12px 26px; }
     .pay-link { display: block; margin-top: 12px; font-size: 10px; color: #5b6675; }
 
     .notes { margin-top: 22px; font-size: 11.5px; color: #5b6675; line-height: 1.6; }

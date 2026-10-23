@@ -85,6 +85,15 @@
             &#10003;&nbsp; The invoice has been automatically marked as paid in {{ $pmsSource }}.
         </div>
 
+        @if($lawcusMatterUrl)
+        <div style="margin-top:14px;text-align:center;">
+            <a href="{{ $lawcusMatterUrl }}"
+               style="display:inline-block;padding:11px 22px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:13px;">
+                Open matter in Lawcus
+            </a>
+        </div>
+        @endif
+
     </div>
 
     {{-- Footer --}}

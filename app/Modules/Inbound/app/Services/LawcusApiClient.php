@@ -211,4 +211,18 @@ class LawcusApiClient
             ->throw()
             ->json();
     }
+
+    /**
+     * Adds an entry to a matter's communication log (POST /interactions — documented;
+     * there is no public notes endpoint). type is EMAIL, PHONE or SECURE_MESSAGE,
+     * type_in OUTBOUND or INBOUND, and participants a JSON-encoded list of
+     * {type, id} using the numeric contact id.
+     */
+    public function createInteraction(LawcusConnection $connection, array $interaction): array
+    {
+        return (array) $this->apiTokenRequest($connection)
+            ->post('/interactions', $interaction)
+            ->throw()
+            ->json();
+    }
 }

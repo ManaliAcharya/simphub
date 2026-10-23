@@ -53,6 +53,7 @@ class MerchantPaymentNotificationMail extends Mailable
         $totalAmount     = number_format($transaction->amount_cents / 100, 2);
         $paymentMethod   = $this->gatewayLabel((string) $transaction->gateway);
         $authorizationId = (string) ($transaction->gateway_txn_id ?? '');
+        $lawcusMatterUrl = $this->lawcusMatterUrl($invoice);
         $paidDate        = $transaction->created_at
             ? $transaction->created_at->format('m/d/Y g:i A') . ' UTC'
             : now()->format('m/d/Y g:i A') . ' UTC';
@@ -63,9 +64,33 @@ class MerchantPaymentNotificationMail extends Mailable
                 'logoUrl', 'merchantName', 'customerName', 'customerEmail',
                 'invoiceRef', 'currency', 'pmsSource',
                 'invoiceAmount', 'feeAmount', 'feeCents', 'totalAmount',
-                'paymentMethod', 'authorizationId', 'paidDate',
+                'paymentMethod', 'authorizationId', 'paidDate', 'lawcusMatterUrl',
             ),
         );
+    }
+
+    /**
+     * Lawcus invoices are always created from a matter, so the firm can jump straight
+     * to it. Matter pages are addressed by the matter's UUID, and app.lawcus.com opens
+     * them for any firm (it redirects to the firm's own subdomain). Null for every
+     * other PMS, or when the invoice carries no matter UUID.
+     */
+    private function lawcusMatterUrl(Invoice $invoice): ?string
+    {
+        if (strtolower((string) $invoice->pms_source) !== 'lawcus') {
+            return null;
+        }
+
+        $data       = (array) data_get($invoice->raw_payload, 'invoice.data', []);
+        $matterUuid = trim((string) (
+            $data['matter_uuid'] ?? $data['matteruuid'] ?? data_get($data, 'matter.uuid') ?? ''
+        ));
+
+        if ($matterUuid === '') {
+            return null;
+        }
+
+        return config('services.lawcus.base_url').'/matter/'.rawurlencode($matterUuid);
     }
 
     private function gatewayLabel(string $gateway): string

@@ -294,6 +294,21 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
             return;
         }
 
+        // Paid in QuickBooks directly (not through our link): reflect it in the invoice
+        // list. The Invoice update webhook would also do this, but QB doesn't reliably
+        // send one when a payment is applied.
+        if ($invoice->status !== 'PAID') {
+            $previousStatus = $invoice->status;
+            $invoice->forceFill(['status' => 'PAID'])->save();
+
+            AuditLogger::log('INVOICE_MARKED_PAID_VIA_PMS', 'invoice', $invoice->id, [
+                'pms_source'      => 'quickbooks',
+                'qb_invoice_id'   => $qbInvoiceId,
+                'qb_payment_id'   => $this->entityId,
+                'previous_status' => $previousStatus,
+            ]);
+        }
+
         $session = PaymentSession::query()
             ->where('invoice_id', $invoice->id)
             ->whereIn('link_status', ['active'])

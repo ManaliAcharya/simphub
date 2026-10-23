@@ -30,6 +30,12 @@ class InvoiceLinkLifecycleService
             return; // first send handles this — nothing to resend yet
         }
 
+        // Paid invoices never get another "please pay" email — recording our own payment
+        // in the PMS is itself an invoice update that would otherwise trigger one.
+        if ($invoice->status === 'PAID' || $session->status === 'COMPLETED') {
+            return;
+        }
+
         $client = Client::query()->where('pms_client_id', $pmsClientId)->first();
 
         if (! ($client?->auto_resend_on_change)) {
