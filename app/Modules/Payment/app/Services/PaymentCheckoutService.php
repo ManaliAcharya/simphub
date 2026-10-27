@@ -61,14 +61,6 @@ class PaymentCheckoutService
             ? Client::query()->where('pms_client_id', $invoice->pms_client_id)->first()
             : null;
 
-        try {
-            $clientGwCreds = (array) ($feeClient?->gateway_credentials ?? []);
-        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
-            $clientGwCreds = [];
-        }
-
-        $commonEnv = $clientGwCreds['environment'] ?? null;
-
         return [
             'session' => [
                 'id' => $session->id,
@@ -89,7 +81,7 @@ class PaymentCheckoutService
                 'cancel_redirect_url'  => $invoice->cancel_redirect_url ?: null,
                 'billing_address'      => $this->resolveBillingAddressPrefill($invoice),
             ],
-            'payment_options' => $options->map(function ($decision) use ($invoice, $clientGwCreds, $commonEnv, $feeClient) {
+            'payment_options' => $options->map(function ($decision) use ($invoice, $feeClient) {
                 $availability = strtolower((string) $decision->gateway) === 'paya'
                     ? $this->payaAvailability($invoice)
                     : ['available' => true, 'reason' => null];
@@ -112,13 +104,10 @@ class PaymentCheckoutService
                         $qbMidRoute->processor_id ? ['processor_id' => $qbMidRoute->processor_id] : [],
                     );
                 } else {
-                    $mid = $decision->mid;
-                    // Merge client-specific credentials so hostedFieldsConfig gets
-                    // the correct public_key / environment for the tokenizer
-                    $gwCreds = $clientGwCreds[strtolower($decision->gateway)] ?? [];
-                    if ($commonEnv) {
-                        $gwCreds['environment'] = $commonEnv;
-                    }
+                    // Merge client-specific credentials (the IOLTA set for trust money) so
+                    // hostedFieldsConfig gets the correct public_key / environment for the tokenizer
+                    $gwCreds = $this->clientGatewayCredentials($feeClient, $invoice, $decision->gateway);
+                    $mid     = ($gwCreds['mid_identifier'] ?? '') ?: $decision->mid;
                     $resolvedCreds = ! empty($gwCreds)
                         ? array_merge($decision->midCredentials, $gwCreds)
                         : $decision->midCredentials;
@@ -365,9 +354,10 @@ class PaymentCheckoutService
         // ── Client-specific gateway credentials override ───────────────────────
         // If the client has their own credentials for this gateway, merge them
         // on top of the routing rule defaults (only non-empty values are stored).
+        // Trust money uses the client's IOLTA MID, everything else the operating MID.
         if ($feeClient) {
             try {
-                $clientCreds = (array) ($feeClient->gateway_credentials ?? []);
+                $gwCreds = $feeClient->gatewayCredentialsFor($decision->gateway, $invoice->fund_type);
             } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
                 \Log::error('Gateway credentials decryption failed', [
                     'pms_client_id' => $feeClient->pms_client_id,
@@ -375,16 +365,10 @@ class PaymentCheckoutService
                 ]);
                 throw new RuntimeException('Gateway credentials are corrupted. Please re-enter them in the client config.');
             }
-            $gwCreds     = $clientCreds[strtolower($decision->gateway)] ?? [];
-            // Inject the common environment into per-gateway credentials
-            $commonEnv = $clientCreds['environment'] ?? null;
-            if ($commonEnv) {
-                $gwCreds['environment'] = $commonEnv;
-            }
             if (! empty($gwCreds)) {
                 $decision = new \Modules\Routing\DTOs\RoutingDecision(
                     gateway:        $decision->gateway,
-                    mid:            $decision->mid,
+                    mid:            ($gwCreds['mid_identifier'] ?? '') ?: $decision->mid,
                     routingRuleId:  $decision->routingRuleId,
                     midCredentials: array_merge($decision->midCredentials, $gwCreds),
                     ruleMatches:    $decision->ruleMatches,
@@ -736,6 +720,20 @@ class PaymentCheckoutService
         }
 
         return $feeCents;
+    }
+
+    /**
+     * The client's Gateway Credentials for this invoice's fund type (IOLTA for trust),
+     * for showing the payment page. Unreadable credentials count as none here; submit()
+     * reports them instead of charging.
+     */
+    private function clientGatewayCredentials(?Client $client, Invoice $invoice, string $gateway): array
+    {
+        try {
+            return $client ? $client->gatewayCredentialsFor($gateway, $invoice->fund_type) : [];
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            return [];
+        }
     }
 
     /**

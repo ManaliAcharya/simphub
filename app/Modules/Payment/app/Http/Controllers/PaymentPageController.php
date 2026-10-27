@@ -37,7 +37,7 @@ class PaymentPageController extends Controller
                     // Pass only public/non-sensitive credential fields to the frontend tokenizer.
                     // Private keys (api_key, password, security_key) must NEVER reach the browser.
                     $feeConfig['gateway_credentials'] = $this->publicCredentialsOnly(
-                        (array) ($client->gateway_credentials ?? [])
+                        $this->fundCredentials($client, (string) $invoice->fund_type)
                     );
                 }
             }
@@ -126,6 +126,18 @@ class PaymentPageController extends Controller
      * Strip private/secret credential fields before sending to the browser.
      * Only public keys and environment settings are safe for client-side use.
      */
+    /** Gateway Credentials in their stored shape, with each gateway's IOLTA set for trust money. */
+    private function fundCredentials(Client $client, string $fundType): array
+    {
+        $creds = (array) ($client->gateway_credentials ?? []);
+
+        foreach (['fluidpay', 'paya', 'nmi'] as $gw) {
+            $creds[$gw] = $client->gatewayCredentialsFor($gw, $fundType);
+        }
+
+        return $creds;
+    }
+
     private function publicCredentialsOnly(array $gwCreds): array
     {
         // Top-level safe keys (not per-gateway secrets)

@@ -378,14 +378,25 @@ class ClientConfigController extends Controller
             'gateway_credentials.paya.terminal_id'    => ['nullable', 'string', 'max:50'],
             'gateway_credentials.nmi.security_key'    => ['nullable', 'string', 'max:500'],
             'gateway_credentials.nmi.public_key'      => ['nullable', 'string', 'max:500'],
+            'gateway_credentials.*.mid_identifier'    => ['nullable', 'string', 'max:100'],
+            'gateway_credentials.*.processor_id'      => ['nullable', 'string', 'max:100'],
+            // IOLTA (trust) MID — same fields per gateway; the environment is shared.
+            'trust_gateway_credentials'                    => ['nullable', 'array'],
+            'trust_gateway_credentials.*'                  => ['nullable', 'array'],
+            'trust_gateway_credentials.*.*'                => ['nullable', 'string', 'max:500'],
             'gateway_display_names'                   => ['nullable', 'array'],
             'gateway_display_names.*'                 => ['nullable', 'string', 'max:60'],
         ]);
 
-        $incoming = (array) ($request->input('gateway_credentials') ?? []);
+        $incoming      = (array) ($request->input('gateway_credentials') ?? []);
+        $incomingTrust = (array) ($request->input('trust_gateway_credentials') ?? []);
 
         if ($message = $this->invalidFluidpayKeyMessage((array) ($incoming['fluidpay'] ?? []))) {
             return redirect()->back()->withInput()->with('error', "FLUIDPAY: {$message}");
+        }
+
+        if ($message = $this->invalidFluidpayKeyMessage((array) ($incomingTrust['fluidpay'] ?? []))) {
+            return redirect()->back()->withInput()->with('error', "FLUIDPAY (IOLTA): {$message}");
         }
 
         // Start from existing stored credentials so blank password fields (left intentionally
@@ -420,9 +431,28 @@ class ClientConfigController extends Controller
             ->filter(fn($name) => $name !== '')
             ->all();
 
+        try {
+            $storedTrust = (array) ($client->trust_gateway_credentials ?? []);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            $storedTrust = [];
+        }
+
+        // Same rule for the IOLTA set: only non-empty fields overwrite.
+        foreach ($incomingTrust as $gateway => $fields) {
+            if (! in_array($gateway, ['fluidpay', 'paya', 'nmi'], true)) {
+                continue;
+            }
+            foreach ((array) $fields as $key => $value) {
+                if ($value !== null && trim((string) $value) !== '') {
+                    $storedTrust[strtolower((string) $gateway)][$key] = trim((string) $value);
+                }
+            }
+        }
+
         $client->update([
-            'gateway_credentials'   => ! empty($stored) ? $stored : null,
-            'gateway_display_names' => ! empty($displayNames) ? $displayNames : null,
+            'gateway_credentials'       => ! empty($stored) ? $stored : null,
+            'trust_gateway_credentials' => ! empty($storedTrust) ? $storedTrust : null,
+            'gateway_display_names'     => ! empty($displayNames) ? $displayNames : null,
         ]);
 
         return redirect()->back()->with('success', 'Gateway credentials saved.');
@@ -680,7 +710,7 @@ class ClientConfigController extends Controller
 
         $apiKey = trim((string) $request->input('api_key'))
             ?: trim((string) ($saved['api_key'] ?? ''))
-            ?: trim((string) ($clientGw['fluidpay']['api_key'] ?? ''));
+            ?: trim((string) ($client->gatewayCredentialsFor('fluidpay', $request->input('fund_type'))['api_key'] ?? ''));
 
         return array_filter([
             'environment' => $clientGw['environment'] ?? 'sandbox',
@@ -713,7 +743,7 @@ class ClientConfigController extends Controller
             $saved = (array) (ClientMidRoute::query()
                 ->where('client_id', $client->id)
                 ->where('fund_type', $request->input('fund_type', 'OPERATING'))
-            ->where('route_type', $request->input('route_type'))
+                ->where('route_type', $request->input('route_type'))
                 ->where('gateway', 'fluidpay')
                 ->first()?->credentials ?? []);
 
@@ -721,11 +751,12 @@ class ClientConfigController extends Controller
             $environment = $clientGw['environment'] ?? 'sandbox';
             $merchantId  = trim((string) $request->input('mid_identifier'));
         } else {
-            $saved = (array) ($clientGw['fluidpay'] ?? []);
+            // fund_type TRUST tests the IOLTA set, whose blank keys fall back to the operating ones.
+            $saved = $client->gatewayCredentialsFor('fluidpay', $request->input('fund_type'));
 
             // The Environment dropdown may have been changed but not saved yet — test against it.
             $environment = $request->input('environment') ?: ($clientGw['environment'] ?? 'sandbox');
-            $merchantId  = null;
+            $merchantId  = trim((string) $request->input('mid_identifier')) ?: null;
         }
 
         $credentials = [

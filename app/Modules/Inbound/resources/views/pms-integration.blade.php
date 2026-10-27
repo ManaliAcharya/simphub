@@ -1393,8 +1393,9 @@
                             </button>
                         </div>
                         <div class="cc-card-desc">Route transactions to different merchant accounts based on the
-                            per-invoice fee toggle.@if ($isLawcus) Trust requests use their own MIDs (normally the
-                            firm's IOLTA account) and never fall back to an invoice MID.@endif</div>
+                            per-invoice fee toggle.@if ($isLawcus) Trust requests use the Trust Request routes
+                            (IOLTA) and invoices the Invoice routes; a block left empty falls back to the matching
+                            IOLTA or operating MID in Gateway Credentials.@endif</div>
 
                         <div id="qb-mid-body">
                             @if (!$client->qb_fee_override_enabled)

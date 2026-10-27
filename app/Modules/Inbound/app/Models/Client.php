@@ -20,7 +20,7 @@ class Client extends Model
 
     protected $guarded = [];
 
-    protected $hidden = ['gateway_credentials', 'subscription_api_key_hash'];
+    protected $hidden = ['gateway_credentials', 'trust_gateway_credentials', 'subscription_api_key_hash'];
 
     protected function casts(): array
     {
@@ -31,6 +31,8 @@ class Client extends Model
             'allowed_payment_gateways' => 'array',
             'paused_payment_gateways'  => 'array',
             'gateway_credentials'      => 'encrypted:array',
+            // IOLTA (trust) MID per gateway — same shape as gateway_credentials, see gatewayCredentialsFor().
+            'trust_gateway_credentials' => 'encrypted:array',
             'gateway_display_names'    => 'array',
             'allowed_terminals'        => 'array',
             'fee_surcharge_enabled'       => 'boolean',
@@ -109,6 +111,36 @@ class Client extends Model
         $name  = trim((string) ($names[strtolower($gateway)] ?? ''));
 
         return $name !== '' ? $name : strtoupper($gateway);
+    }
+
+    /** Fields that pick one specific MID, so they never carry over from the operating set to trust. */
+    private const MID_SELECTOR_KEYS = ['mid_identifier', 'processor_id'];
+
+    /**
+     * This client's Gateway Credentials for one gateway and fund type, with the common
+     * environment applied. Trust money uses the IOLTA set on top of the operating keys —
+     * so an IOLTA MID in the same account only needs its MID / processor ID, and one in a
+     * separate account brings its own keys — but never the operating MID or processor ID.
+     */
+    public function gatewayCredentialsFor(string $gateway, ?string $fundType): array
+    {
+        $gateway = strtolower($gateway);
+        $all     = (array) ($this->gateway_credentials ?? []);
+        $creds   = (array) ($all[$gateway] ?? []);
+
+        if (strtoupper((string) $fundType) === 'TRUST') {
+            $trust = (array) ($this->trust_gateway_credentials ?? []);
+            $creds = array_merge(
+                array_diff_key($creds, array_flip(self::MID_SELECTOR_KEYS)),
+                (array) ($trust[$gateway] ?? []),
+            );
+        }
+
+        if (! empty($all['environment'])) {
+            $creds['environment'] = $all['environment'];
+        }
+
+        return $creds;
     }
 
     /**
