@@ -1436,8 +1436,66 @@
                                 <div id="qb-mid-section"
                                     style="{{ $client->qb_multi_mid_enabled ? '' : 'display:none;' }}">
 
+                                    @php
+                                        // A save error about a Trust row reopens the IOLTA tab, so the problem is in view.
+                                        $midActiveFund = str_contains((string) session('error'), 'Trust') ? 'TRUST' : 'OPERATING';
+                                    @endphp
+                                    @if ($isLawcus)
+                                        <div role="tablist" aria-label="MID account" class="mid-tabs"
+                                            style="display:flex;gap:4px;border-bottom:1px solid var(--cc-border);margin-bottom:16px;">
+                                            @foreach (['OPERATING' => 'Operating MID', 'TRUST' => 'IOLTA MID'] as $tabFund => $tabLabel)
+                                                @php
+                                                    // Fees On / Fees Off blocks with at least one gateway set up.
+                                                    $tabSet = collect(['fees_on', 'fees_off'])->filter(fn ($rt) => $midRoutes->keys()
+                                                        ->contains(fn ($k) => str_starts_with($k, $tabFund . '_' . $rt . '_')))->count();
+                                                    $tabActive = $tabFund === $midActiveFund;
+                                                @endphp
+                                                <button type="button" role="tab" id="mid-tab-{{ strtolower($tabFund) }}"
+                                                    aria-controls="mid-panel-{{ strtolower($tabFund) }}"
+                                                    aria-selected="{{ $tabActive ? 'true' : 'false' }}" tabindex="{{ $tabActive ? '0' : '-1' }}"
+                                                    style="display:flex;align-items:center;gap:8px;padding:9px 14px;border:none;background:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;margin-bottom:-1px;border-bottom:2px solid {{ $tabActive ? '#132238' : 'transparent' }};color:{{ $tabActive ? 'var(--cc-text)' : 'var(--cc-text-2)' }};">
+                                                    {{ $tabLabel }}
+                                                    <span style="font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;{{ $tabSet === 2 ? 'background:#dcfce7;color:#166534;' : ($tabSet === 1 ? 'background:#fef3c7;color:#92400e;' : 'background:#f3f4f6;color:#4b5563;') }}">
+                                                        {{ $tabSet === 0 ? 'Not set' : $tabSet . ' of 2 set' }}</span>
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                        <script>
+                                            (function() {
+                                                var tabs = Array.prototype.slice.call(document.querySelectorAll('.mid-tabs [role=tab]'));
+
+                                                function select(tab) {
+                                                    tabs.forEach(function(t) {
+                                                        var on = t === tab;
+                                                        t.setAttribute('aria-selected', on ? 'true' : 'false');
+                                                        t.tabIndex = on ? 0 : -1;
+                                                        t.style.borderBottomColor = on ? '#132238' : 'transparent';
+                                                        t.style.color = on ? 'var(--cc-text)' : 'var(--cc-text-2)';
+                                                        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+                                                    });
+                                                }
+
+                                                tabs.forEach(function(tab, i) {
+                                                    tab.addEventListener('click', function() { select(tab); });
+                                                    // Arrow keys move between tabs (WAI-ARIA tabs pattern).
+                                                    tab.addEventListener('keydown', function(e) {
+                                                        var step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+                                                        if (!step) return;
+                                                        e.preventDefault();
+                                                        var next = tabs[(i + step + tabs.length) % tabs.length];
+                                                        select(next);
+                                                        next.focus();
+                                                    });
+                                                });
+                                            })();
+                                        </script>
+                                    @endif
+
                                     @foreach ($midFundTypes as $fundType)
                                     @php $fieldSource = $isLawcus ? "matter custom field" : "QB custom field"; @endphp
+                                    <div id="mid-panel-{{ strtolower($fundType) }}"
+                                        @if ($isLawcus) role="tabpanel" aria-labelledby="mid-tab-{{ strtolower($fundType) }}" tabindex="0" @endif
+                                        @if ($isLawcus && $fundType !== $midActiveFund) hidden @endif>
                                     @foreach (['fees_on' => ['label' => 'TOGGLE ON — Fees Passed Through', 'desc' => 'Used when the ' . $fieldSource . ' = Yes. Customer pays the processing fee.', 'color' => '#f0fdf4', 'border' => '#a7f3d0', 'pill_bg' => '#065f46', 'pill_color' => '#fff'], 'fees_off' => ['label' => 'TOGGLE OFF — Fees Absorbed', 'desc' => 'Used when the ' . $fieldSource . ' = No, or blank with the merchant-absorbs default. Merchant absorbs the fee.', 'color' => '#f9fafb', 'border' => '#e5e7eb', 'pill_bg' => '#6b7280', 'pill_color' => '#fff']] as $routeType => $routeConfig)
                                         <div
                                             style="margin-bottom:16px;border:1px solid {{ $routeConfig['border'] }};border-radius:var(--cc-r-md);overflow:hidden;">
@@ -1698,6 +1756,7 @@
                                             </div>
                                         </div>
                                     @endforeach
+                                    </div>{{-- end mid-panel --}}
                                     @endforeach
 
                                 </div>{{-- end qb-mid-section --}}
