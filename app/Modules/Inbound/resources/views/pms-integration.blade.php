@@ -1119,12 +1119,15 @@
                         :features="$features" />
                 </div>
 
-                {{-- ── QB-specific configuration (only for QuickBooks) ── --}}
-                @if ($provider === 'quickbooks' && $client)
+                {{-- ── Per-Invoice Fee Override + Multi-MID (QuickBooks and Lawcus) ── --}}
+                @if (in_array($provider, ['quickbooks', 'lawcus'], true) && $client)
                     @php
+                        // Lawcus reads the field from the matter and routes trust requests to their own MIDs.
+                        $isLawcus = $provider === 'lawcus';
+                        $midFundTypes = $isLawcus ? ['OPERATING', 'TRUST'] : ['OPERATING'];
                         $midRoutes = \Modules\Inbound\Models\ClientMidRoute::where('client_id', $client->id)
                             ->get()
-                            ->keyBy(fn($r) => $r->route_type . '_' . $r->gateway);
+                            ->keyBy(fn($r) => $r->fund_type . '_' . $r->route_type . '_' . $r->gateway);
                         $pausedGateways = array_map('strtolower', $client->paused_payment_gateways ?? []);
                         $clientGateways = array_values(
                             array_diff(
@@ -1144,8 +1147,15 @@
                                 <span id="qb-override-chev">&#9660;</span>
                             </button>
                         </div>
-                        <div class="cc-card-desc">Allow individual QuickBooks invoices to override the client-level fee
-                            setting using a custom Yes/No field.</div>
+                        <div class="cc-card-desc">
+                            @if ($isLawcus)
+                                Allow individual Lawcus invoices and trust requests to override the client-level fee
+                                setting using a Yes/No custom field on their matter.
+                            @else
+                                Allow individual QuickBooks invoices to override the client-level fee
+                                setting using a custom Yes/No field.
+                            @endif
+                        </div>
 
                         <div id="qb-override-body">
                             <form method="POST"
@@ -1162,8 +1172,8 @@
                                     <div>
                                         <div style="font-size:14px;font-weight:600;color:var(--cc-text);">Enable
                                             Per-Invoice Override</div>
-                                        <div style="font-size:12px;color:var(--cc-text-2);margin-top:1px;">Read a QB
-                                            custom field on each invoice to override the fee setting.</div>
+                                        <div style="font-size:12px;color:var(--cc-text-2);margin-top:1px;">
+                                            {{ $isLawcus ? 'Read a Lawcus matter custom field for each invoice to override the fee setting.' : 'Read a QB custom field on each invoice to override the fee setting.' }}</div>
                                     </div>
                                     <div
                                         style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700;">
@@ -1182,12 +1192,20 @@
                                 <div id="qb-ovr-section"
                                     style="{{ $client->qb_fee_override_enabled ? '' : 'display:none;' }}">
                                     <div class="cc-field" style="margin-bottom:14px;">
-                                        <label>QBO Custom Field Name</label>
+                                        <label>{{ $isLawcus ? 'Lawcus Matter Custom Field Name' : 'QBO Custom Field Name' }}</label>
                                         <input type="text" name="qb_fee_override_field"
                                             value="{{ old('qb_fee_override_field', $client->qb_fee_override_field ?? 'Cash Discount') }}"
                                             placeholder="e.g. Fee Override">
-                                        <div style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">Must match
-                                            the exact custom field name on the QuickBooks invoice template.</div>
+                                        <div style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">
+                                            @if ($isLawcus)
+                                                Must match the exact name of the matter custom field in Lawcus
+                                                (Settings &rarr; Firm Settings &rarr; Custom fields &rarr; Matter). Use a
+                                                text or picklist field holding Yes/No, or a checkbox (checked = Yes). The
+                                                value is read when the invoice or trust request syncs.
+                                            @else
+                                                Must match the exact custom field name on the QuickBooks invoice template.
+                                            @endif
+                                        </div>
                                     </div>
 
                                     {{-- What a blank field means --}}
@@ -1208,12 +1226,13 @@
                                             Pass fees to customer (same as "Yes")
                                         </label>
                                         <div style="font-size:12px;color:var(--cc-text-3);margin-top:6px;">
-                                            Set "No" on an invoice or customer to absorb the fee for them. Changing this
+                                            Set "No" on {{ $isLawcus ? 'a matter' : 'an invoice or customer' }} to absorb the fee for them. Changing this
                                             applies straight away to every unpaid invoice whose field is blank, including
                                             payment links already sent.</div>
                                     </fieldset>
 
                                     {{-- How to set up the custom field in QuickBooks --}}
+                                    @unless ($isLawcus)
                                     <div
                                         style="padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--cc-r-md);margin-bottom:14px;">
                                         <div style="font-size:13px;color:#1e40af;line-height:1.6;">
@@ -1244,6 +1263,7 @@
                                             </div>
                                         </div>
                                     </div>
+                                    @endunless
 
                                     {{-- Field mapping table --}}
                                     <div style="margin-bottom:14px;">
@@ -1309,7 +1329,8 @@
                         </div>
                     </div>
 
-                    {{-- Ready to Send? --}}
+                    {{-- Ready to Send? (QuickBooks only) --}}
+                    @unless ($isLawcus)
                     <div class="cc-card" id="qb-rts-card">
                         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
                             <div class="cc-card-title">Ready to Send?</div>
@@ -1360,6 +1381,7 @@
                             </form>
                         </div>
                     </div>
+                    @endunless
 
                     {{-- Multi-MID Routing --}}
                     <div class="cc-card" id="qb-mid-card">
@@ -1371,7 +1393,8 @@
                             </button>
                         </div>
                         <div class="cc-card-desc">Route transactions to different merchant accounts based on the
-                            per-invoice fee toggle.</div>
+                            per-invoice fee toggle.@if ($isLawcus) Trust requests use their own MIDs (normally the
+                            firm's IOLTA account) and never fall back to an invoice MID.@endif</div>
 
                         <div id="qb-mid-body">
                             @if (!$client->qb_fee_override_enabled)
@@ -1412,7 +1435,9 @@
                                 <div id="qb-mid-section"
                                     style="{{ $client->qb_multi_mid_enabled ? '' : 'display:none;' }}">
 
-                                    @foreach (['fees_on' => ['label' => 'TOGGLE ON — Fees Passed Through', 'desc' => 'Used when the QB custom field = Yes. Customer pays the processing fee.', 'color' => '#f0fdf4', 'border' => '#a7f3d0', 'pill_bg' => '#065f46', 'pill_color' => '#fff'], 'fees_off' => ['label' => 'TOGGLE OFF — Fees Absorbed', 'desc' => 'Used when the QB custom field = No or not set. Merchant absorbs the fee.', 'color' => '#f9fafb', 'border' => '#e5e7eb', 'pill_bg' => '#6b7280', 'pill_color' => '#fff']] as $routeType => $routeConfig)
+                                    @foreach ($midFundTypes as $fundType)
+                                    @php $fieldSource = $isLawcus ? "matter custom field" : "QB custom field"; @endphp
+                                    @foreach (['fees_on' => ['label' => 'TOGGLE ON — Fees Passed Through', 'desc' => 'Used when the ' . $fieldSource . ' = Yes. Customer pays the processing fee.', 'color' => '#f0fdf4', 'border' => '#a7f3d0', 'pill_bg' => '#065f46', 'pill_color' => '#fff'], 'fees_off' => ['label' => 'TOGGLE OFF — Fees Absorbed', 'desc' => 'Used when the ' . $fieldSource . ' = No, or blank with the merchant-absorbs default. Merchant absorbs the fee.', 'color' => '#f9fafb', 'border' => '#e5e7eb', 'pill_bg' => '#6b7280', 'pill_color' => '#fff']] as $routeType => $routeConfig)
                                         <div
                                             style="margin-bottom:16px;border:1px solid {{ $routeConfig['border'] }};border-radius:var(--cc-r-md);overflow:hidden;">
                                             <div
@@ -1420,7 +1445,7 @@
                                                 <span
                                                     style="background:{{ $routeConfig['pill_bg'] }};color:{{ $routeConfig['pill_color'] }};padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;">{{ strtoupper(str_replace('_', ' ', $routeType)) }}</span>
                                                 <span
-                                                    style="font-size:13px;font-weight:600;color:var(--cc-text);">{{ $routeConfig['label'] }}</span>
+                                                    style="font-size:13px;font-weight:600;color:var(--cc-text);">{{ $isLawcus ? ($fundType === 'TRUST' ? 'Trust Requests — ' : 'Invoices — ') : '' }}{{ $routeConfig['label'] }}</span>
                                             </div>
                                             <div
                                                 style="padding:14px 16px;background:#fff;font-size:12px;color:var(--cc-text-2);border-bottom:1px solid {{ $routeConfig['border'] }};">
@@ -1429,10 +1454,10 @@
                                                 @if (count($clientGateways))
                                                     @foreach ($clientGateways as $gw)
                                                         @php
-                                                            $key = $routeType . '_' . $gw;
+                                                            $key = $fundType . '_' . $routeType . '_' . $gw;
                                                             $existing = $midRoutes[$key] ?? null;
                                                             $gwUp = strtoupper($gw);
-                                                            $idx = $routeType . '_' . $gw;
+                                                            $idx = ($fundType === 'TRUST' ? 'trust_' : '') . $routeType . '_' . $gw;
                                                         @endphp
                                                         <div
                                                             style="background:#f9fafb;border:1px solid var(--cc-border);border-radius:var(--cc-r-md);padding:14px;margin-bottom:10px;">
@@ -1457,6 +1482,9 @@
                                                             <input type="hidden"
                                                                 name="routes[{{ $idx }}][gateway]"
                                                                 value="{{ $gw }}">
+                                                            <input type="hidden"
+                                                                name="routes[{{ $idx }}][fund_type]"
+                                                                value="{{ $fundType }}">
 
                                                             <div id="mid-fields-{{ $idx }}">
                                                                 @php
@@ -1523,7 +1551,7 @@
                                                                             <button type="button"
                                                                                 class="button fluidpay-test-creds"
                                                                                 data-test-url="{{ route('inbound.clients.fluidpay-test-credentials', $client->pms_client_id) }}"
-                                                                                data-route-type="{{ $routeType }}"
+                                                                                data-route-type="{{ $routeType }}" data-fund-type="{{ $fundType }}"
                                                                                 data-mid-input="mid-identifier-{{ $idx }}"
                                                                                 data-api-input="cred-{{ $idx }}-api_key"
                                                                                 data-public-input="cred-{{ $idx }}-public_key"
@@ -1579,7 +1607,7 @@
                                                                                 id="mid-identifier-{{ $idx }}"
                                                                                 class="fluidpay-mid-select"
                                                                                 name="routes[{{ $idx }}][mid_identifier]"
-                                                                                data-route-type="{{ $routeType }}"
+                                                                                data-route-type="{{ $routeType }}" data-fund-type="{{ $fundType }}"
                                                                                 data-api-input="cred-{{ $idx }}-api_key"
                                                                                 data-status="mid-status-{{ $idx }}"
                                                                                 data-current="{{ $currentMid }}">
@@ -1614,7 +1642,7 @@
                                                                         <select
                                                                             class="fluidpay-processor-select"
                                                                             data-mid-input="mid-identifier-{{ $idx }}"
-                                                                            data-route-type="{{ $routeType }}"
+                                                                            data-route-type="{{ $routeType }}" data-fund-type="{{ $fundType }}"
                                                                             data-api-input="cred-{{ $idx }}-api_key"
                                                                             data-current="{{ $currentProcessorId }}"
                                                                             name="routes[{{ $idx }}][processor_id]">
@@ -1668,6 +1696,7 @@
                                                 @endif
                                             </div>
                                         </div>
+                                    @endforeach
                                     @endforeach
 
                                 </div>{{-- end qb-mid-section --}}
@@ -1767,6 +1796,7 @@
                                         setStatus(select, 'Fetching MIDs from FluidPay…');
                                         post(merchantsUrl, {
                                                 route_type: select.dataset.routeType,
+                                                fund_type: select.dataset.fundType || null,
                                                 api_key: typedKey(select) || null,
                                             })
                                             .then(function(data) {
@@ -1847,6 +1877,7 @@
                                         post(processorsUrl, {
                                                 merchant_id: merchantId,
                                                 route_type: select.dataset.routeType,
+                                                fund_type: select.dataset.fundType || null,
                                                 api_key: key || null,
                                             })
                                             .then(function(data) {

@@ -99,7 +99,7 @@ class PaymentCheckoutService
                 // exactly, so the tokenizer widget shown here uses the same public_key/environment
                 // that will actually be used to charge, instead of the wrong (client-default) one.
                 $qbMidRoute = null;
-                if ($invoice->pms_client_id && (string) $invoice->pms_source === 'quickbooks') {
+                if ($invoice->pms_client_id && QbFeeOverride::supports($invoice)) {
                     $qbMidRoute = $this->resolveQbMidRoute($invoice, $feeClient, $decision->gateway);
                 }
 
@@ -299,12 +299,12 @@ class PaymentCheckoutService
 
         $applyFee = $feeClient && $feeClient->fee_surcharge_enabled;
 
-        $isQuickBooksInvoice = (string) $invoice->pms_source === 'quickbooks';
+        $usesFeeOverride = QbFeeOverride::supports($invoice);
 
-        if ($feeClient && $isQuickBooksInvoice) {
+        if ($feeClient && $usesFeeOverride) {
             if (! $feeClient->qb_fee_override_enabled) {
                 // Per-Invoice Fee Override is off → Processing Fee Configuration applies to every
-                // QuickBooks invoice, as for any other PMS.
+                // QuickBooks/Lawcus invoice, as for any other PMS.
                 $applyFee = (bool) $feeClient->fee_surcharge_enabled;
             } else {
                 // Override is ON → the per-invoice field decides directly, via the standard
@@ -503,7 +503,7 @@ class PaymentCheckoutService
 
         // ── QB Multi-MID override ──────────────────────────────────────────
         $qbMidRoute = null;
-        if ($invoice->pms_client_id && (string) $invoice->pms_source === 'quickbooks') {
+        if ($invoice->pms_client_id && QbFeeOverride::supports($invoice)) {
             $qbMidRoute = $this->resolveQbMidRoute($invoice, $feeClient, $decision->gateway);
         }
         if ($qbMidRoute) {
@@ -702,10 +702,10 @@ class PaymentCheckoutService
             return 0;
         }
 
-        $isQuickBooksInvoice = (string) $invoice->pms_source === 'quickbooks';
+        $usesFeeOverride = QbFeeOverride::supports($invoice);
         $applyFee = (bool) $feeClient->fee_surcharge_enabled;
 
-        if ($isQuickBooksInvoice) {
+        if ($usesFeeOverride) {
             if (! $feeClient->qb_fee_override_enabled) {
                 $applyFee = (bool) $feeClient->fee_surcharge_enabled;
             } else {
@@ -739,9 +739,10 @@ class PaymentCheckoutService
     }
 
     /**
-     * Resolve the QB multi-MID route for this invoice, if configured.
-     * Returns the matching ClientMidRoute or null if multi-MID is not enabled
-     * or no matching route is configured.
+     * Resolve the multi-MID route for this QuickBooks or Lawcus invoice, if configured.
+     * Lawcus trust requests only ever match TRUST routes, so a trust payment can never
+     * land in an operating MID (or the reverse). Returns null if multi-MID is not
+     * enabled or no matching route is configured.
      */
     private function resolveQbMidRoute(
         Invoice $invoice,
@@ -758,6 +759,7 @@ class PaymentCheckoutService
 
         return ClientMidRoute::query()
             ->where('client_id',  $client->id)
+            ->where('fund_type',  QbFeeOverride::midRouteFundType($invoice))
             ->where('route_type', $routeType)
             ->where('gateway',    strtolower($gateway))
             ->where('is_active',  true)

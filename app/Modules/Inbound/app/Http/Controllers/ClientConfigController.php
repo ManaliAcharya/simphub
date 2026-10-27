@@ -575,7 +575,7 @@ class ClientConfigController extends Controller
             ]);
         }
 
-        return redirect()->back()->with('success', 'QuickBooks settings saved.');
+        return redirect()->back()->with('success', 'Settings saved.');
     }
 
     public function updateReminderSettings(Request $request, string $pmsClientId): RedirectResponse
@@ -619,6 +619,7 @@ class ClientConfigController extends Controller
     {
         $request->validate([
             'route_type' => ['required', 'string', Rule::in(['fees_on', 'fees_off'])],
+            'fund_type'  => ['nullable', 'string', Rule::in(['OPERATING', 'TRUST'])],
             'api_key'    => ['nullable', 'string', 'max:1000'],
         ]);
 
@@ -644,6 +645,7 @@ class ClientConfigController extends Controller
         $request->validate([
             'merchant_id' => ['required', 'string', 'max:100'],
             'route_type'  => ['required', 'string', Rule::in(['fees_on', 'fees_off'])],
+            'fund_type'   => ['nullable', 'string', Rule::in(['OPERATING', 'TRUST'])],
             'api_key'     => ['nullable', 'string', 'max:1000'],
         ]);
         $merchantId = trim((string) $request->input('merchant_id'));
@@ -671,6 +673,7 @@ class ClientConfigController extends Controller
 
         $saved = (array) (ClientMidRoute::query()
             ->where('client_id', $client->id)
+            ->where('fund_type', $request->input('fund_type', 'OPERATING'))
             ->where('route_type', $request->input('route_type'))
             ->where('gateway', 'fluidpay')
             ->first()?->credentials ?? []);
@@ -695,6 +698,7 @@ class ClientConfigController extends Controller
     {
         $request->validate([
             'route_type'     => ['nullable', 'string', Rule::in(['fees_on', 'fees_off'])],
+            'fund_type'      => ['nullable', 'string', Rule::in(['OPERATING', 'TRUST'])],
             'mid_identifier' => ['nullable', 'string', 'max:100'],
             'environment'    => ['nullable', 'string', Rule::in(['sandbox', 'production'])],
             'api_key'        => ['nullable', 'string', 'max:1000'],
@@ -708,7 +712,8 @@ class ClientConfigController extends Controller
         if ($isMidRoute) {
             $saved = (array) (ClientMidRoute::query()
                 ->where('client_id', $client->id)
-                ->where('route_type', $request->input('route_type'))
+                ->where('fund_type', $request->input('fund_type', 'OPERATING'))
+            ->where('route_type', $request->input('route_type'))
                 ->where('gateway', 'fluidpay')
                 ->first()?->credentials ?? []);
 
@@ -746,6 +751,7 @@ class ClientConfigController extends Controller
         $request->validate([
             'routes'                        => ['nullable', 'array'],
             'routes.*.route_type'           => ['nullable', 'string', Rule::in(['fees_on', 'fees_off'])],
+            'routes.*.fund_type'            => ['nullable', 'string', Rule::in(['OPERATING', 'TRUST'])],
             'routes.*.gateway'              => ['nullable', 'string', 'max:50'],
             'routes.*.mid_identifier'       => ['nullable', 'string', 'max:100'],
             'routes.*.mid_label'            => ['nullable', 'string', 'max:255'],
@@ -768,7 +774,7 @@ class ClientConfigController extends Controller
                 continue;
             }
             if ($message = $this->invalidFluidpayKeyMessage((array) ($route['credentials'] ?? []))) {
-                $routeTypeLabel = ($route['route_type'] ?? '') === 'fees_on' ? 'Fees On' : 'Fees Off';
+                $routeTypeLabel = $this->midRouteLabel($route);
 
                 return redirect()->back()
                     ->withInput()
@@ -786,6 +792,7 @@ class ClientConfigController extends Controller
 
             ClientMidRoute::query()
                 ->where('client_id',  $client->id)
+                ->where('fund_type',  $this->midRouteFundType($client, $route))
                 ->where('route_type', $route['route_type'] ?? null)
                 ->where('gateway',    strtolower((string) ($route['gateway'] ?? '')))
                 ->delete();
@@ -810,7 +817,7 @@ class ClientConfigController extends Controller
 
             if ($hasOtherData) {
                 $gatewayLabel   = strtoupper((string) ($route['gateway'] ?? ''));
-                $routeTypeLabel = ($route['route_type'] ?? '') === 'fees_on' ? 'Fees On' : 'Fees Off';
+                $routeTypeLabel = $this->midRouteLabel($route);
                 $incomplete[]   = "{$gatewayLabel} ({$routeTypeLabel})";
             }
         }
@@ -845,7 +852,7 @@ class ClientConfigController extends Controller
                     continue;
                 }
                 if (empty($route['processor_id'])) {
-                    $missingProcessorId[] = ($route['route_type'] ?? '') === 'fees_on' ? 'Fees On' : 'Fees Off';
+                    $missingProcessorId[] = $this->midRouteLabel($route);
                 }
             }
 
@@ -860,10 +867,12 @@ class ClientConfigController extends Controller
 
             $gateway   = strtolower($route['gateway']);
             $routeType = $route['route_type'];
+            $fundType  = $this->midRouteFundType($client, $route);
 
             // Load existing route to merge credentials (preserve fields not re-entered)
             $existingRoute = ClientMidRoute::query()
                 ->where('client_id',  $client->id)
+                ->where('fund_type',  $fundType)
                 ->where('route_type', $routeType)
                 ->where('gateway',    $gateway)
                 ->first();
@@ -884,6 +893,7 @@ class ClientConfigController extends Controller
             ClientMidRoute::updateOrCreate(
                 [
                     'client_id'  => $client->id,
+                    'fund_type'  => $fundType,
                     'route_type' => $routeType,
                     'gateway'    => $gateway,
                 ],
@@ -905,6 +915,24 @@ class ClientConfigController extends Controller
         }
 
         return redirect()->back()->with('success', $successMessage);
+    }
+
+    /**
+     * Only Lawcus has trust requests, so only a Lawcus client can have TRUST routes;
+     * every other client's routes are OPERATING whatever the form posts.
+     */
+    private function midRouteFundType(Client $client, array $route): string
+    {
+        return strtolower((string) $client->client_pms) === 'lawcus' && ($route['fund_type'] ?? null) === 'TRUST'
+            ? 'TRUST'
+            : 'OPERATING';
+    }
+
+    private function midRouteLabel(array $route): string
+    {
+        $label = ($route['route_type'] ?? '') === 'fees_on' ? 'Fees On' : 'Fees Off';
+
+        return ($route['fund_type'] ?? null) === 'TRUST' ? "Trust {$label}" : $label;
     }
 
     public function uploadLogo(Request $request, string $pmsClientId): RedirectResponse

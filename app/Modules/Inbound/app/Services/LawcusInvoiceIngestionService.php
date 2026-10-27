@@ -36,8 +36,9 @@ class LawcusInvoiceIngestionService
         $customerPayload = $this->fetchCustomerPayload($connection, $invoicePayload, $pmsClientId);
         $recipientEmails = $this->extractClientEmails($invoicePayload, $customerPayload);
         $customerName    = $this->extractClientName($invoicePayload, $customerPayload);
+        $matterPayload   = $this->fetchMatterPayload($connection, $invoicePayload, $pmsClientId);
 
-        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $customerName, $pmsClientId) {
+        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $matterPayload, $triggerPayload, $recipientEmails, $customerName, $pmsClientId) {
             $invoice = Invoice::query()->updateOrCreate(
                 [
                     'pms_source'          => 'lawcus',
@@ -58,6 +59,7 @@ class LawcusInvoiceIngestionService
                         'trigger'  => $triggerPayload,
                         'invoice'  => $invoicePayload,
                         'customer' => $customerPayload,
+                        'matter'   => $matterPayload,
                     ],
                     'recipient_emails' => $recipientEmails,
                     'customer'         => array_filter([
@@ -184,6 +186,53 @@ class LawcusInvoiceIngestionService
             $this->handleApiFailure($connection, $e, $pmsClientId);
 
             return [];
+        }
+    }
+
+    /**
+     * The matter the invoice or trust request belongs to, with its custom fields — the
+     * Per-Invoice Fee Override field (and so the Multi-MID route) is read from here. Uses
+     * the invoice's embedded matter when it already carries custom_fields, else fetches
+     * the matter by UUID.
+     *
+     * Best-effort: the invoice itself was just fetched with the same token, so a failure
+     * here doesn't mark the connection broken. It is audited, and the field then reads as
+     * blank, which follows the merchant's blank default.
+     */
+    private function fetchMatterPayload(LawcusConnection $connection, array $invoicePayload, string $pmsClientId): array
+    {
+        $data     = Arr::get($invoicePayload, 'data', $invoicePayload);
+        $embedded = Arr::get($data, 'matter');
+        $embedded = is_array($embedded) ? $embedded : [];
+
+        if (is_array($embedded['custom_fields'] ?? null)) {
+            return $embedded;
+        }
+
+        $matterUuid = trim((string) (
+            Arr::get($data, 'matter_uuid') ?? Arr::get($data, 'matteruuid') ?? Arr::get($embedded, 'uuid') ?? ''
+        ));
+
+        if ($matterUuid === '') {
+            return $embedded;
+        }
+
+        try {
+            return $this->client->fetchMatter($connection, $matterUuid) ?: $embedded;
+        } catch (Throwable $e) {
+            Log::warning('Lawcus matter fetch failed — fee override field treated as blank', [
+                'pms_client_id' => $pmsClientId,
+                'matter_uuid'   => $matterUuid,
+                'error'         => $e->getMessage(),
+            ]);
+
+            AuditLogger::log('LAWCUS_MATTER_FETCH_FAILED', 'client', $pmsClientId, [
+                'matter_uuid'         => $matterUuid,
+                'external_invoice_id' => (string) Arr::get($data, 'id', ''),
+                'error'               => $e->getMessage(),
+            ]);
+
+            return $embedded;
         }
     }
 

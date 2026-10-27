@@ -69,6 +69,23 @@ class LawcusApiClient
     }
 
     /**
+     * GET /matters/{uuid} on the REST host. Matters are addressed by UUID (as contacts
+     * are); the response carries the matter's custom_fields as [{type, name, value}].
+     * Unwrapped from a "matter"/"data" envelope when Lawcus returns one.
+     */
+    public function fetchMatter(LawcusConnection $connection, string $matterUuid): array
+    {
+        $payload = (array) $this->apiTokenRequest($connection)
+            ->get('/matters/'.rawurlencode($matterUuid))
+            ->throw()
+            ->json();
+
+        $matter = $payload['matter'] ?? $payload['data'] ?? $payload;
+
+        return is_array($matter) ? $matter : [];
+    }
+
+    /**
      * Sent, unpaid invoices (Accounts Receivable report). There's no working invoice
      * list endpoint — GET /invoices returns 500 — and the report is the documented way
      * to enumerate invoices. Drafts/approved-but-unsent invoices are not included.

@@ -58,12 +58,12 @@ class PaymentPageController extends Controller
         $gatewayRates = null;   // null = use cc/ach fallback
         $routeType   = null;
 
-        $isQuickBooksInvoice = (string) $invoice->pms_source === 'quickbooks';
+        $usesFeeOverride = QbFeeOverride::supports($invoice);
 
-        if ($isQuickBooksInvoice) {
+        if ($usesFeeOverride) {
             if (! $client->qb_fee_override_enabled) {
                 // Per-Invoice Fee Override is off → Processing Fee Configuration applies to every
-                // QuickBooks invoice, as for any other PMS ($feeEnabled already holds it).
+                // QuickBooks/Lawcus invoice, as for any other PMS ($feeEnabled already holds it).
                 $feeEnabled = (bool) $client->fee_surcharge_enabled;
             } else {
                 // Override is ON → the per-invoice field decides directly: "Yes" passes the fee,
@@ -76,11 +76,12 @@ class PaymentPageController extends Controller
         }
 
         // ── Load per-gateway rates from MID routes ────────────────────────────────
-        if ($client->qb_fee_override_enabled && $client->qb_multi_mid_enabled && $isQuickBooksInvoice
+        if ($client->qb_fee_override_enabled && $client->qb_multi_mid_enabled && $usesFeeOverride
             && $routeType !== null) {
 
             $midRoutes = ClientMidRoute::query()
                 ->where('client_id',  $client->id)
+                ->where('fund_type',  QbFeeOverride::midRouteFundType($invoice))
                 ->where('route_type', $routeType)
                 ->where('is_active',  true)
                 ->get();
