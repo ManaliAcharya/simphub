@@ -113,6 +113,29 @@ class Client extends Model
         return $name !== '' ? $name : strtoupper($gateway);
     }
 
+    /**
+     * Lawcus clients configure their IOLTA MID here, so their trust money must never fall
+     * back to the operating credentials — a trust payment without one is refused.
+     */
+    public function requiresIoltaMid(): bool
+    {
+        return strtoupper((string) $this->client_pms) === 'LAWCUS';
+    }
+
+    /**
+     * Whether an IOLTA MID is set up for this gateway: its own keys (a separate account) or,
+     * for FluidPay, a processor ID (same account). A MID Identifier alone is only a label
+     * and would still charge the operating processor, so it doesn't count.
+     */
+    public function hasIoltaMid(string $gateway): bool
+    {
+        $trust = (array) (((array) ($this->trust_gateway_credentials ?? []))[strtolower($gateway)] ?? []);
+
+        return collect($trust)
+            ->except('mid_identifier')
+            ->contains(fn ($value) => trim((string) $value) !== '');
+    }
+
     /** Fields that pick one specific MID, so they never carry over from the operating set to trust. */
     private const MID_SELECTOR_KEYS = ['mid_identifier', 'processor_id'];
 

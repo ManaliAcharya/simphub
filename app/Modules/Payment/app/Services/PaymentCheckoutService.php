@@ -42,24 +42,27 @@ class PaymentCheckoutService
         $this->assertLinkActive($session);
 
         $invoice = $session->invoice()->firstOrFail();
-        $options = $this->filterAllowedGateways(
-            $this->routingCandidates($session),
-            $invoice->pms_client_id,
-        );
-
-        if ($options->isEmpty()) {
-            // Trust payments need a TRUST (IOLTA) routing rule; tell the payer plainly
-            // instead of exposing routing internals.
-            throw new RuntimeException($invoice->fund_type === 'TRUST'
-                ? 'This trust payment cannot be taken online yet. Please contact the firm.'
-                : 'No routing rule available for this payment session.');
-        }
 
         // Load client credentials once — needed to enrich hostedFieldsConfig
         // (e.g. FluidPay public_key for tokenizer iframe)
         $feeClient = $invoice->pms_client_id
             ? Client::query()->where('pms_client_id', $invoice->pms_client_id)->first()
             : null;
+
+        $options = $this->filterAllowedGateways(
+            $this->routingCandidates($session),
+            $invoice->pms_client_id,
+        )
+            ->filter(fn ($decision) => $this->hasIoltaMidFor($invoice, $feeClient, $decision->gateway))
+            ->values();
+
+        if ($options->isEmpty()) {
+            // Trust payments need a TRUST (IOLTA) routing rule, and the client's own IOLTA MID
+            // where they configure one; tell the payer plainly instead of exposing routing internals.
+            throw new RuntimeException($invoice->fund_type === 'TRUST'
+                ? 'This trust payment cannot be taken online yet. Please contact the firm.'
+                : 'No routing rule available for this payment session.');
+        }
 
         return [
             'session' => [
@@ -337,6 +340,16 @@ class PaymentCheckoutService
             }
         }
 
+        $routingContext = $this->makeRoutingContext($session, $paymentMethod);
+        $decision = $this->routing->findCandidate($routingContext, $routingRuleId);
+
+        // Never charge trust money without the client's IOLTA MID — it would land in the
+        // operating account. The payment page already hides such a gateway; this backs it up.
+        // Checked before taking the lock, so the payer can retry once the firm sets it up.
+        if (! $this->hasIoltaMidFor($invoice, $feeClient, $decision->gateway)) {
+            throw new RuntimeException('This trust payment cannot be taken online yet. Please contact the firm.');
+        }
+
         $existing = $this->idempotency->acquireLock((string) $session->idempotency_key);
 
         if ($existing) {
@@ -347,9 +360,6 @@ class PaymentCheckoutService
             'status' => 'PROCESSING',
             'payment_method' => $paymentMethod,
         ])->save();
-
-        $routingContext = $this->makeRoutingContext($session, $paymentMethod);
-        $decision = $this->routing->findCandidate($routingContext, $routingRuleId);
 
         // ── Client-specific gateway credentials override ───────────────────────
         // If the client has their own credentials for this gateway, merge them
@@ -720,6 +730,28 @@ class PaymentCheckoutService
         }
 
         return $feeCents;
+    }
+
+    /**
+     * False only for a trust payment from a client who must configure their IOLTA MID and
+     * has none for this gateway — neither in Gateway Credentials nor as a Multi-MID Trust route.
+     */
+    private function hasIoltaMidFor(Invoice $invoice, ?Client $client, string $gateway): bool
+    {
+        if ($invoice->fund_type !== 'TRUST' || ! $client || ! $client->requiresIoltaMid()) {
+            return true;
+        }
+
+        try {
+            if ($client->hasIoltaMid($gateway)) {
+                return true;
+            }
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            return false;
+        }
+
+        return QbFeeOverride::supports($invoice)
+            && $this->resolveQbMidRoute($invoice, $client, $gateway) !== null;
     }
 
     /**

@@ -57,6 +57,21 @@ class ClientTrustGatewayCredentialsTest extends TestCase
         $this->assertSame('production', $creds['environment']);
     }
 
+    public function test_an_iolta_mid_needs_its_own_keys_or_a_processor_id(): void
+    {
+        $this->assertFalse($this->client()->hasIoltaMid('fluidpay'));
+        $this->assertFalse($this->client(['fluidpay' => ['mid_identifier' => 'MID-IOLTA']])->hasIoltaMid('fluidpay'));
+        $this->assertTrue($this->client(['fluidpay' => ['processor_id' => 'proc-iolta']])->hasIoltaMid('FluidPay'));
+        $this->assertTrue($this->client(['fluidpay' => ['api_key' => 'api_iolta']])->hasIoltaMid('fluidpay'));
+        $this->assertFalse($this->client(['fluidpay' => ['processor_id' => 'proc-iolta']])->hasIoltaMid('paya'));
+    }
+
+    public function test_only_lawcus_clients_require_an_iolta_mid(): void
+    {
+        $this->assertTrue((new Client)->forceFill(['client_pms' => 'LAWCUS'])->requiresIoltaMid());
+        $this->assertFalse((new Client)->forceFill(['client_pms' => 'QUICKBOOKS'])->requiresIoltaMid());
+    }
+
     public function test_trust_never_inherits_the_operating_mid_or_processor(): void
     {
         $creds = $this->client()->gatewayCredentialsFor('fluidpay', 'TRUST');

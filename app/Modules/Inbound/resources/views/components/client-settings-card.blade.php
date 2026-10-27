@@ -278,7 +278,11 @@
                                             </button>
                                         @endif
                                     </div>
-                                    <div style="font-size:12px;color:#6b7c93;">Trust money is paid here, never to the operating MID. Leave the keys blank if the IOLTA MID is in the same account as the operating MID.</div>
+                                    <div style="font-size:12px;color:#6b7c93;">Trust money is paid here, never to the operating MID. Leave the keys blank if the IOLTA MID is in the same account as the operating MID{{ $gw === 'fluidpay' ? ' — then the Processor ID is required' : '' }}.</div>
+                                    @unless($client->hasIoltaMid($gw))
+                                        <div role="status" style="padding:8px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#92400e;">
+                                            &#9888; Not set up — trust payments through {{ strtoupper($gw) }} are refused until it is.</div>
+                                    @endunless
                                     @foreach($credDefs[$gw] as $field)
                                     @php $isConfigured = !empty($trustCreds[$gw][$field['key']] ?? null); @endphp
                                     <div class="cc-field" style="margin:0;">
