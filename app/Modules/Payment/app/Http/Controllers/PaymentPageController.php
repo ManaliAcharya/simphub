@@ -58,12 +58,12 @@ class PaymentPageController extends Controller
         $gatewayRates = null;   // null = use cc/ach fallback
         $routeType   = null;
 
-        $usesFeeOverride = QbFeeOverride::supports($invoice);
+        $isQuickBooksInvoice = (string) $invoice->pms_source === 'quickbooks';
 
-        if ($usesFeeOverride) {
+        if ($isQuickBooksInvoice) {
             if (! $client->qb_fee_override_enabled) {
                 // Per-Invoice Fee Override is off → Processing Fee Configuration applies to every
-                // QuickBooks/Lawcus invoice, as for any other PMS ($feeEnabled already holds it).
+                // QuickBooks invoice, as for any other PMS ($feeEnabled already holds it).
                 $feeEnabled = (bool) $client->fee_surcharge_enabled;
             } else {
                 // Override is ON → the per-invoice field decides directly: "Yes" passes the fee,
@@ -76,12 +76,11 @@ class PaymentPageController extends Controller
         }
 
         // ── Load per-gateway rates from MID routes ────────────────────────────────
-        if ($client->qb_fee_override_enabled && $client->qb_multi_mid_enabled && $usesFeeOverride
+        if ($client->qb_fee_override_enabled && $client->qb_multi_mid_enabled && $isQuickBooksInvoice
             && $routeType !== null) {
 
             $midRoutes = ClientMidRoute::query()
                 ->where('client_id',  $client->id)
-                ->where('fund_type',  QbFeeOverride::midRouteFundType($invoice))
                 ->where('route_type', $routeType)
                 ->where('is_active',  true)
                 ->get();
@@ -122,10 +121,6 @@ class PaymentPageController extends Controller
         ];
     }
 
-    /**
-     * Strip private/secret credential fields before sending to the browser.
-     * Only public keys and environment settings are safe for client-side use.
-     */
     /** Gateway Credentials in their stored shape, with each gateway's IOLTA set for trust money. */
     private function fundCredentials(Client $client, string $fundType): array
     {
@@ -138,6 +133,10 @@ class PaymentPageController extends Controller
         return $creds;
     }
 
+    /**
+     * Strip private/secret credential fields before sending to the browser.
+     * Only public keys and environment settings are safe for client-side use.
+     */
     private function publicCredentialsOnly(array $gwCreds): array
     {
         // Top-level safe keys (not per-gateway secrets)
