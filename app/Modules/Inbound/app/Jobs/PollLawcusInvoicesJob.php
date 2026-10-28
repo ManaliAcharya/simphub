@@ -19,9 +19,9 @@ use Throwable;
 /**
  * Lawcus webhooks don't work with pasted API tokens, so new invoices are found by
  * polling the invoice list (POST /v2/invoices) and handing each one we haven't seen to
- * LawcusInvoiceIngestionService — the same path a webhook would take. Sent, unpaid
- * invoices get a payment session and the link is emailed once; invoices with nothing
- * due (paid from the matter's trust balance) are only recorded.
+ * LawcusInvoiceIngestionService — the same path a webhook would take. Saved (or sent),
+ * unpaid invoices get a payment session and the link is emailed once; invoices with
+ * nothing due (paid from the matter's trust balance) are only recorded.
  * The list is used rather than the AR report because the report leaves out Trust
  * Requests (type TRUST), which route to the firm's IOLTA MID.
  */
@@ -95,23 +95,9 @@ class PollLawcusInvoicesJob implements ShouldQueue
             return;
         }
 
-        // Only invoices issued since the firm connected — otherwise connecting a firm would
-        // email payment links for its entire existing receivables backlog. Sent, unpaid ones
-        // get a payment link; ones with nothing due (e.g. paid from the matter's trust balance
-        // when created) are only recorded, never emailed — see LawcusInvoiceIngestionService.
-        $candidates = collect($outstanding)->filter(function (array $invoice) use ($since): bool {
-            $issued = $this->parseDate($invoice['issue_date'] ?? null);
-            $status = strtoupper((string) ($invoice['status'] ?? ''));
-
-            if ($issued === null || $issued->lessThan($since) || in_array($status, self::NOT_RECORDED_STATUSES, true)) {
-                return false;
-            }
-
-            return LawcusInvoiceIngestionService::hasNothingDue($invoice)
-                || (! empty($invoice['sent_at'])
-                    && ! in_array($status, self::NOT_PAYABLE_STATUSES, true)
-                    && (float) ($invoice['amount_due'] ?? 0) > 0);
-        });
+        $candidates = collect($outstanding)->filter(
+            fn (array $invoice): bool => self::shouldIngest($invoice, $since)
+        );
 
         if ($candidates->isEmpty()) {
             return;
@@ -130,7 +116,7 @@ class PollLawcusInvoicesJob implements ShouldQueue
             try {
                 $result = $ingestion->ingest((string) $invoice['id'], [
                     'pms_client_id' => $connection->pms_client_id,
-                    'event_name'    => 'poll.invoice.sent',
+                    'event_name'    => empty($invoice['sent_at']) ? 'poll.invoice.saved' : 'poll.invoice.sent',
                     // The list's own status / amount due, in case the single-invoice fetch omits them.
                     'list_row'      => array_intersect_key($invoice, array_flip(['status', 'amount_due'])),
                 ]);
@@ -153,6 +139,36 @@ class PollLawcusInvoicesJob implements ShouldQueue
     }
 
     /**
+     * Whether a /v2/invoices row should be ingested. Only invoices issued since the firm
+     * connected — otherwise connecting a firm would email payment links for its entire
+     * existing receivables backlog. Unpaid ones get a payment link as soon as they're saved,
+     * without waiting for the firm to send them — firms review time entries before invoicing,
+     * so a saved invoice is final. Without Lawcus's approval process a saved invoice is
+     * APPROVED; DRAFT / PENDING_APPROVAL / REJECTED only appear while an approver still has
+     * to act. Ones with nothing due (e.g. paid from the matter's trust balance when created)
+     * are only recorded, never emailed — see LawcusInvoiceIngestionService.
+     */
+    public static function shouldIngest(array $invoice, CarbonImmutable $since): bool
+    {
+        $issued = self::parseDate($invoice['issue_date'] ?? null);
+        $status = strtoupper((string) ($invoice['status'] ?? ''));
+
+        if ($issued === null || $issued->lessThan($since) || in_array($status, self::NOT_RECORDED_STATUSES, true)) {
+            return false;
+        }
+
+        if (LawcusInvoiceIngestionService::hasNothingDue($invoice)) {
+            return true;
+        }
+
+        $ready = ! empty($invoice['sent_at']) || $status === 'APPROVED';
+
+        return $ready
+            && ! in_array($status, self::NOT_PAYABLE_STATUSES, true)
+            && (float) ($invoice['amount_due'] ?? 0) > 0;
+    }
+
+    /**
      * Start of the day the firm connected. Compared at day granularity because Lawcus
      * issue dates carry no timezone.
      */
@@ -161,7 +177,7 @@ class PollLawcusInvoicesJob implements ShouldQueue
         return CarbonImmutable::parse($connection->created_at)->startOfDay();
     }
 
-    private function parseDate(mixed $value): ?CarbonImmutable
+    private static function parseDate(mixed $value): ?CarbonImmutable
     {
         if (! is_string($value) || trim($value) === '') {
             return null;
