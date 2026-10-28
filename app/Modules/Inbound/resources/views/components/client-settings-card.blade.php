@@ -300,14 +300,22 @@
                                 </div>
                                 @endforeach
                                 @foreach($gw === 'fluidpay' ? $fluidpayMidDefs : $midDefs as $field)
+                                @php $fieldValue = old("gateway_credentials.$gw.{$field['key']}", $gwCreds[$gw][$field['key']] ?? ''); @endphp
                                 <div class="cc-field" style="margin:0;">
                                     <label for="csc-cred-{{ $gw }}-{{ $field['key'] }}">{{ $field['label'] }}</label>
+                                    @if($gw === 'fluidpay')
+                                        @include('inbound::components.fluidpay-mid-select', [
+                                            'prefix' => 'csc-cred', 'fundType' => 'OPERATING', 'field' => $field['key'],
+                                            'name' => "gateway_credentials[fluidpay][{$field['key']}]", 'value' => $fieldValue,
+                                        ])
+                                    @else
                                     <input type="text"
                                            id="csc-cred-{{ $gw }}-{{ $field['key'] }}"
                                            name="gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
-                                           value="{{ old("gateway_credentials.$gw.{$field['key']}", $gwCreds[$gw][$field['key']] ?? '') }}"
+                                           value="{{ $fieldValue }}"
                                            autocomplete="off" data-lpignore="true" data-1p-ignore
                                            style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
+                                    @endif
                                 </div>
                                 @endforeach
                                 @if($gw === 'fluidpay')
@@ -322,7 +330,7 @@
                     @if($showIolta)
                     <div id="csc-gw-panel-trust" role="tabpanel" aria-labelledby="csc-gw-tab-trust" tabindex="0" @if($gwActiveFund !== 'TRUST') hidden @endif
                          style="display:grid;gap:16px;">
-                        <div style="font-size:12px;color:#6b7c93;">Trust requests are paid to the IOLTA MID, never to the operating MID. Leave the keys blank when the IOLTA MID is in the same account as the operating MID.</div>
+                        <div style="font-size:12px;color:#6b7c93;">Trust requests are paid to the IOLTA MID, never to the operating MID. When the IOLTA MID is in the same account as the operating MID, leave the keys blank but still enter what picks the IOLTA MID: the Processor ID for FluidPay, or the Terminal ID for Paya. A MID Identifier alone is only a label and doesn't count.</div>
                         @foreach($activeGateways as $gw)
                         @if(isset($credDefs[$gw]))
                         <div style="background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;padding:14px;">
@@ -366,14 +374,22 @@
                                 </div>
                                 @endforeach
                                 @foreach($gw === 'fluidpay' ? $fluidpayMidDefs : $midDefs as $field)
+                                @php $fieldValue = old("trust_gateway_credentials.$gw.{$field['key']}", $trustCreds[$gw][$field['key']] ?? ''); @endphp
                                 <div class="cc-field" style="margin:0;">
                                     <label for="csc-trust-{{ $gw }}-{{ $field['key'] }}">{{ $field['label'] }}</label>
+                                    @if($gw === 'fluidpay')
+                                        @include('inbound::components.fluidpay-mid-select', [
+                                            'prefix' => 'csc-trust', 'fundType' => 'TRUST', 'field' => $field['key'],
+                                            'name' => "trust_gateway_credentials[fluidpay][{$field['key']}]", 'value' => $fieldValue,
+                                        ])
+                                    @else
                                     <input type="text"
                                            id="csc-trust-{{ $gw }}-{{ $field['key'] }}"
                                            name="trust_gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
-                                           value="{{ old("trust_gateway_credentials.$gw.{$field['key']}", $trustCreds[$gw][$field['key']] ?? '') }}"
+                                           value="{{ $fieldValue }}"
                                            autocomplete="off" data-lpignore="true" data-1p-ignore
                                            style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
+                                    @endif
                                 </div>
                                 @endforeach
                                 @if($gw === 'fluidpay')
@@ -389,6 +405,7 @@
                 </form>
                 @if(in_array('fluidpay', $activeGateways, true))
                     @include('inbound::components.fluidpay-credential-test-script')
+                    @include('inbound::components.fluidpay-mid-select-script', ['client' => $client])
                 @endif
             </div>
             @endif
