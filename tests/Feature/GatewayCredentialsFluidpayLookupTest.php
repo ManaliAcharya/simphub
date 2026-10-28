@@ -14,6 +14,7 @@ class GatewayCredentialsFluidpayLookupTest extends TestCase
     private function client(array $trust = []): Client
     {
         return (new Client)->forceFill([
+            'client_pms' => 'LAWCUS',
             'gateway_credentials' => [
                 'environment' => 'sandbox',
                 'fluidpay' => ['api_key' => 'api_operating', 'processor_id' => 'proc-operating'],
@@ -34,18 +35,25 @@ class GatewayCredentialsFluidpayLookupTest extends TestCase
         return $this->controller('fluidpayLookupCredentials')(Request::create('/', 'POST', $input), $client);
     }
 
-    public function test_iolta_lookup_uses_the_operating_key_when_the_iolta_keys_are_blank(): void
+    public function test_iolta_lookup_never_borrows_the_operating_key(): void
     {
         $creds = $this->credentials(['fund_type' => 'TRUST'], $this->client(['fluidpay' => ['processor_id' => 'proc-iolta']]));
 
-        $this->assertSame(['environment' => 'sandbox', 'api_key' => 'api_operating'], $creds);
+        $this->assertSame(['environment' => 'sandbox'], $creds);
     }
 
-    public function test_iolta_lookup_uses_the_iolta_key_in_a_separate_account(): void
+    public function test_iolta_lookup_uses_the_iolta_key(): void
     {
         $creds = $this->credentials(['fund_type' => 'TRUST'], $this->client(['fluidpay' => ['api_key' => 'api_iolta']]));
 
         $this->assertSame('api_iolta', $creds['api_key']);
+    }
+
+    public function test_operating_lookup_uses_the_operating_key(): void
+    {
+        $creds = $this->credentials(['fund_type' => 'OPERATING'], $this->client(['fluidpay' => ['api_key' => 'api_iolta']]));
+
+        $this->assertSame('api_operating', $creds['api_key']);
     }
 
     public function test_a_typed_key_and_unsaved_environment_win(): void

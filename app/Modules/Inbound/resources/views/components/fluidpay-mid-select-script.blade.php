@@ -1,7 +1,7 @@
 {{-- Fills the Gateway Credentials FluidPay pickers (fluidpay-mid-select): MID Identifier with the
      MIDs the key can act for, then Processor ID with the chosen MID's processors — as the QB
-     Multi-MID rows do. Uses the key typed on that tab, else the saved one; a blank IOLTA key
-     falls back to the operating key, as at charge time. If FluidPay can't be reached, the
+     Multi-MID rows do. Uses the key typed on that tab, else the one saved for it — the IOLTA
+     tab never borrows the operating key. If FluidPay can't be reached, the
      picker can be swapped for a text box so the value can still be entered by hand. --}}
 @once
 <script>

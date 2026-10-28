@@ -123,29 +123,29 @@ class Client extends Model
         return strtoupper((string) $this->client_pms) === 'LAWCUS';
     }
 
+    /** The keys an IOLTA MID needs, since trust money is charged with these alone. */
+    private const IOLTA_KEYS = [
+        'fluidpay' => ['api_key', 'public_key'],
+        'paya'     => ['username', 'password', 'terminal_id'],
+        'nmi'      => ['security_key', 'public_key'],
+    ];
+
     /**
-     * Whether an IOLTA MID is set up for this gateway: its own keys (a separate account) or,
-     * for FluidPay, a processor ID (same account). A MID Identifier alone is only a label
-     * and would still charge the operating processor, so it doesn't count.
+     * Whether an IOLTA MID is set up for this gateway: all of its own keys. Trust money never
+     * borrows the operating keys, so without them the trust payment is refused.
      */
     public function hasIoltaMid(string $gateway): bool
     {
-        $trust = (array) (((array) ($this->trust_gateway_credentials ?? []))[strtolower($gateway)] ?? []);
+        $gateway = strtolower($gateway);
+        $trust   = (array) (((array) ($this->trust_gateway_credentials ?? []))[$gateway] ?? []);
 
-        return collect($trust)
-            ->except('mid_identifier')
-            ->contains(fn ($value) => trim((string) $value) !== '');
+        return isset(self::IOLTA_KEYS[$gateway])
+            && collect(self::IOLTA_KEYS[$gateway])->every(fn ($key) => trim((string) ($trust[$key] ?? '')) !== '');
     }
 
     /** Fields that pick one specific MID, so they never carry over from the operating set to trust. */
     private const MID_SELECTOR_KEYS = ['mid_identifier', 'processor_id'];
 
-    /**
-     * This client's Gateway Credentials for one gateway and fund type, with the common
-     * environment applied. Trust money uses the IOLTA set on top of the operating keys —
-     * so an IOLTA MID in the same account only needs its MID / processor ID, and one in a
-     * separate account brings its own keys — but never the operating MID or processor ID.
-     */
     /**
      * Lawcus ACH (Paya) payments are followed to settlement: the firm hears about them once
      * they settle, or is told to reverse them in Lawcus if they're returned.
@@ -157,6 +157,12 @@ class Client extends Model
             && strtolower($gateway) === 'paya';
     }
 
+    /**
+     * This client's Gateway Credentials for one gateway and fund type, with the common
+     * environment applied. A client with an IOLTA MID pays trust money with the IOLTA set
+     * alone — never the operating keys. Other clients' trust money keeps the operating keys,
+     * but never the operating MID or processor ID.
+     */
     public function gatewayCredentialsFor(string $gateway, ?string $fundType): array
     {
         $gateway = strtolower($gateway);
@@ -164,11 +170,10 @@ class Client extends Model
         $creds   = (array) ($all[$gateway] ?? []);
 
         if (strtoupper((string) $fundType) === 'TRUST') {
-            $trust = (array) ($this->trust_gateway_credentials ?? []);
-            $creds = array_merge(
-                array_diff_key($creds, array_flip(self::MID_SELECTOR_KEYS)),
-                (array) ($trust[$gateway] ?? []),
-            );
+            $trust = (array) (((array) ($this->trust_gateway_credentials ?? []))[$gateway] ?? []);
+            $creds = $this->requiresIoltaMid()
+                ? $trust
+                : array_merge(array_diff_key($creds, array_flip(self::MID_SELECTOR_KEYS)), $trust);
         }
 
         if (! empty($all['environment'])) {

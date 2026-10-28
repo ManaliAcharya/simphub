@@ -697,8 +697,9 @@ class ClientConfigController extends Controller
 
     /**
      * Gateway Credentials lookups use the key typed in the form, else the saved one for that
-     * fund type — an IOLTA set with blank keys falls back to the operating key, as at charge
-     * time. The Environment dropdown may have been changed but not saved yet, so it's sent too.
+     * fund type — the same key the charge will use, so an IOLTA lookup never borrows the
+     * operating key. The Environment dropdown may have been changed but not saved yet, so
+     * it's sent too.
      */
     private function fluidpayLookupCredentials(Request $request, Client $client): array
     {

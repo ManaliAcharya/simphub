@@ -189,8 +189,6 @@
                     @php
                         // A save error about the IOLTA keys reopens that tab.
                         $gwActiveFund = str_contains((string) session('error'), 'IOLTA') ? 'TRUST' : 'OPERATING';
-                        $ioltaSet     = collect($activeGateways)->filter(fn ($g) => isset($credDefs[$g]))->values();
-                        $ioltaReady   = $ioltaSet->filter(fn ($g) => $client->hasIoltaMid($g))->count();
                     @endphp
                     <div role="tablist" aria-label="MID account" class="csc-gw-tabs"
                          style="display:flex;gap:4px;border-bottom:1px solid rgba(19,34,56,.12);margin-bottom:16px;">
@@ -201,10 +199,6 @@
                                     aria-selected="{{ $tabActive ? 'true' : 'false' }}" tabindex="{{ $tabActive ? '0' : '-1' }}"
                                     style="display:flex;align-items:center;gap:8px;padding:9px 14px;border:none;background:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;margin-bottom:-1px;border-bottom:2px solid {{ $tabActive ? '#132238' : 'transparent' }};color:{{ $tabActive ? '#132238' : '#6b7c93' }};">
                                 {{ $tabLabel }}
-                                @if($tabFund === 'TRUST')
-                                    <span style="font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;{{ $ioltaReady === $ioltaSet->count() ? 'background:#dcfce7;color:#166534;' : ($ioltaReady > 0 ? 'background:#fef3c7;color:#92400e;' : 'background:#f3f4f6;color:#4b5563;') }}">
-                                        {{ $ioltaReady === 0 ? 'Not set' : $ioltaReady . ' of ' . $ioltaSet->count() . ' set' }}</span>
-                                @endif
                             </button>
                         @endforeach
                     </div>
@@ -330,7 +324,7 @@
                     @if($showIolta)
                     <div id="csc-gw-panel-trust" role="tabpanel" aria-labelledby="csc-gw-tab-trust" tabindex="0" @if($gwActiveFund !== 'TRUST') hidden @endif
                          style="display:grid;gap:16px;">
-                        <div style="font-size:12px;color:#6b7c93;">Trust requests are paid to the IOLTA MID, never to the operating MID. When the IOLTA MID is in the same account as the operating MID, leave the keys blank but still enter what picks the IOLTA MID: the Processor ID for FluidPay, or the Terminal ID for Paya. A MID Identifier alone is only a label and doesn't count.</div>
+                        <div style="font-size:12px;color:#6b7c93;">Trust requests are paid with the IOLTA keys below, never the operating keys. Until a gateway's IOLTA keys are entered, trust payments through it are refused.</div>
                         @foreach($activeGateways as $gw)
                         @if(isset($credDefs[$gw]))
                         <div style="background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;padding:14px;">
@@ -353,7 +347,7 @@
                             <div style="display:grid;gap:8px;">
                                 @unless($client->hasIoltaMid($gw))
                                     <div role="status" style="padding:8px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#92400e;">
-                                        &#9888; Not set up — trust payments through {{ strtoupper($gw) }} are refused until it is{{ $gw === 'fluidpay' ? '. In the same account as operating, the Processor ID is required' : '' }}.</div>
+                                        &#9888; Not set up — trust payments through {{ strtoupper($gw) }} are refused until all of its IOLTA keys are entered.</div>
                                 @endunless
                                 @foreach($credDefs[$gw] as $field)
                                 @php $isConfigured = !empty($trustCreds[$gw][$field['key']] ?? null); @endphp
@@ -369,7 +363,7 @@
                                            name="trust_gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
                                            value=""
                                            autocomplete="{{ $field['type'] === 'password' ? 'new-password' : 'off' }}" data-lpignore="true" data-1p-ignore
-                                           placeholder="{{ $isConfigured ? 'Configured — leave blank to keep' : 'Same as operating' }}"
+                                           placeholder="{{ $isConfigured ? 'Configured — leave blank to keep' : 'Required for trust payments' }}"
                                            style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
                                 </div>
                                 @endforeach
