@@ -32,6 +32,7 @@ use Modules\Inbound\Services\ZohoCrmPaymentSyncService;
 use Modules\Inbound\Services\ZohoOAuthService;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
+use Modules\Payment\Services\InvoiceListStatus;
 
 class PmsIntegrationController extends Controller
 {
@@ -681,9 +682,15 @@ class PmsIntegrationController extends Controller
             ->unique('invoice_id')
             ->keyBy('invoice_id');
 
-        $invoices = $invoices->map(function ($invoice) use ($latestSessionByInvoice) {
+        // Email and Payment columns — invoices.status mixes the PMS's own status with
+        // our checkout result, so neither is shown from it (see InvoiceListStatus).
+        $listStatuses = app(InvoiceListStatus::class)->forInvoices($invoices);
+
+        $invoices = $invoices->map(function ($invoice) use ($latestSessionByInvoice, $listStatuses) {
             $invoice->recipient_email_list = implode(', ', $invoice->recipient_emails ?? []);
             $invoice->has_been_sent = (bool) ($latestSessionByInvoice->get($invoice->id)?->payment_link_sent_at);
+            $invoice->email_status   = $listStatuses[$invoice->id]['email'];
+            $invoice->payment_status = $listStatuses[$invoice->id]['payment'];
 
             return $invoice;
         });

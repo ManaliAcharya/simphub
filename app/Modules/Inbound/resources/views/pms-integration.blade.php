@@ -2429,7 +2429,8 @@
                                     <th>Recipient Email</th>
                                     <th>Amount</th>
                                     <th>Invoice Created Date</th>
-                                    <th>Status</th>
+                                    <th>Email Status</th>
+                                    <th>Payment Status</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -2454,7 +2455,33 @@
                                             {{ optional($invoice->created_at)->format('Y-m-d') ?? '-' }}
                                         </td>
 
-                                        <td>{{ ucfirst($invoice->status ?? 'Unknown') }}</td>
+                                        @foreach ([$invoice->email_status, $invoice->payment_status] as $listStatus)
+                                            @php
+                                                $tone = [
+                                                    'success' => 'background:#dcfce7;color:#166534;',
+                                                    'danger'  => 'background:#fee2e2;color:#991b1b;',
+                                                    'warning' => 'background:#fef3c7;color:#92400e;',
+                                                    'info'    => 'background:#dbeafe;color:#1e40af;',
+                                                    'neutral' => 'background:#f3f4f6;color:#374151;',
+                                                ][$listStatus['tone']] ?? '';
+                                            @endphp
+                                            <td>
+                                                <span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;{{ $tone }}"
+                                                    @if ($listStatus['detail']) title="{{ $listStatus['detail'] }}" @endif>
+                                                    {{ $listStatus['label'] }}
+                                                </span>
+                                                @if ($listStatus['at'])
+                                                    <div style="font-size:12px;color:#4b5563;margin-top:3px;">
+                                                        {{ $listStatus['at']->format('M j, Y g:i A') }}
+                                                    </div>
+                                                @endif
+                                                @if ($listStatus['detail'])
+                                                    <div style="font-size:12px;color:#4b5563;margin-top:2px;max-width:240px;">
+                                                        {{ \Illuminate\Support\Str::limit($listStatus['detail'], 90) }}
+                                                    </div>
+                                                @endif
+                                            </td>
+                                        @endforeach
                                         <td>
                                             @if (!empty($invoice->recipient_emails))
                                                 <form
@@ -2476,7 +2503,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="6" class="text-center">
+                                        <td colspan="7" class="text-center">
                                             No invoices found.
                                         </td>
                                     </tr>
