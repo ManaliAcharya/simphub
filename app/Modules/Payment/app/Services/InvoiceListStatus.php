@@ -81,6 +81,8 @@ class InvoiceListStatus
         if (! $session || ! $session->payment_link_sent_at) {
             return $this->status('Not sent', 'neutral', null, match (true) {
                 $held                              => 'Held: trust payment links are turned off for this client',
+                ! $session && strtoupper((string) $invoice->status) === 'PAID'
+                                                   => 'Nothing due, so no payment link was sent',
                 empty($invoice->recipient_emails)  => 'No recipient email on the invoice',
                 default                            => null,
             });

@@ -2505,7 +2505,7 @@
                                             </td>
                                         @endforeach
                                         <td>
-                                            @if (!empty($invoice->recipient_emails))
+                                            @if (!empty($invoice->recipient_emails) && $invoice->has_payment_link)
                                                 <form
                                                     action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
                                                     method="POST">

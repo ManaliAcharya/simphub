@@ -67,6 +67,16 @@ class InvoiceListStatusTest extends TestCase
         );
     }
 
+    public function test_an_invoice_with_nothing_due_says_no_link_was_sent(): void
+    {
+        $paid = $this->invoice(['status' => 'PAID']);
+
+        $email = $this->statuses->emailStatus($paid, null, null);
+        $this->assertSame('Not sent', $email['label']);
+        $this->assertSame('Nothing due, so no payment link was sent', $email['detail']);
+        $this->assertSame('Success', $this->statuses->paymentStatus($paid, null, [], null)['label']);
+    }
+
     public function test_email_sent_and_resent(): void
     {
         $sent = $this->statuses->emailStatus($this->invoice(), $this->sent(), null);

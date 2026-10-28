@@ -108,16 +108,17 @@ class InvoiceIngestionController extends Controller
             ]);
         }
 
-        // All other PMS sources: return the payment link as before.
+        // All other PMS sources: return the payment link as before. A Lawcus invoice with
+        // nothing due is only recorded, so it has no payment session or link.
         return response()->json([
             'status'               => 'ok',
             'invoice_id'           => $invoice->id,
             'external_invoice_id'  => $invoice->external_invoice_id,
             'pms_client_id'        => $invoice->pms_client_id,
-            'payment_session_id'   => $session->id,
-            'idempotency_key'      => $session->idempotency_key,
-            'payment_link_token'   => $session->hosted_url_token,
-            'payment_link_url'     => $paymentLinks->urlForSession($session),
+            'payment_session_id'   => $session?->id,
+            'idempotency_key'      => $session?->idempotency_key,
+            'payment_link_token'   => $session?->hosted_url_token,
+            'payment_link_url'     => $session ? $paymentLinks->urlForSession($session) : null,
             'emails_sent'          => $result['emails_sent'] ?? 0,
         ], 202);
     }
