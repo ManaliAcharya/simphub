@@ -53,6 +53,7 @@ class Client extends Model
             'reminder_schedule_days'         => 'array',
             'subscription_api_key_created_at' => 'datetime',
             'lawcus_send_trust_links'         => 'boolean',
+            'lawcus_ach_settlement_notify'    => 'boolean',
         ];
     }
 
@@ -145,6 +146,17 @@ class Client extends Model
      * so an IOLTA MID in the same account only needs its MID / processor ID, and one in a
      * separate account brings its own keys — but never the operating MID or processor ID.
      */
+    /**
+     * Lawcus ACH (Paya) payments are followed to settlement: the firm hears about them once
+     * they settle, or is told to reverse them in Lawcus if they're returned.
+     */
+    public function tracksAchSettlement(string $gateway): bool
+    {
+        return strtoupper((string) $this->client_pms) === 'LAWCUS'
+            && (bool) $this->lawcus_ach_settlement_notify
+            && strtolower($gateway) === 'paya';
+    }
+
     public function gatewayCredentialsFor(string $gateway, ?string $fundType): array
     {
         $gateway = strtolower($gateway);

@@ -604,6 +604,28 @@
                             </form>
                         @endif
                     </div>
+
+                    {{-- ACH settlement notifications (Lawcus) --}}
+                    <div class="cc-card">
+                        <div class="cc-card-title">ACH Settlement Notifications</div>
+                        <div class="cc-card-desc">ACH (Paya) payments take a few business days to settle and can still be
+                            returned by the bank. SimpHub checks Paya once a day for each pending ACH payment.</div>
+                        <form method="POST" action="{{ route('inbound.lawcus.ach-settings') }}">
+                            @csrf
+                            <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                            <div class="cc-field">
+                                <input type="hidden" name="lawcus_ach_settlement_notify" value="0">
+                                <label style="display:flex;align-items:center;gap:8px;font-weight:500;">
+                                    <input type="checkbox" name="lawcus_ach_settlement_notify" value="1" @checked($client->lawcus_ach_settlement_notify)>
+                                    Notify the firm when an ACH payment settles
+                                </label>
+                                <div style="font-size:12px;color:#6b7280;margin-top:4px;">On: the firm's payment email is sent once
+                                    the payment settles, and a returned payment emails the firm to reverse it in Lawcus (IOLTA or
+                                    operating). Off: the firm is emailed when the payment is submitted, as before.</div>
+                            </div>
+                            <button type="submit" class="button primary" style="font-size:13px;">Save ACH settings</button>
+                        </form>
+                    </div>
                 @endif
 
                 {{-- Default Account (Wave) --}}

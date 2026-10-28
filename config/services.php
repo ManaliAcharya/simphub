@@ -138,6 +138,14 @@ return [
         'webhook_secret'       => env('WAVE_WEBHOOK_SECRET'),
     ],
 
+    // Paya GETI ACH status lookup, polled daily by PollAchSettlementsJob. The AuthGateway
+    // WSDL we charge through has no status call, so this stays off (ACH notifications go
+    // out at submit, as before) until Paya gives us the reporting service and method.
+    'paya' => [
+        'status_wsdl'   => env('PAYA_STATUS_WSDL'),
+        'status_method' => env('PAYA_STATUS_METHOD'),
+    ],
+
     'payment' => [
         'host_url' => rtrim(env('PAYMENT_HOST_URL', env('APP_URL', 'http://localhost')), '/'),
     ],

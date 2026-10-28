@@ -315,6 +315,35 @@ class PmsIntegrationController extends Controller
         ]);
     }
 
+    /** Whether the firm is notified of Lawcus ACH payments on settlement (and of returns) or at submit. */
+    public function saveLawcusAchSettings(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'pms_client_id'                => ['required', 'string'],
+            'lawcus_ach_settlement_notify' => ['nullable', 'boolean'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'LAWCUS', 422, 'ACH settlement notifications are only supported for Lawcus clients.');
+
+        $client->forceFill([
+            'lawcus_ach_settlement_notify' => (bool) ($validated['lawcus_ach_settlement_notify'] ?? false),
+        ])->save();
+
+        AuditLogger::log('LAWCUS_ACH_SETTINGS_UPDATED', 'client', (string) $client->id, [
+            'pms_client_id'          => $client->pms_client_id,
+            'ach_settlement_notify'  => $client->lawcus_ach_settlement_notify,
+        ]);
+
+        return redirect()->route('inbound.lawcus.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => 'ACH settings saved.',
+        ]);
+    }
+
     public function saveWaveDefaultAccount(
         Request $request,
         WaveOAuthService $waveOAuth,

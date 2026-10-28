@@ -4,6 +4,7 @@ namespace Modules\Payment\Providers;
 
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
+use Modules\Payment\Jobs\PollAchSettlementsJob;
 
 class PaymentServiceProvider extends ModuleServiceProvider
 {
@@ -44,6 +45,11 @@ class PaymentServiceProvider extends ModuleServiceProvider
         $schedule->command('reminders:dispatch')
             ->hourly()
             ->withoutOverlapping()
+            ->onOneServer();
+
+        // ACH settles/returns in Paya's overnight run, so check once a day in the morning.
+        $schedule->job(new PollAchSettlementsJob)
+            ->dailyAt('07:00')
             ->onOneServer();
     }
 }

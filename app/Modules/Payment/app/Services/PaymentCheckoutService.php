@@ -673,7 +673,7 @@ class PaymentCheckoutService
 
         $transaction = DB::transaction(function () use (
             $session, $invoice, $decision, $response, $feeCents, $totalAmountCents,
-            $cardholderFirstName, $cardholderLastName, $billingAddress,
+            $cardholderFirstName, $cardholderLastName, $billingAddress, $feeClient,
         ) {
             $transaction = Transaction::query()->create([
                 'payment_session_id'    => $session->id,
@@ -685,6 +685,9 @@ class PaymentCheckoutService
                 'gateway_txn_id'        => $response->transactionReference,
                 'gateway_token'         => (string) $response->gatewayToken,
                 'status'                => 'CAPTURED',
+                // Lawcus ACH settles days later or comes back returned — when the client has
+                // settlement notifications on, PollAchSettlementsJob follows it.
+                'settlement_status'     => $feeClient?->tracksAchSettlement((string) $decision->gateway) ? 'PENDING' : null,
                 'transaction_type'      => 'debit',
                 'fund_type'             => $session->fund_type,
                 'amount_cents'          => $totalAmountCents,

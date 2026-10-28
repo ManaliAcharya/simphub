@@ -53,7 +53,7 @@ class MerchantPaymentNotificationMail extends Mailable
         $totalAmount     = number_format($transaction->amount_cents / 100, 2);
         $paymentMethod   = $this->gatewayLabel((string) $transaction->gateway);
         $authorizationId = (string) ($transaction->gateway_txn_id ?? '');
-        $lawcusMatterUrl = $this->lawcusMatterUrl($invoice);
+        $lawcusMatterUrl = self::lawcusMatterUrl($invoice);
         $paidDate        = $transaction->created_at
             ? $transaction->created_at->format('m/d/Y g:i A') . ' UTC'
             : now()->format('m/d/Y g:i A') . ' UTC';
@@ -75,7 +75,7 @@ class MerchantPaymentNotificationMail extends Mailable
      * them for any firm (it redirects to the firm's own subdomain). Null for every
      * other PMS, or when the invoice carries no matter UUID.
      */
-    private function lawcusMatterUrl(Invoice $invoice): ?string
+    public static function lawcusMatterUrl(Invoice $invoice): ?string
     {
         if (strtolower((string) $invoice->pms_source) !== 'lawcus') {
             return null;

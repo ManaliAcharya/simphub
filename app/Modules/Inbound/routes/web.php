@@ -118,6 +118,8 @@ Route::middleware('web')->group(function (): void {
 
         Route::post('/inbound/lawcus/trust-settings', [PmsIntegrationController::class, 'saveLawcusTrustSettings'])
             ->name('inbound.lawcus.trust-settings');
+        Route::post('/inbound/lawcus/ach-settings', [PmsIntegrationController::class, 'saveLawcusAchSettings'])
+            ->name('inbound.lawcus.ach-settings');
 
         Route::post('/inbound/lawcus/connect-token', [PmsAuthController::class, 'connectLawcusToken'])
             ->name('inbound.lawcus.connect-token');
