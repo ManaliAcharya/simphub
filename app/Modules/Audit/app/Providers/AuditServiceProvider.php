@@ -2,6 +2,7 @@
 
 namespace Modules\Audit\Providers;
 
+use Modules\Audit\Services\TraceContext;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 use Illuminate\Console\Scheduling\Schedule;
 
@@ -33,6 +34,13 @@ class AuditServiceProvider extends ModuleServiceProvider
         EventServiceProvider::class,
         RouteServiceProvider::class,
     ];
+
+    public function register(): void
+    {
+        parent::register();
+
+        $this->app->scoped(TraceContext::class);
+    }
 
     /**
      * Define module schedules.

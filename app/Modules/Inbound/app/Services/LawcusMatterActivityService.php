@@ -14,9 +14,11 @@ use Throwable;
  * to the invoice's matter, so the firm's matter record stays complete even though
  * these emails don't go through Lawcus.
  *
- * Entries are written as outbound EMAIL interactions — the only documented way to
- * add activity to a matter. Best-effort: a failure is audited and never interrupts
- * the email or payment it describes.
+ * Entries are written as outbound interactions — the only documented way to add
+ * activity to a matter. They're logged as PHONE: Lawcus answers every EMAIL interaction
+ * with a 500 (even with email_to/email_from) unless the firm's mailbox is connected, and
+ * SECURE_MESSAGE would message the client through the portal. Best-effort: a failure is
+ * audited and never interrupts the email or payment it describes.
  */
 class LawcusMatterActivityService
 {
@@ -98,7 +100,7 @@ class LawcusMatterActivityService
             $response = $this->api->createInteraction($connection, [
                 'matter_id'    => (int) $matterId,
                 'contact_id'   => (int) $contactId,
-                'type'         => 'EMAIL',
+                'type'         => 'PHONE',
                 'type_in'      => 'OUTBOUND',
                 'participants' => json_encode([['type' => 'CLIENT', 'id' => (int) $contactId]]),
                 'subject'      => $subject,

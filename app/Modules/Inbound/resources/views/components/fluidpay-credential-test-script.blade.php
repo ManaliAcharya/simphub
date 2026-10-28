@@ -126,6 +126,7 @@
                     },
                     body: JSON.stringify({
                         route_type: d.routeType || null,
+                        fund_type: d.fundType || null,
                         mid_identifier: val(d.midInput),
                         environment: val(d.envInput) || null,
                         api_key: val(d.apiInput),

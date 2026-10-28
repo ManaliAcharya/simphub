@@ -149,7 +149,17 @@
                         ['key' => 'public_key',  'label' => 'Public Key',    'type' => 'text'],
                     ],
                 ];
+                // Which MID this account is — a FluidPay key is account-wide, so processor_id picks the MID.
+                $midDefs = [
+                    ['key' => 'mid_identifier', 'label' => 'MID Identifier', 'type' => 'text'],
+                ];
+                $fluidpayMidDefs = array_merge($midDefs, [
+                    ['key' => 'processor_id', 'label' => 'Processor ID', 'type' => 'text'],
+                ]);
                 $commonEnv = $gwCreds['environment'] ?? '';
+                // Trust requests come from Lawcus; they're paid to the IOLTA MID set up per gateway.
+                $showIolta = strtoupper((string) $client->client_pms) === 'LAWCUS';
+                $trustCreds = $showIolta ? (array) ($client->trust_gateway_credentials ?? []) : [];
             @endphp
             @if(count($activeGateways))
             <div class="cc-card">
@@ -175,7 +185,58 @@
                         </select>
                     </div>
 
-                    <div style="display:grid;gap:16px;">
+                    @if($showIolta)
+                    @php
+                        // A save error about the IOLTA keys reopens that tab.
+                        $gwActiveFund = str_contains((string) session('error'), 'IOLTA') ? 'TRUST' : 'OPERATING';
+                    @endphp
+                    <div role="tablist" aria-label="MID account" class="csc-gw-tabs"
+                         style="display:flex;gap:4px;border-bottom:1px solid rgba(19,34,56,.12);margin-bottom:16px;">
+                        @foreach(['OPERATING' => 'Operating MID', 'TRUST' => 'IOLTA MID'] as $tabFund => $tabLabel)
+                            @php $tabActive = $tabFund === $gwActiveFund; @endphp
+                            <button type="button" role="tab" id="csc-gw-tab-{{ strtolower($tabFund) }}"
+                                    aria-controls="csc-gw-panel-{{ strtolower($tabFund) }}"
+                                    aria-selected="{{ $tabActive ? 'true' : 'false' }}" tabindex="{{ $tabActive ? '0' : '-1' }}"
+                                    style="display:flex;align-items:center;gap:8px;padding:9px 14px;border:none;background:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;margin-bottom:-1px;border-bottom:2px solid {{ $tabActive ? '#132238' : 'transparent' }};color:{{ $tabActive ? '#132238' : '#6b7c93' }};">
+                                {{ $tabLabel }}
+                            </button>
+                        @endforeach
+                    </div>
+                    <script>
+                        (function() {
+                            var tabs = Array.prototype.slice.call(document.querySelectorAll('.csc-gw-tabs [role=tab]'));
+
+                            function select(tab) {
+                                tabs.forEach(function(t) {
+                                    var on = t === tab;
+                                    t.setAttribute('aria-selected', on ? 'true' : 'false');
+                                    t.tabIndex = on ? 0 : -1;
+                                    t.style.borderBottomColor = on ? '#132238' : 'transparent';
+                                    t.style.color = on ? '#132238' : '#6b7c93';
+                                    document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+                                });
+                            }
+
+                            tabs.forEach(function(tab, i) {
+                                tab.addEventListener('click', function() { select(tab); });
+                                // Arrow keys move between tabs (WAI-ARIA tabs pattern).
+                                tab.addEventListener('keydown', function(e) {
+                                    var step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+                                    if (!step) return;
+                                    e.preventDefault();
+                                    var next = tabs[(i + step + tabs.length) % tabs.length];
+                                    select(next);
+                                    next.focus();
+                                });
+                            });
+                        })();
+                    </script>
+                    {{-- The panels' inline display:grid would otherwise override the hidden attribute. --}}
+                    <style>#csc-gw-panel-operating[hidden], #csc-gw-panel-trust[hidden] { display: none !important; }</style>
+                    @endif
+
+                    <div id="csc-gw-panel-operating" style="display:grid;gap:16px;"
+                         @if($showIolta) role="tabpanel" aria-labelledby="csc-gw-tab-operating" tabindex="0" @if($gwActiveFund !== 'OPERATING') hidden @endif @endif>
                         @foreach($activeGateways as $gw)
                         @if(isset($credDefs[$gw]))
                         <div style="background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;padding:14px;">
@@ -186,6 +247,7 @@
                                             data-test-url="{{ route('inbound.clients.fluidpay-test-credentials', $client->pms_client_id) }}"
                                             data-api-input="csc-cred-fluidpay-api_key"
                                             data-public-input="csc-cred-fluidpay-public_key"
+                                            data-mid-input="csc-cred-fluidpay-mid_identifier"
                                             data-env-input="csc-gw-env"
                                             data-result="csc-cred-test-result-fluidpay"
                                             style="font-size:12px;padding:5px 12px;">
@@ -231,6 +293,25 @@
                                            style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
                                 </div>
                                 @endforeach
+                                @foreach($gw === 'fluidpay' ? $fluidpayMidDefs : $midDefs as $field)
+                                @php $fieldValue = old("gateway_credentials.$gw.{$field['key']}", $gwCreds[$gw][$field['key']] ?? ''); @endphp
+                                <div class="cc-field" style="margin:0;">
+                                    <label for="csc-cred-{{ $gw }}-{{ $field['key'] }}">{{ $field['label'] }}</label>
+                                    @if($gw === 'fluidpay')
+                                        @include('inbound::components.fluidpay-mid-select', [
+                                            'prefix' => 'csc-cred', 'fundType' => 'OPERATING', 'field' => $field['key'],
+                                            'name' => "gateway_credentials[fluidpay][{$field['key']}]", 'value' => $fieldValue,
+                                        ])
+                                    @else
+                                    <input type="text"
+                                           id="csc-cred-{{ $gw }}-{{ $field['key'] }}"
+                                           name="gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
+                                           value="{{ $fieldValue }}"
+                                           autocomplete="off" data-lpignore="true" data-1p-ignore
+                                           style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
+                                    @endif
+                                </div>
+                                @endforeach
                                 @if($gw === 'fluidpay')
                                     <div id="csc-cred-test-result-fluidpay" role="status" aria-live="polite" style="display:none;"></div>
                                 @endif
@@ -239,10 +320,86 @@
                         @endif
                         @endforeach
                     </div>
+
+                    @if($showIolta)
+                    <div id="csc-gw-panel-trust" role="tabpanel" aria-labelledby="csc-gw-tab-trust" tabindex="0" @if($gwActiveFund !== 'TRUST') hidden @endif
+                         style="display:grid;gap:16px;">
+                        <div style="font-size:12px;color:#6b7c93;">Trust requests are paid with the IOLTA keys below, never the operating keys. Until a gateway's IOLTA keys are entered, trust payments through it are refused.</div>
+                        @foreach($activeGateways as $gw)
+                        @if(isset($credDefs[$gw]))
+                        <div style="background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;padding:14px;">
+                            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;">
+                                <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6b7c93;">{{ strtoupper($gw) }}</span>
+                                @if($gw === 'fluidpay')
+                                    <button type="button" class="button fluidpay-test-creds"
+                                            data-test-url="{{ route('inbound.clients.fluidpay-test-credentials', $client->pms_client_id) }}"
+                                            data-fund-type="TRUST"
+                                            data-api-input="csc-trust-fluidpay-api_key"
+                                            data-public-input="csc-trust-fluidpay-public_key"
+                                            data-mid-input="csc-trust-fluidpay-mid_identifier"
+                                            data-env-input="csc-gw-env"
+                                            data-result="csc-trust-test-result-fluidpay"
+                                            style="font-size:12px;padding:5px 12px;">
+                                        Test credentials
+                                    </button>
+                                @endif
+                            </div>
+                            <div style="display:grid;gap:8px;">
+                                @unless($client->hasIoltaMid($gw))
+                                    <div role="status" style="padding:8px 10px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:12px;color:#92400e;">
+                                        &#9888; Not set up — trust payments through {{ strtoupper($gw) }} are refused until all of its IOLTA keys are entered.</div>
+                                @endunless
+                                @foreach($credDefs[$gw] as $field)
+                                @php $isConfigured = !empty($trustCreds[$gw][$field['key']] ?? null); @endphp
+                                <div class="cc-field" style="margin:0;">
+                                    <label for="csc-trust-{{ $gw }}-{{ $field['key'] }}">
+                                        {{ $field['label'] }}
+                                        @if($isConfigured)
+                                            <span style="font-size:11px;font-weight:600;color:#16a34a;margin-left:6px;">✓ Configured</span>
+                                        @endif
+                                    </label>
+                                    <input type="{{ $field['type'] }}"
+                                           id="csc-trust-{{ $gw }}-{{ $field['key'] }}"
+                                           name="trust_gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
+                                           value=""
+                                           autocomplete="{{ $field['type'] === 'password' ? 'new-password' : 'off' }}" data-lpignore="true" data-1p-ignore
+                                           placeholder="{{ $isConfigured ? 'Configured — leave blank to keep' : 'Required for trust payments' }}"
+                                           style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
+                                </div>
+                                @endforeach
+                                @foreach($gw === 'fluidpay' ? $fluidpayMidDefs : $midDefs as $field)
+                                @php $fieldValue = old("trust_gateway_credentials.$gw.{$field['key']}", $trustCreds[$gw][$field['key']] ?? ''); @endphp
+                                <div class="cc-field" style="margin:0;">
+                                    <label for="csc-trust-{{ $gw }}-{{ $field['key'] }}">{{ $field['label'] }}</label>
+                                    @if($gw === 'fluidpay')
+                                        @include('inbound::components.fluidpay-mid-select', [
+                                            'prefix' => 'csc-trust', 'fundType' => 'TRUST', 'field' => $field['key'],
+                                            'name' => "trust_gateway_credentials[fluidpay][{$field['key']}]", 'value' => $fieldValue,
+                                        ])
+                                    @else
+                                    <input type="text"
+                                           id="csc-trust-{{ $gw }}-{{ $field['key'] }}"
+                                           name="trust_gateway_credentials[{{ $gw }}][{{ $field['key'] }}]"
+                                           value="{{ $fieldValue }}"
+                                           autocomplete="off" data-lpignore="true" data-1p-ignore
+                                           style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.12);border-radius:8px;font:inherit;font-size:13px;">
+                                    @endif
+                                </div>
+                                @endforeach
+                                @if($gw === 'fluidpay')
+                                    <div id="csc-trust-test-result-fluidpay" role="status" aria-live="polite" style="display:none;"></div>
+                                @endif
+                            </div>
+                        </div>
+                        @endif
+                        @endforeach
+                    </div>
+                    @endif
                     <button type="submit" class="button primary" style="font-size:12px;padding:7px 16px;margin-top:14px;">Save credentials</button>
                 </form>
                 @if(in_array('fluidpay', $activeGateways, true))
                     @include('inbound::components.fluidpay-credential-test-script')
+                    @include('inbound::components.fluidpay-mid-select-script', ['client' => $client])
                 @endif
             </div>
             @endif

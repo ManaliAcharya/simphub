@@ -18,9 +18,10 @@ use Throwable;
 
 /**
  * Lawcus webhooks don't work with pasted API tokens, so new invoices are found by
- * polling the invoice list (POST /v2/invoices) for sent, unpaid invoices and handing
- * each one we haven't seen to LawcusInvoiceIngestionService — the same path a webhook
- * would take, which creates the payment session and emails the payment link once.
+ * polling the invoice list (POST /v2/invoices) and handing each one we haven't seen to
+ * LawcusInvoiceIngestionService — the same path a webhook would take. Sent, unpaid
+ * invoices get a payment session and the link is emailed once; invoices with nothing
+ * due (paid from the matter's trust balance) are only recorded.
  * The list is used rather than the AR report because the report leaves out Trust
  * Requests (type TRUST), which route to the firm's IOLTA MID.
  */
@@ -41,6 +42,9 @@ class PollLawcusInvoicesJob implements ShouldQueue
 
     /** Statuses never billed even if Lawcus still shows an amount due. */
     private const NOT_PAYABLE_STATUSES = ['PAID', 'DRAFT', 'VOID', 'VOIDED', 'DELETED', 'WRITTEN_OFF', 'CANCELLED'];
+
+    /** Not a real (or still live) invoice, so not recorded at all. */
+    private const NOT_RECORDED_STATUSES = ['DRAFT', 'VOID', 'VOIDED', 'DELETED', 'WRITTEN_OFF', 'CANCELLED'];
 
     public function handle(
         LawcusApiClient $api,
@@ -91,16 +95,22 @@ class PollLawcusInvoicesJob implements ShouldQueue
             return;
         }
 
-        // Only sent, unpaid invoices issued since the firm connected — otherwise connecting
-        // a firm would email payment links for its entire existing receivables backlog.
+        // Only invoices issued since the firm connected — otherwise connecting a firm would
+        // email payment links for its entire existing receivables backlog. Sent, unpaid ones
+        // get a payment link; ones with nothing due (e.g. paid from the matter's trust balance
+        // when created) are only recorded, never emailed — see LawcusInvoiceIngestionService.
         $candidates = collect($outstanding)->filter(function (array $invoice) use ($since): bool {
             $issued = $this->parseDate($invoice['issue_date'] ?? null);
+            $status = strtoupper((string) ($invoice['status'] ?? ''));
 
-            return $issued !== null
-                && $issued->greaterThanOrEqualTo($since)
-                && ! empty($invoice['sent_at'])
-                && ! in_array(strtoupper((string) ($invoice['status'] ?? '')), self::NOT_PAYABLE_STATUSES, true)
-                && (float) ($invoice['amount_due'] ?? 0) > 0;
+            if ($issued === null || $issued->lessThan($since) || in_array($status, self::NOT_RECORDED_STATUSES, true)) {
+                return false;
+            }
+
+            return LawcusInvoiceIngestionService::hasNothingDue($invoice)
+                || (! empty($invoice['sent_at'])
+                    && ! in_array($status, self::NOT_PAYABLE_STATUSES, true)
+                    && (float) ($invoice['amount_due'] ?? 0) > 0);
         });
 
         if ($candidates->isEmpty()) {
@@ -121,6 +131,8 @@ class PollLawcusInvoicesJob implements ShouldQueue
                 $result = $ingestion->ingest((string) $invoice['id'], [
                     'pms_client_id' => $connection->pms_client_id,
                     'event_name'    => 'poll.invoice.sent',
+                    // The list's own status / amount due, in case the single-invoice fetch omits them.
+                    'list_row'      => array_intersect_key($invoice, array_flip(['status', 'amount_due'])),
                 ]);
 
                 Log::info('Lawcus invoice poll ingested invoice', [

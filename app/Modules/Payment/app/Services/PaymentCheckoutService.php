@@ -25,6 +25,12 @@ use RuntimeException;
 
 class PaymentCheckoutService
 {
+    /**
+     * What the payer sees when our gateway set-up is at fault. The real reason is
+     * recorded as GATEWAY_MISCONFIGURED / GATEWAY_CALL_ERROR in the audit log.
+     */
+    public const UNAVAILABLE_MESSAGE = 'Online payment is not available for this invoice right now. Please contact the firm.';
+
     public function __construct(
         private readonly IdempotencyService $idempotency,
         private readonly GatewayAdapterFactory $gateways,
@@ -42,18 +48,6 @@ class PaymentCheckoutService
         $this->assertLinkActive($session);
 
         $invoice = $session->invoice()->firstOrFail();
-        $options = $this->filterAllowedGateways(
-            $this->routingCandidates($session),
-            $invoice->pms_client_id,
-        );
-
-        if ($options->isEmpty()) {
-            // Trust payments need a TRUST (IOLTA) routing rule; tell the payer plainly
-            // instead of exposing routing internals.
-            throw new RuntimeException($invoice->fund_type === 'TRUST'
-                ? 'This trust payment cannot be taken online yet. Please contact the firm.'
-                : 'No routing rule available for this payment session.');
-        }
 
         // Load client credentials once — needed to enrich hostedFieldsConfig
         // (e.g. FluidPay public_key for tokenizer iframe)
@@ -61,13 +55,33 @@ class PaymentCheckoutService
             ? Client::query()->where('pms_client_id', $invoice->pms_client_id)->first()
             : null;
 
-        try {
-            $clientGwCreds = (array) ($feeClient?->gateway_credentials ?? []);
-        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
-            $clientGwCreds = [];
-        }
+        $candidates = $this->routingCandidates($session);
+        $allowed    = $this->filterAllowedGateways($candidates, $invoice->pms_client_id);
+        $options    = $allowed
+            ->filter(fn ($decision) => $this->hasIoltaMidFor($invoice, $feeClient, $decision->gateway))
+            ->values();
 
-        $commonEnv = $clientGwCreds['environment'] ?? null;
+        if ($options->isEmpty()) {
+            // Record which filter emptied the list, so support can tell a missing routing
+            // rule from a paused gateway or a missing IOLTA MID without reproducing it.
+            AuditLogger::log('GATEWAY_MISCONFIGURED', 'payment_session', $session->id, [
+                'reason'             => 'no_payment_options',
+                'invoice_id'         => $invoice->id,
+                'pms_client_id'      => $invoice->pms_client_id,
+                'fund_type'          => $invoice->fund_type,
+                'amount_cents'       => $invoice->amount_cents,
+                'routing_candidates' => $candidates->pluck('gateway')->all(),
+                'allowed_gateways'   => $allowed->pluck('gateway')->all(),
+                'client_allowed'     => $feeClient?->allowed_payment_gateways,
+                'client_paused'      => $feeClient?->paused_payment_gateways,
+            ]);
+
+            // Trust payments need a TRUST (IOLTA) routing rule, and the client's own IOLTA MID
+            // where they configure one; tell the payer plainly instead of exposing routing internals.
+            throw new RuntimeException($invoice->fund_type === 'TRUST'
+                ? 'This trust payment cannot be taken online yet. Please contact the firm.'
+                : self::UNAVAILABLE_MESSAGE);
+        }
 
         return [
             'session' => [
@@ -89,7 +103,7 @@ class PaymentCheckoutService
                 'cancel_redirect_url'  => $invoice->cancel_redirect_url ?: null,
                 'billing_address'      => $this->resolveBillingAddressPrefill($invoice),
             ],
-            'payment_options' => $options->map(function ($decision) use ($invoice, $clientGwCreds, $commonEnv, $feeClient) {
+            'payment_options' => $options->map(function ($decision) use ($invoice, $feeClient) {
                 $availability = strtolower((string) $decision->gateway) === 'paya'
                     ? $this->payaAvailability($invoice)
                     : ['available' => true, 'reason' => null];
@@ -112,13 +126,10 @@ class PaymentCheckoutService
                         $qbMidRoute->processor_id ? ['processor_id' => $qbMidRoute->processor_id] : [],
                     );
                 } else {
-                    $mid = $decision->mid;
-                    // Merge client-specific credentials so hostedFieldsConfig gets
-                    // the correct public_key / environment for the tokenizer
-                    $gwCreds = $clientGwCreds[strtolower($decision->gateway)] ?? [];
-                    if ($commonEnv) {
-                        $gwCreds['environment'] = $commonEnv;
-                    }
+                    // Merge client-specific credentials (the IOLTA set for trust money) so
+                    // hostedFieldsConfig gets the correct public_key / environment for the tokenizer
+                    $gwCreds = $this->clientGatewayCredentials($feeClient, $invoice, $decision->gateway);
+                    $mid     = ($gwCreds['mid_identifier'] ?? '') ?: $decision->mid;
                     $resolvedCreds = ! empty($gwCreds)
                         ? array_merge($decision->midCredentials, $gwCreds)
                         : $decision->midCredentials;
@@ -348,43 +359,38 @@ class PaymentCheckoutService
             }
         }
 
-        $existing = $this->idempotency->acquireLock((string) $session->idempotency_key);
-
-        if ($existing) {
-            return $existing;
-        }
-
-        $session->forceFill([
-            'status' => 'PROCESSING',
-            'payment_method' => $paymentMethod,
-        ])->save();
-
         $routingContext = $this->makeRoutingContext($session, $paymentMethod);
         $decision = $this->routing->findCandidate($routingContext, $routingRuleId);
+
+        // Never charge trust money without the client's IOLTA MID — it would land in the
+        // operating account. The payment page already hides such a gateway; this backs it up.
+        // Checked before taking the lock, so the payer can retry once the firm sets it up.
+        if (! $this->hasIoltaMidFor($invoice, $feeClient, $decision->gateway)) {
+            $this->auditMisconfiguration($session, $decision, 'iolta_mid_missing');
+            throw new RuntimeException('This trust payment cannot be taken online yet. Please contact the firm.');
+        }
 
         // ── Client-specific gateway credentials override ───────────────────────
         // If the client has their own credentials for this gateway, merge them
         // on top of the routing rule defaults (only non-empty values are stored).
+        // Trust money uses the client's IOLTA MID, everything else the operating MID.
         if ($feeClient) {
             try {
-                $clientCreds = (array) ($feeClient->gateway_credentials ?? []);
+                $gwCreds = $feeClient->gatewayCredentialsFor($decision->gateway, $invoice->fund_type);
             } catch (\Illuminate\Contracts\Encryption\DecryptException $e) {
                 \Log::error('Gateway credentials decryption failed', [
                     'pms_client_id' => $feeClient->pms_client_id,
                     'gateway'       => $decision->gateway,
                 ]);
-                throw new RuntimeException('Gateway credentials are corrupted. Please re-enter them in the client config.');
-            }
-            $gwCreds     = $clientCreds[strtolower($decision->gateway)] ?? [];
-            // Inject the common environment into per-gateway credentials
-            $commonEnv = $clientCreds['environment'] ?? null;
-            if ($commonEnv) {
-                $gwCreds['environment'] = $commonEnv;
+                $this->auditMisconfiguration($session, $decision, 'credentials_unreadable', [
+                    'pms_client_id' => $feeClient->pms_client_id,
+                ]);
+                throw new RuntimeException(self::UNAVAILABLE_MESSAGE);
             }
             if (! empty($gwCreds)) {
                 $decision = new \Modules\Routing\DTOs\RoutingDecision(
                     gateway:        $decision->gateway,
-                    mid:            $decision->mid,
+                    mid:            ($gwCreds['mid_identifier'] ?? '') ?: $decision->mid,
                     routingRuleId:  $decision->routingRuleId,
                     midCredentials: array_merge($decision->midCredentials, $gwCreds),
                     ruleMatches:    $decision->ruleMatches,
@@ -395,7 +401,7 @@ class PaymentCheckoutService
         // Verify that the resolved credentials (client-specific OR static defaults)
         // are sufficient for the selected gateway. Fails early with a clear message
         // rather than a cryptic gateway API error.
-        $this->validateGatewayCredentials($decision->gateway, $decision->midCredentials);
+        $this->validateGatewayCredentials($session, $decision);
         // ──────────────────────────────────────────────────────────────────────
 
         AuditLogger::log('ROUTING_DECISION_MADE', 'payment_session', $session->id, [
@@ -474,7 +480,10 @@ class PaymentCheckoutService
                     $defaultAccount = env('PAYA_ACCOUNT_NUMBER', '');
 
                     if ($defaultRouting === '' || $defaultAccount === '') {
-                        throw new RuntimeException('Payment cannot be done because account number and routing number are missing in invoice custom fields and no default PAYA_ROUTING_NUMBER / PAYA_ACCOUNT_NUMBER is configured.');
+                        $this->auditMisconfiguration($session, $decision, 'paya_bank_details_missing', [
+                            'detail' => 'Account and routing number are missing from the invoice custom fields and no default PAYA_ROUTING_NUMBER / PAYA_ACCOUNT_NUMBER is configured.',
+                        ]);
+                        throw new RuntimeException(self::UNAVAILABLE_MESSAGE);
                     }
 
                     $payaToken = $this->payaTokenizer->tokenizeViaPaya([
@@ -559,6 +568,33 @@ class PaymentCheckoutService
             'billing_keys' => array_keys($billing),
         ]);
 
+        // Locked only once everything above has passed: a configuration problem found
+        // before this point used to leave the session PROCESSING and the key IN_FLIGHT,
+        // so every retry was refused with "already being processed".
+        $existing = $this->idempotency->acquireLock((string) $session->idempotency_key);
+
+        if ($existing) {
+            return $existing;
+        }
+
+        $session->forceFill([
+            'status' => 'PROCESSING',
+            'payment_method' => $paymentMethod,
+        ])->save();
+
+        AuditLogger::log('GATEWAY_CALL_STARTED', 'payment_session', $session->id, [
+            'invoice_id'      => $invoice->id,
+            'gateway'         => $decision->gateway,
+            'mid'             => $decision->mid,
+            'environment'     => $decision->midCredentials['environment'] ?? 'sandbox',
+            'routing_rule_id' => $decision->routingRuleId,
+            'payment_method'  => $paymentMethod,
+            'amount_cents'    => (int) $invoice->amount_cents,
+            'fee_cents'       => $feeCents,
+            'total_cents'     => $totalAmountCents,
+            'qb_mid_route_id' => $qbMidRoute?->id,
+        ]);
+
         try {
             $response = $this->gateways->make($decision->gateway)->charge(new ChargeRequest(
                 token: $token,
@@ -588,7 +624,16 @@ class PaymentCheckoutService
                 'exception'    => get_class($e),
                 'error'        => $e->getMessage(),
             ]);
-            throw new RuntimeException('Payment could not be processed: '.$e->getMessage(), 0, $e);
+            AuditLogger::log('GATEWAY_CALL_ERROR', 'payment_session', $session->id, [
+                'invoice_id'  => $invoice->id,
+                'gateway'     => $decision->gateway,
+                'mid'         => $decision->mid,
+                'environment' => $decision->midCredentials['environment'] ?? 'sandbox',
+                'exception'   => get_class($e),
+                'message'     => $e->getMessage(),
+            ]);
+            // The gateway's own error can name keys or endpoints — it is in GATEWAY_CALL_ERROR.
+            throw new RuntimeException('Payment could not be processed. Please try again or contact the firm.', 0, $e);
         }
 
         \Log::debug('PaymentCheckoutService: charge response', [
@@ -609,6 +654,7 @@ class PaymentCheckoutService
             ])->save();
             $this->idempotency->fail((string) $session->idempotency_key);
             AuditLogger::log('PAYMENT_DECLINED', 'payment_session', $session->id, [
+                'invoice_id'  => $invoice->id,
                 'message'     => $response->message,
                 'gateway'     => $decision->gateway,
                 'mid'         => $decision->mid,
@@ -627,7 +673,7 @@ class PaymentCheckoutService
 
         $transaction = DB::transaction(function () use (
             $session, $invoice, $decision, $response, $feeCents, $totalAmountCents,
-            $cardholderFirstName, $cardholderLastName, $billingAddress,
+            $cardholderFirstName, $cardholderLastName, $billingAddress, $feeClient,
         ) {
             $transaction = Transaction::query()->create([
                 'payment_session_id'    => $session->id,
@@ -639,6 +685,9 @@ class PaymentCheckoutService
                 'gateway_txn_id'        => $response->transactionReference,
                 'gateway_token'         => (string) $response->gatewayToken,
                 'status'                => 'CAPTURED',
+                // Lawcus ACH settles days later or comes back returned — when the client has
+                // settlement notifications on, PollAchSettlementsJob follows it.
+                'settlement_status'     => $feeClient?->tracksAchSettlement((string) $decision->gateway) ? 'PENDING' : null,
                 'transaction_type'      => 'debit',
                 'fund_type'             => $session->fund_type,
                 'amount_cents'          => $totalAmountCents,
@@ -736,6 +785,37 @@ class PaymentCheckoutService
         }
 
         return $feeCents;
+    }
+
+    /**
+     * False only for a trust payment from a client who must configure their IOLTA MID in
+     * Gateway Credentials and has none for this gateway.
+     */
+    private function hasIoltaMidFor(Invoice $invoice, ?Client $client, string $gateway): bool
+    {
+        if ($invoice->fund_type !== 'TRUST' || ! $client || ! $client->requiresIoltaMid()) {
+            return true;
+        }
+
+        try {
+            return $client->hasIoltaMid($gateway);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            return false;
+        }
+    }
+
+    /**
+     * The client's Gateway Credentials for this invoice's fund type (IOLTA for trust),
+     * for showing the payment page. Unreadable credentials count as none here; submit()
+     * reports them instead of charging.
+     */
+    private function clientGatewayCredentials(?Client $client, Invoice $invoice, string $gateway): array
+    {
+        try {
+            return $client ? $client->gatewayCredentialsFor($gateway, $invoice->fund_type) : [];
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            return [];
+        }
     }
 
     /**
@@ -1007,38 +1087,52 @@ class PaymentCheckoutService
      * Priority: client gateway_credentials → routing rule mid_credentials → static env/config
      * The adapters apply the same fallback chain, so this mirrors their logic.
      */
-    private function validateGatewayCredentials(string $gateway, array $midCredentials): void
+    private function validateGatewayCredentials(PaymentSession $session, \Modules\Routing\DTOs\RoutingDecision $decision): void
     {
-        $gateway = strtolower($gateway);
+        $gateway = strtolower($decision->gateway);
 
-        if ($gateway === 'fluidpay') {
-            if (trim((string) ($midCredentials['api_key'] ?? '')) === '') {
-                \Log::error('PaymentCheckoutService: FluidPay credential validation failed', [
-                    'environment' => $midCredentials['environment'] ?? 'sandbox',
-                    'credential_keys' => array_keys($midCredentials),
-                ]);
-                throw new RuntimeException(
-                    'FluidPay API key is not configured. Please set it in the Gateway Credentials or the routing rule.'
-                );
-            }
+        $required = match ($gateway) {
+            'fluidpay' => ['api_key'],
+            'paya'     => ['username', 'terminal_id'],
+            'nmi'      => ['security_key'],
+            default    => [],
+        };
+
+        $missing = array_values(array_filter(
+            $required,
+            fn (string $key) => trim((string) ($decision->midCredentials[$key] ?? '')) === '',
+        ));
+
+        if ($missing === []) {
+            return;
         }
 
-        if ($gateway === 'paya') {
-            if (trim((string) ($midCredentials['username']    ?? '')) === '' ||
-                trim((string) ($midCredentials['terminal_id'] ?? '')) === '') {
-                throw new RuntimeException(
-                    'Paya credentials are not configured. Please set them in the Gateway Credentials or the routing rule.'
-                );
-            }
-        }
+        $this->auditMisconfiguration($session, $decision, 'credentials_missing', [
+            'missing_keys' => $missing,
+        ]);
 
-        if ($gateway === 'nmi') {
-            if (trim((string) ($midCredentials['security_key'] ?? '')) === '') {
-                throw new RuntimeException(
-                    'NMI security key is not configured. Please set it in the Gateway Credentials or the routing rule.'
-                );
-            }
-        }
+        throw new RuntimeException(self::UNAVAILABLE_MESSAGE);
+    }
+
+    /**
+     * A payer was turned away because the gateway set-up is incomplete. Credential
+     * key names are recorded so support can see what is missing; values never are.
+     */
+    private function auditMisconfiguration(
+        PaymentSession $session,
+        \Modules\Routing\DTOs\RoutingDecision $decision,
+        string $reason,
+        array $extra = [],
+    ): void {
+        AuditLogger::log('GATEWAY_MISCONFIGURED', 'payment_session', $session->id, array_merge([
+            'reason'          => $reason,
+            'invoice_id'      => $session->invoice_id,
+            'gateway'         => $decision->gateway,
+            'mid'             => $decision->mid,
+            'routing_rule_id' => $decision->routingRuleId,
+            'environment'     => $decision->midCredentials['environment'] ?? 'sandbox',
+            'credential_keys' => array_keys($decision->midCredentials),
+        ], $extra));
     }
 
     private function assertLinkActive(PaymentSession $session): void

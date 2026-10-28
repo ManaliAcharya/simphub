@@ -378,14 +378,25 @@ class ClientConfigController extends Controller
             'gateway_credentials.paya.terminal_id'    => ['nullable', 'string', 'max:50'],
             'gateway_credentials.nmi.security_key'    => ['nullable', 'string', 'max:500'],
             'gateway_credentials.nmi.public_key'      => ['nullable', 'string', 'max:500'],
+            'gateway_credentials.*.mid_identifier'    => ['nullable', 'string', 'max:100'],
+            'gateway_credentials.*.processor_id'      => ['nullable', 'string', 'max:100'],
+            // IOLTA (trust) MID — same fields per gateway; the environment is shared.
+            'trust_gateway_credentials'                    => ['nullable', 'array'],
+            'trust_gateway_credentials.*'                  => ['nullable', 'array'],
+            'trust_gateway_credentials.*.*'                => ['nullable', 'string', 'max:500'],
             'gateway_display_names'                   => ['nullable', 'array'],
             'gateway_display_names.*'                 => ['nullable', 'string', 'max:60'],
         ]);
 
-        $incoming = (array) ($request->input('gateway_credentials') ?? []);
+        $incoming      = (array) ($request->input('gateway_credentials') ?? []);
+        $incomingTrust = (array) ($request->input('trust_gateway_credentials') ?? []);
 
         if ($message = $this->invalidFluidpayKeyMessage((array) ($incoming['fluidpay'] ?? []))) {
             return redirect()->back()->withInput()->with('error', "FLUIDPAY: {$message}");
+        }
+
+        if ($message = $this->invalidFluidpayKeyMessage((array) ($incomingTrust['fluidpay'] ?? []))) {
+            return redirect()->back()->withInput()->with('error', "FLUIDPAY (IOLTA): {$message}");
         }
 
         // Start from existing stored credentials so blank password fields (left intentionally
@@ -420,9 +431,28 @@ class ClientConfigController extends Controller
             ->filter(fn($name) => $name !== '')
             ->all();
 
+        try {
+            $storedTrust = (array) ($client->trust_gateway_credentials ?? []);
+        } catch (\Illuminate\Contracts\Encryption\DecryptException) {
+            $storedTrust = [];
+        }
+
+        // Same rule for the IOLTA set: only non-empty fields overwrite.
+        foreach ($incomingTrust as $gateway => $fields) {
+            if (! in_array($gateway, ['fluidpay', 'paya', 'nmi'], true)) {
+                continue;
+            }
+            foreach ((array) $fields as $key => $value) {
+                if ($value !== null && trim((string) $value) !== '') {
+                    $storedTrust[strtolower((string) $gateway)][$key] = trim((string) $value);
+                }
+            }
+        }
+
         $client->update([
-            'gateway_credentials'   => ! empty($stored) ? $stored : null,
-            'gateway_display_names' => ! empty($displayNames) ? $displayNames : null,
+            'gateway_credentials'       => ! empty($stored) ? $stored : null,
+            'trust_gateway_credentials' => ! empty($storedTrust) ? $storedTrust : null,
+            'gateway_display_names'     => ! empty($displayNames) ? $displayNames : null,
         ]);
 
         return redirect()->back()->with('success', 'Gateway credentials saved.');
@@ -612,19 +642,16 @@ class ClientConfigController extends Controller
     }
 
     /**
-     * List the FluidPay MIDs a Multi-MID row's key can act for, so MID Identifier can be
-     * picked instead of typed. Read-only.
+     * List the FluidPay MIDs a key can act for, so MID Identifier can be picked instead of
+     * typed — for a Multi-MID row (route_type) or Gateway Credentials (fund_type). Read-only.
      */
     public function fluidpayMerchants(Request $request, string $pmsClientId): JsonResponse
     {
-        $request->validate([
-            'route_type' => ['required', 'string', Rule::in(['fees_on', 'fees_off'])],
-            'api_key'    => ['nullable', 'string', 'max:1000'],
-        ]);
+        $request->validate($this->fluidpayLookupRules());
 
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
 
-        $result = app(FluidPayAdapter::class)->listMerchants($this->midRowFluidpayCredentials($request, $client));
+        $result = app(FluidPayAdapter::class)->listMerchants($this->fluidpayLookupCredentials($request, $client));
 
         return response()->json([
             'success'   => $result['error'] === null,
@@ -634,29 +661,58 @@ class ClientConfigController extends Controller
     }
 
     /**
-     * List the processors for a FluidPay MID, so the Multi-MID Routing UI can offer
-     * processor_id as a picker. "MID" is short for Merchant ID — FluidPay's processors
-     * endpoint is keyed on merchant_id, so the row's selected MID Identifier is passed
-     * straight through as $merchantId, using the same key the MID list came from.
+     * List the processors for a FluidPay MID, so the Multi-MID Routing UI and Gateway
+     * Credentials can offer processor_id as a picker. "MID" is short for Merchant ID —
+     * FluidPay's processors endpoint is keyed on merchant_id, so the selected MID Identifier
+     * is passed straight through as $merchantId, using the same key the MID list came from.
      */
     public function fluidpayProcessors(Request $request, string $pmsClientId): JsonResponse
     {
-        $request->validate([
+        $request->validate($this->fluidpayLookupRules() + [
             'merchant_id' => ['required', 'string', 'max:100'],
-            'route_type'  => ['required', 'string', Rule::in(['fees_on', 'fees_off'])],
-            'api_key'     => ['nullable', 'string', 'max:1000'],
         ]);
         $merchantId = trim((string) $request->input('merchant_id'));
 
         $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
 
-        $result = app(FluidPayAdapter::class)->listProcessors($this->midRowFluidpayCredentials($request, $client), $merchantId);
+        $result = app(FluidPayAdapter::class)->listProcessors($this->fluidpayLookupCredentials($request, $client), $merchantId);
 
         return response()->json([
             'success'    => $result['error'] === null,
             'processors' => $result['processors'],
             'message'    => $result['error'],
         ]);
+    }
+
+    /** A MID / processor lookup comes from a Multi-MID row (route_type) or Gateway Credentials (fund_type). */
+    private function fluidpayLookupRules(): array
+    {
+        return [
+            'route_type'  => ['required_without:fund_type', 'nullable', 'string', Rule::in(['fees_on', 'fees_off'])],
+            'fund_type'   => ['required_without:route_type', 'nullable', 'string', Rule::in(['OPERATING', 'TRUST'])],
+            'environment' => ['nullable', 'string', Rule::in(['sandbox', 'production'])],
+            'api_key'     => ['nullable', 'string', 'max:1000'],
+        ];
+    }
+
+    /**
+     * Gateway Credentials lookups use the key typed in the form, else the saved one for that
+     * fund type — the same key the charge will use, so an IOLTA lookup never borrows the
+     * operating key. The Environment dropdown may have been changed but not saved yet, so
+     * it's sent too.
+     */
+    private function fluidpayLookupCredentials(Request $request, Client $client): array
+    {
+        if ($request->filled('route_type')) {
+            return $this->midRowFluidpayCredentials($request, $client);
+        }
+
+        $saved = $client->gatewayCredentialsFor('fluidpay', $request->input('fund_type'));
+
+        return array_filter([
+            'environment' => $request->input('environment') ?: ($saved['environment'] ?? 'sandbox'),
+            'api_key'     => trim((string) $request->input('api_key')) ?: trim((string) ($saved['api_key'] ?? '')),
+        ], fn ($v) => $v !== '');
     }
 
     /**
@@ -695,6 +751,7 @@ class ClientConfigController extends Controller
     {
         $request->validate([
             'route_type'     => ['nullable', 'string', Rule::in(['fees_on', 'fees_off'])],
+            'fund_type'      => ['nullable', 'string', Rule::in(['OPERATING', 'TRUST'])],
             'mid_identifier' => ['nullable', 'string', 'max:100'],
             'environment'    => ['nullable', 'string', Rule::in(['sandbox', 'production'])],
             'api_key'        => ['nullable', 'string', 'max:1000'],
@@ -716,11 +773,12 @@ class ClientConfigController extends Controller
             $environment = $clientGw['environment'] ?? 'sandbox';
             $merchantId  = trim((string) $request->input('mid_identifier'));
         } else {
-            $saved = (array) ($clientGw['fluidpay'] ?? []);
+            // fund_type TRUST tests the IOLTA set, whose blank keys fall back to the operating ones.
+            $saved = $client->gatewayCredentialsFor('fluidpay', $request->input('fund_type'));
 
             // The Environment dropdown may have been changed but not saved yet — test against it.
             $environment = $request->input('environment') ?: ($clientGw['environment'] ?? 'sandbox');
-            $merchantId  = null;
+            $merchantId  = trim((string) $request->input('mid_identifier')) ?: null;
         }
 
         $credentials = [

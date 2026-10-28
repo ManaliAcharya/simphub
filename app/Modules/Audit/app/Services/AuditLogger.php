@@ -3,7 +3,6 @@
 namespace Modules\Audit\Services;
 
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Modules\Audit\Models\AuditLog;
 
 class AuditLogger
@@ -23,7 +22,7 @@ class AuditLogger
             'actor_type' => $actorType,
             'payload' => $payload,
             'ip_address' => request()?->ip(),
-            'trace_id' => (string) Str::uuid(),
+            'trace_id' => app(TraceContext::class)->current(),
         ]);
 
         Log::info($eventType, [

@@ -205,6 +205,8 @@
 </head>
 
 <body>
+    @include('auth::partials.admin-bar')
+
     {{ $slot }}
 
     @stack('scripts')

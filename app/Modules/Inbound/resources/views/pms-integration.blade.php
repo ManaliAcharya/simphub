@@ -604,6 +604,28 @@
                             </form>
                         @endif
                     </div>
+
+                    {{-- ACH settlement notifications (Lawcus) --}}
+                    <div class="cc-card">
+                        <div class="cc-card-title">ACH Settlement Notifications</div>
+                        <div class="cc-card-desc">ACH (Paya) payments take a few business days to settle and can still be
+                            returned by the bank. SimpHub checks Paya once a day for each pending ACH payment.</div>
+                        <form method="POST" action="{{ route('inbound.lawcus.ach-settings') }}">
+                            @csrf
+                            <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                            <div class="cc-field">
+                                <input type="hidden" name="lawcus_ach_settlement_notify" value="0">
+                                <label style="display:flex;align-items:center;gap:8px;font-weight:500;">
+                                    <input type="checkbox" name="lawcus_ach_settlement_notify" value="1" @checked($client->lawcus_ach_settlement_notify)>
+                                    Notify the firm when an ACH payment settles
+                                </label>
+                                <div style="font-size:12px;color:#6b7280;margin-top:4px;">On: the firm's payment email is sent once
+                                    the payment settles, and a returned payment emails the firm to reverse it in Lawcus (IOLTA or
+                                    operating). Off: the firm is emailed when the payment is submitted, as before.</div>
+                            </div>
+                            <button type="submit" class="button primary" style="font-size:13px;">Save ACH settings</button>
+                        </form>
+                    </div>
                 @endif
 
                 {{-- Default Account (Wave) --}}
@@ -2429,7 +2451,8 @@
                                     <th>Recipient Email</th>
                                     <th>Amount</th>
                                     <th>Invoice Created Date</th>
-                                    <th>Status</th>
+                                    <th>Email Status</th>
+                                    <th>Payment Status</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
@@ -2454,9 +2477,35 @@
                                             {{ optional($invoice->created_at)->format('Y-m-d') ?? '-' }}
                                         </td>
 
-                                        <td>{{ ucfirst($invoice->status ?? 'Unknown') }}</td>
+                                        @foreach ([$invoice->email_status, $invoice->payment_status] as $listStatus)
+                                            @php
+                                                $tone = [
+                                                    'success' => 'background:#dcfce7;color:#166534;',
+                                                    'danger'  => 'background:#fee2e2;color:#991b1b;',
+                                                    'warning' => 'background:#fef3c7;color:#92400e;',
+                                                    'info'    => 'background:#dbeafe;color:#1e40af;',
+                                                    'neutral' => 'background:#f3f4f6;color:#374151;',
+                                                ][$listStatus['tone']] ?? '';
+                                            @endphp
+                                            <td>
+                                                <span style="display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:600;{{ $tone }}"
+                                                    @if ($listStatus['detail']) title="{{ $listStatus['detail'] }}" @endif>
+                                                    {{ $listStatus['label'] }}
+                                                </span>
+                                                @if ($listStatus['at'])
+                                                    <div style="font-size:12px;color:#4b5563;margin-top:3px;">
+                                                        {{ $listStatus['at']->format('M j, Y g:i A') }}
+                                                    </div>
+                                                @endif
+                                                @if ($listStatus['detail'])
+                                                    <div style="font-size:12px;color:#4b5563;margin-top:2px;max-width:240px;">
+                                                        {{ \Illuminate\Support\Str::limit($listStatus['detail'], 90) }}
+                                                    </div>
+                                                @endif
+                                            </td>
+                                        @endforeach
                                         <td>
-                                            @if (!empty($invoice->recipient_emails))
+                                            @if (!empty($invoice->recipient_emails) && $invoice->has_payment_link)
                                                 <form
                                                     action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
                                                     method="POST">
@@ -2476,7 +2525,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="6" class="text-center">
+                                        <td colspan="7" class="text-center">
                                             No invoices found.
                                         </td>
                                     </tr>

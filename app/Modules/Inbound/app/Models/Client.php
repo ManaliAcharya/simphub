@@ -20,7 +20,7 @@ class Client extends Model
 
     protected $guarded = [];
 
-    protected $hidden = ['gateway_credentials', 'subscription_api_key_hash'];
+    protected $hidden = ['gateway_credentials', 'trust_gateway_credentials', 'subscription_api_key_hash'];
 
     protected function casts(): array
     {
@@ -31,6 +31,8 @@ class Client extends Model
             'allowed_payment_gateways' => 'array',
             'paused_payment_gateways'  => 'array',
             'gateway_credentials'      => 'encrypted:array',
+            // IOLTA (trust) MID per gateway — same shape as gateway_credentials, see gatewayCredentialsFor().
+            'trust_gateway_credentials' => 'encrypted:array',
             'gateway_display_names'    => 'array',
             'allowed_terminals'        => 'array',
             'fee_surcharge_enabled'       => 'boolean',
@@ -51,6 +53,7 @@ class Client extends Model
             'reminder_schedule_days'         => 'array',
             'subscription_api_key_created_at' => 'datetime',
             'lawcus_send_trust_links'         => 'boolean',
+            'lawcus_ach_settlement_notify'    => 'boolean',
         ];
     }
 
@@ -109,6 +112,75 @@ class Client extends Model
         $name  = trim((string) ($names[strtolower($gateway)] ?? ''));
 
         return $name !== '' ? $name : strtoupper($gateway);
+    }
+
+    /**
+     * Lawcus clients configure their IOLTA MID here, so their trust money must never fall
+     * back to the operating credentials — a trust payment without one is refused.
+     */
+    public function requiresIoltaMid(): bool
+    {
+        return strtoupper((string) $this->client_pms) === 'LAWCUS';
+    }
+
+    /** The keys an IOLTA MID needs, since trust money is charged with these alone. */
+    private const IOLTA_KEYS = [
+        'fluidpay' => ['api_key', 'public_key'],
+        'paya'     => ['username', 'password', 'terminal_id'],
+        'nmi'      => ['security_key', 'public_key'],
+    ];
+
+    /**
+     * Whether an IOLTA MID is set up for this gateway: all of its own keys. Trust money never
+     * borrows the operating keys, so without them the trust payment is refused.
+     */
+    public function hasIoltaMid(string $gateway): bool
+    {
+        $gateway = strtolower($gateway);
+        $trust   = (array) (((array) ($this->trust_gateway_credentials ?? []))[$gateway] ?? []);
+
+        return isset(self::IOLTA_KEYS[$gateway])
+            && collect(self::IOLTA_KEYS[$gateway])->every(fn ($key) => trim((string) ($trust[$key] ?? '')) !== '');
+    }
+
+    /** Fields that pick one specific MID, so they never carry over from the operating set to trust. */
+    private const MID_SELECTOR_KEYS = ['mid_identifier', 'processor_id'];
+
+    /**
+     * Lawcus ACH (Paya) payments are followed to settlement: the firm hears about them once
+     * they settle, or is told to reverse them in Lawcus if they're returned.
+     */
+    public function tracksAchSettlement(string $gateway): bool
+    {
+        return strtoupper((string) $this->client_pms) === 'LAWCUS'
+            && (bool) $this->lawcus_ach_settlement_notify
+            && strtolower($gateway) === 'paya';
+    }
+
+    /**
+     * This client's Gateway Credentials for one gateway and fund type, with the common
+     * environment applied. A client with an IOLTA MID pays trust money with the IOLTA set
+     * alone — never the operating keys. Other clients' trust money keeps the operating keys,
+     * but never the operating MID or processor ID.
+     */
+    public function gatewayCredentialsFor(string $gateway, ?string $fundType): array
+    {
+        $gateway = strtolower($gateway);
+        $all     = (array) ($this->gateway_credentials ?? []);
+        $creds   = (array) ($all[$gateway] ?? []);
+
+        if (strtoupper((string) $fundType) === 'TRUST') {
+            $trust = (array) (((array) ($this->trust_gateway_credentials ?? []))[$gateway] ?? []);
+            $creds = $this->requiresIoltaMid()
+                ? $trust
+                : array_merge(array_diff_key($creds, array_flip(self::MID_SELECTOR_KEYS)), $trust);
+        }
+
+        if (! empty($all['environment'])) {
+            $creds['environment'] = $all['environment'];
+        }
+
+        return $creds;
     }
 
     /**

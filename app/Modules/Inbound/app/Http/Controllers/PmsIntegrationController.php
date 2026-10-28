@@ -32,6 +32,7 @@ use Modules\Inbound\Services\ZohoCrmPaymentSyncService;
 use Modules\Inbound\Services\ZohoOAuthService;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
+use Modules\Payment\Services\InvoiceListStatus;
 
 class PmsIntegrationController extends Controller
 {
@@ -311,6 +312,35 @@ class PmsIntegrationController extends Controller
         return redirect()->route('inbound.lawcus.page', [
             'pms_client_id' => $client->pms_client_id,
             'success'       => 'Trust Request settings saved.',
+        ]);
+    }
+
+    /** Whether the firm is notified of Lawcus ACH payments on settlement (and of returns) or at submit. */
+    public function saveLawcusAchSettings(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'pms_client_id'                => ['required', 'string'],
+            'lawcus_ach_settlement_notify' => ['nullable', 'boolean'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'LAWCUS', 422, 'ACH settlement notifications are only supported for Lawcus clients.');
+
+        $client->forceFill([
+            'lawcus_ach_settlement_notify' => (bool) ($validated['lawcus_ach_settlement_notify'] ?? false),
+        ])->save();
+
+        AuditLogger::log('LAWCUS_ACH_SETTINGS_UPDATED', 'client', (string) $client->id, [
+            'pms_client_id'          => $client->pms_client_id,
+            'ach_settlement_notify'  => $client->lawcus_ach_settlement_notify,
+        ]);
+
+        return redirect()->route('inbound.lawcus.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => 'ACH settings saved.',
         ]);
     }
 
@@ -681,9 +711,17 @@ class PmsIntegrationController extends Controller
             ->unique('invoice_id')
             ->keyBy('invoice_id');
 
-        $invoices = $invoices->map(function ($invoice) use ($latestSessionByInvoice) {
+        // Email and Payment columns — invoices.status mixes the PMS's own status with
+        // our checkout result, so neither is shown from it (see InvoiceListStatus).
+        $listStatuses = app(InvoiceListStatus::class)->forInvoices($invoices);
+
+        $invoices = $invoices->map(function ($invoice) use ($latestSessionByInvoice, $listStatuses) {
             $invoice->recipient_email_list = implode(', ', $invoice->recipient_emails ?? []);
             $invoice->has_been_sent = (bool) ($latestSessionByInvoice->get($invoice->id)?->payment_link_sent_at);
+            // No payment link at all (e.g. a Lawcus invoice with nothing due): nothing to send.
+            $invoice->has_payment_link = $latestSessionByInvoice->has($invoice->id);
+            $invoice->email_status   = $listStatuses[$invoice->id]['email'];
+            $invoice->payment_status = $listStatuses[$invoice->id]['payment'];
 
             return $invoice;
         });

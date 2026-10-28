@@ -4,16 +4,23 @@ namespace Modules\Payment\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Routing\Controller;
+use Illuminate\Validation\ValidationException;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Outbound\Services\PayaAccountFormService;
 use Modules\Outbound\Services\PayaTokenizerService;
 use Modules\Routing\Models\RoutingRule;
+use Modules\Payment\Services\CheckoutAuditTrail;
 use Modules\Payment\Services\PaymentCheckoutService;
 use RuntimeException;
 
 class PaymentSessionController extends Controller
 {
+    public function __construct(
+        private readonly CheckoutAuditTrail $audit,
+    ) {}
+
     public function show(string $session, PaymentCheckoutService $checkout): JsonResponse
     {
         $paymentSession = PaymentSession::query()
@@ -21,12 +28,29 @@ class PaymentSessionController extends Controller
             ->firstOrFail();
 
         try {
-            return response()->json($checkout->details($paymentSession));
+            $details = $checkout->details($paymentSession);
         } catch (RuntimeException $exception) {
+            $this->audit->record($paymentSession, 'CHECKOUT_LOAD_FAILED', [
+                'message' => $exception->getMessage(),
+            ]);
+
             return response()->json([
                 'message' => $exception->getMessage(),
             ], 422);
         }
+
+        $this->audit->record($paymentSession, 'CHECKOUT_LOADED', [
+            'payment_options' => collect($details['payment_options'])
+                ->map(fn (array $option) => [
+                    'gateway'         => $option['gateway'],
+                    'payment_method'  => $option['payment_method'],
+                    'routing_rule_id' => $option['routing_rule_id'],
+                    'total_cents'     => $option['total_cents'],
+                ])
+                ->all(),
+        ]);
+
+        return response()->json($details);
     }
 
     public function payaFormUrl(string $session, PayaAccountFormService $accountForm): JsonResponse
@@ -36,7 +60,7 @@ class PaymentSessionController extends Controller
             ->firstOrFail();
 
         if (! in_array($paymentSession->status, ['PENDING', 'AWAITING_PAYMENT', 'FAILED'], true)) {
-            return response()->json(['message' => 'Payment session is not in a payable state.'], 422);
+            return $this->payaFormUnavailable($paymentSession, 'Payment session is not in a payable state.');
         }
 
         // Find active Paya routing rule to get mid credentials
@@ -46,13 +70,13 @@ class PaymentSessionController extends Controller
             ->first();
 
         if (! $rule) {
-            return response()->json(['message' => 'No active Paya routing rule found.'], 422);
+            return $this->payaFormUnavailable($paymentSession, 'No active Paya routing rule found.');
         }
 
         try {
             $midCredentials = (array) ($rule->mid_credentials ?? []);
         } catch (\Illuminate\Contracts\Encryption\DecryptException) {
-            return response()->json(['message' => 'Routing rule credentials are corrupted. Please re-save the routing rule.'], 422);
+            return $this->payaFormUnavailable($paymentSession, 'Routing rule credentials are corrupted. Please re-save the routing rule.');
         }
 
         // Optional invoice metadata for the form title
@@ -65,8 +89,10 @@ class PaymentSessionController extends Controller
         try {
             $url = $accountForm->generateUrl($midCredentials, $invoiceMeta);
         } catch (\RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            return $this->payaFormUnavailable($paymentSession, $e->getMessage());
         }
+
+        $this->audit->record($paymentSession, 'PAYA_FORM_ISSUED', ['routing_rule_id' => $rule->id]);
 
         return response()->json(['url' => $url]);
     }
@@ -78,23 +104,40 @@ class PaymentSessionController extends Controller
             ->firstOrFail();
 
         if (! in_array($paymentSession->status, ['PENDING', 'AWAITING_PAYMENT', 'FAILED'], true)) {
+            $this->audit->record($paymentSession, 'BANK_DETAILS_REJECTED', [
+                'message' => 'Payment session is not in a payable state.',
+            ]);
+
             return response()->json(['message' => 'Payment session is not in a payable state.'], 422);
         }
 
-        $validated = $request->validate([
-            'routing_number' => ['required', 'string', 'regex:/^\d{9}$/'],
-            'account_number' => ['required', 'string', 'regex:/^\d{4,17}$/'],
-            'account_type'   => ['nullable', 'string', 'in:checking,savings'],
-            'first_name'     => ['nullable', 'string', 'max:100'],
-            'last_name'      => ['nullable', 'string', 'max:100'],
-            'address1'       => ['nullable', 'string', 'max:255'],
-            'city'           => ['nullable', 'string', 'max:100'],
-            'state'          => ['nullable', 'string', 'size:2'],
-            'zip'            => ['nullable', 'string', 'max:10'],
-            'phone_number'   => ['nullable', 'string', 'max:20'],
-        ]);
+        try {
+            $validated = $request->validate([
+                'routing_number' => ['required', 'string', 'regex:/^\d{9}$/'],
+                'account_number' => ['required', 'string', 'regex:/^\d{4,17}$/'],
+                'account_type'   => ['nullable', 'string', 'in:checking,savings'],
+                'first_name'     => ['nullable', 'string', 'max:100'],
+                'last_name'      => ['nullable', 'string', 'max:100'],
+                'address1'       => ['nullable', 'string', 'max:255'],
+                'city'           => ['nullable', 'string', 'max:100'],
+                'state'          => ['nullable', 'string', 'size:2'],
+                'zip'            => ['nullable', 'string', 'max:10'],
+                'phone_number'   => ['nullable', 'string', 'max:20'],
+            ]);
+        } catch (ValidationException $exception) {
+            $this->audit->record($paymentSession, 'BANK_DETAILS_REJECTED', [
+                'invalid_fields' => array_keys($exception->errors()),
+            ]);
+
+            throw $exception;
+        }
 
         $token = $tokenizer->tokenize($validated);
+
+        $this->audit->record($paymentSession, 'BANK_DETAILS_SECURED', [
+            'account_type' => strtolower($validated['account_type'] ?? 'checking'),
+            'last4'        => substr($validated['account_number'], -4),
+        ]);
 
         return response()->json([
             'token'        => $token,
@@ -109,25 +152,43 @@ class PaymentSessionController extends Controller
             ->where('hosted_url_token', $session)
             ->firstOrFail();
 
+        // Recorded before anything can reject it, so every press of "Submit payment"
+        // that reaches us is on record — whatever happens next.
+        $this->audit->record($paymentSession, 'PAYMENT_SUBMITTED', [
+            'payment_method'  => (string) ($request->input('payment_method') ?: 'CARD'),
+            'routing_rule_id' => (string) $request->input('routing_rule_id'),
+            'has_token'       => $request->filled('token'),
+            'has_bank_token'  => $request->filled('paya_bank_token'),
+        ]);
+
         // Reset a previously failed session so the state machine stays consistent:
         // FAILED → AWAITING_PAYMENT → PROCESSING (set by PaymentCheckoutService)
         if ($paymentSession->status === 'FAILED') {
             $paymentSession->forceFill(['status' => 'AWAITING_PAYMENT'])->save();
         }
 
-        $request->validate([
-            'token'                  => ['required', 'string'],
-            'payment_method'         => ['nullable', 'string'],
-            'routing_rule_id'        => ['required', 'string'],
-            'paya_bank_token'        => ['nullable', 'string'],
-            'first_name'             => ['required', 'string', 'max:100'],
-            'last_name'              => ['required', 'string', 'max:100'],
-            'billing_address'        => ['required', 'array'],
-            'billing_address.address1' => ['required', 'string', 'max:255'],
-            'billing_address.city'     => ['required', 'string', 'max:100'],
-            'billing_address.state'    => ['required', 'string', 'max:2'],
-            'billing_address.zip'      => ['required', 'string', 'max:10'],
-        ]);
+        try {
+            $request->validate([
+                'token'                  => ['required', 'string'],
+                'payment_method'         => ['nullable', 'string'],
+                'routing_rule_id'        => ['required', 'string'],
+                'paya_bank_token'        => ['nullable', 'string'],
+                'first_name'             => ['required', 'string', 'max:100'],
+                'last_name'              => ['required', 'string', 'max:100'],
+                'billing_address'        => ['required', 'array'],
+                'billing_address.address1' => ['required', 'string', 'max:255'],
+                'billing_address.city'     => ['required', 'string', 'max:100'],
+                'billing_address.state'    => ['required', 'string', 'max:2'],
+                'billing_address.zip'      => ['required', 'string', 'max:10'],
+            ]);
+        } catch (ValidationException $exception) {
+            $this->audit->record($paymentSession, 'PAYMENT_ATTEMPT_FAILED', [
+                'stage'          => 'validation',
+                'invalid_fields' => array_keys($exception->errors()),
+            ]);
+
+            throw $exception;
+        }
 
         $extraBilling = [];
         if ($request->filled('paya_bank_token')) {
@@ -152,10 +213,31 @@ class PaymentSessionController extends Controller
                 extraBilling: $extraBilling,
             );
         } catch (RuntimeException $exception) {
+            // The exact message the payer was shown.
+            $this->audit->record($paymentSession->refresh(), 'PAYMENT_ATTEMPT_FAILED', [
+                'stage'   => 'processing',
+                'message' => $exception->getMessage(),
+            ]);
+
             return response()->json([
                 'message' => $exception->getMessage(),
             ], 422);
+        } catch (\Throwable $exception) {
+            // Anything unexpected reaches the payer as a server error.
+            $this->audit->record($paymentSession, 'PAYMENT_ATTEMPT_FAILED', [
+                'stage'     => 'server_error',
+                'exception' => get_class($exception),
+                'message'   => $exception->getMessage(),
+            ]);
+
+            throw $exception;
         }
+
+        $this->audit->record($paymentSession->refresh(), 'PAYMENT_ATTEMPT_SUCCEEDED', [
+            'transaction_id' => $transaction->id,
+            'amount_cents'   => $transaction->amount_cents,
+            'fee_cents'      => $transaction->fee_cents,
+        ]);
 
         $invoice = $paymentSession->invoice()->first();
 
@@ -172,5 +254,31 @@ class PaymentSessionController extends Controller
             'amount_cents'   => $transaction->amount_cents,
             'fee_cents'      => $transaction->fee_cents,
         ]);
+    }
+
+    /**
+     * Steps the checkout page reports from the payer's browser (see CheckoutAuditTrail).
+     */
+    public function event(Request $request, string $session): Response
+    {
+        $paymentSession = PaymentSession::query()
+            ->where('hosted_url_token', $session)
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'event'  => ['required', 'string', 'max:50'],
+            'detail' => ['nullable', 'array'],
+        ]);
+
+        $this->audit->recordBrowserEvent($paymentSession, $validated['event'], (array) ($validated['detail'] ?? []));
+
+        return response()->noContent();
+    }
+
+    private function payaFormUnavailable(PaymentSession $session, string $message): JsonResponse
+    {
+        $this->audit->record($session, 'PAYA_FORM_UNAVAILABLE', ['message' => $message]);
+
+        return response()->json(['message' => $message], 422);
     }
 }

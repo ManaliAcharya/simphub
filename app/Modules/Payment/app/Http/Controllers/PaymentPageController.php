@@ -3,26 +3,35 @@
 namespace Modules\Payment\Http\Controllers;
 
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClientMidRoute;
+use Modules\Payment\Services\CheckoutAuditTrail;
 use Modules\Payment\Services\QbFeeOverride;
 
 class PaymentPageController extends Controller
 {
-    public function show(string $session): View
+    public function show(string $session, CheckoutAuditTrail $audit): View
     {
         $logoUrl    = null;
         $feeConfig  = null;
         $clientName = null;
+        // Ties every step of this page visit together in the audit log.
+        $visitId    = (string) Str::uuid();
 
         $paymentSession = PaymentSession::query()
             ->where('hosted_url_token', $session)
             ->first();
 
         if ($paymentSession) {
+            $audit->record($paymentSession, 'CHECKOUT_PAGE_OPENED', [
+                'visit_id'     => $visitId,
+                'referer_host' => parse_url((string) request()->headers->get('referer'), PHP_URL_HOST) ?: null,
+            ]);
+
             $invoice = $paymentSession->invoice;
             if ($invoice && $invoice->pms_client_id) {
                 $client = Client::query()
@@ -37,7 +46,7 @@ class PaymentPageController extends Controller
                     // Pass only public/non-sensitive credential fields to the frontend tokenizer.
                     // Private keys (api_key, password, security_key) must NEVER reach the browser.
                     $feeConfig['gateway_credentials'] = $this->publicCredentialsOnly(
-                        (array) ($client->gateway_credentials ?? [])
+                        $this->fundCredentials($client, (string) $invoice->fund_type)
                     );
                 }
             }
@@ -48,6 +57,7 @@ class PaymentPageController extends Controller
             'logoUrl'      => $logoUrl,
             'feeConfig'    => $feeConfig,
             'clientName'   => $clientName,
+            'visitId'      => $visitId,
         ]);
     }
 
@@ -119,6 +129,18 @@ class PaymentPageController extends Controller
             'cash_discount_details'  => (array) ($client->cash_discount_details ?? []),
             'qb_route_type'          => $routeType,         // 'fees_on' | 'fees_off' | null
         ];
+    }
+
+    /** Gateway Credentials in their stored shape, with each gateway's IOLTA set for trust money. */
+    private function fundCredentials(Client $client, string $fundType): array
+    {
+        $creds = (array) ($client->gateway_credentials ?? []);
+
+        foreach (['fluidpay', 'paya', 'nmi'] as $gw) {
+            $creds[$gw] = $client->gatewayCredentialsFor($gw, $fundType);
+        }
+
+        return $creds;
     }
 
     /**

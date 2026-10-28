@@ -10,11 +10,17 @@ use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\EmailConfiguration;
 use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Payment\Events\PaymentApproved;
-use Modules\Payment\Mail\MerchantPaymentNotificationMail;
 use Modules\Payment\Mail\PaymentConfirmationMail;
+use Modules\Payment\Services\AchSettlementService;
+use Modules\Payment\Services\MerchantNotificationService;
 
 class SendPaymentConfirmationListener
 {
+    public function __construct(
+        private readonly AchSettlementService $achSettlements,
+        private readonly MerchantNotificationService $merchantNotifications,
+    ) {}
+
     public function handle(PaymentApproved $event): void
     {
         $transaction = Transaction::with('invoice')->find($event->transactionReference);
@@ -56,23 +62,10 @@ class SendPaymentConfirmationListener
         }
 
         // ── Merchant notification ─────────────────────────────────────────────
-        $merchantEmail = trim((string) ($emailConfig?->reply_to_email ?? ''));
-        if ($merchantEmail === '') {
-            $merchantEmail = trim((string) ($client?->payment_link_admin_email ?? ''));
-        }
-
-        if ($merchantEmail !== '') {
-            try {
-                Mail::to($merchantEmail)->send(
-                    new MerchantPaymentNotificationMail($transaction, $invoice, $client)
-                );
-            } catch (\Throwable $e) {
-                Log::error('SendPaymentConfirmationListener: failed to send merchant notification', [
-                    'invoice_id'     => $invoice->id,
-                    'merchant_email' => $merchantEmail,
-                    'error'          => $e->getMessage(),
-                ]);
-            }
+        // ACH isn't money in the bank until it settles, so the firm hears about it from
+        // PollAchSettlementsJob instead — once Paya's status lookup is set up.
+        if (! $this->achSettlements->holdsMerchantNotification($transaction)) {
+            $this->merchantNotifications->sendPaymentNotification($transaction);
         }
     }
 

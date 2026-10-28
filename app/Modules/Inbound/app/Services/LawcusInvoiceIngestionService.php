@@ -36,8 +36,10 @@ class LawcusInvoiceIngestionService
         $customerPayload = $this->fetchCustomerPayload($connection, $invoicePayload, $pmsClientId);
         $recipientEmails = $this->extractClientEmails($invoicePayload, $customerPayload);
         $customerName    = $this->extractClientName($invoicePayload, $customerPayload);
+        $nothingDue      = self::hasNothingDue((array) Arr::get($invoicePayload, 'data', $invoicePayload))
+            || self::hasNothingDue((array) Arr::get($triggerPayload, 'list_row', []));
 
-        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $customerName, $pmsClientId) {
+        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $customerName, $pmsClientId, $nothingDue) {
             $invoice = Invoice::query()->updateOrCreate(
                 [
                     'pms_source'          => 'lawcus',
@@ -81,7 +83,9 @@ class LawcusInvoiceIngestionService
 
             $createdSession = false;
 
-            if (! $session) {
+            // Nothing due means there's nothing to collect, so no payment link is created —
+            // a live link would let the client pay an already-settled invoice again.
+            if (! $session && ! $nothingDue) {
                 $session        = $this->paymentSessions->create($invoice);
                 $createdSession = true;
             }
@@ -90,15 +94,29 @@ class LawcusInvoiceIngestionService
                 'pms_source'          => 'lawcus',
                 'pms_client_id'       => $pmsClientId,
                 'external_invoice_id' => $invoice->external_invoice_id,
-                'payment_session_id'  => $session->id,
+                'payment_session_id'  => $session?->id,
             ]);
 
             return [
                 'invoice'         => $invoice->fresh(),
-                'payment_session' => $session->fresh(),
+                'payment_session' => $session?->fresh(),
                 'created_session' => $createdSession,
             ];
         });
+
+        // e.g. an expense invoice paid from the matter's trust balance when it was created:
+        // recorded so it shows in the invoice list, but the client is never emailed.
+        if ($nothingDue) {
+            AuditLogger::log('PAYMENT_LINK_SKIPPED', 'invoice', $result['invoice']->id, [
+                'pms_client_id' => $pmsClientId,
+                'reason'        => 'nothing_due',
+                'status'        => $result['invoice']->status,
+            ]);
+
+            $result['emails_sent'] = 0;
+
+            return $result;
+        }
 
         // Trust Request links are held until the firm approves the trust email wording and
         // the client turns sending on; staff can still send one with Resend.
@@ -134,6 +152,19 @@ class LawcusInvoiceIngestionService
         $result['emails_sent'] = $emailsSent;
 
         return $result;
+    }
+
+    /**
+     * Whether a Lawcus invoice (REST invoice data or a /v2/invoices list row) has nothing
+     * left to collect: marked paid, or nothing due — e.g. created with "use matter trust
+     * balance". A missing amount_due alone doesn't count.
+     */
+    public static function hasNothingDue(array $invoice): bool
+    {
+        $amountDue = $invoice['amount_due'] ?? null;
+
+        return strtoupper((string) ($invoice['status'] ?? '')) === 'PAID'
+            || (is_numeric($amountDue) && (float) $amountDue <= 0);
     }
 
     private function sendsTrustLinks(string $pmsClientId): bool
