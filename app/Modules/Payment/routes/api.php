@@ -8,4 +8,7 @@ Route::prefix('v1/payment')->name('payment.')->group(function (): void {
     Route::get('/sessions/{session}/paya-form-url',    [PaymentSessionController::class, 'payaFormUrl'])->name('sessions.paya-form-url');
     Route::post('/sessions/{session}/tokenize',        [PaymentSessionController::class, 'tokenize'])->name('sessions.tokenize');
     Route::post('/sessions/{session}/submit',          [PaymentSessionController::class, 'submit'])->name('sessions.submit');
+    Route::post('/sessions/{session}/events',          [PaymentSessionController::class, 'event'])
+        ->middleware('throttle:60,1')
+        ->name('sessions.events');
 });

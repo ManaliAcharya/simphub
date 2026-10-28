@@ -245,9 +245,11 @@
     <script>
         window.paymentSessionToken = @json($sessionToken);
         window.feeConfig = @json($feeConfig);
+        window.checkoutVisitId = @json($visitId);
     </script>
     <script>
         const sessionToken = window.paymentSessionToken;
+        const visitId = window.checkoutVisitId;
         const state = {
             details: null,
             token: '',
@@ -255,7 +257,64 @@
             cashSelected: false,
             fluidpayTokenizer: null,
             currentScript: null,
+            autoSelecting: false,
+            lastStep: 'page_opened',
+            finished: false,
+            closeReported: false,
+            errorsReported: 0,
         };
+
+        // Reports a checkout step to the audit log (see CheckoutAuditTrail::BROWSER_EVENTS).
+        // Never sends card or bank numbers, and never lets a tracking failure break checkout.
+        function track(event, detail = {}) {
+            if (event !== 'page_closed' && event !== 'page_error') state.lastStep = event;
+            const url = `/api/v1/payment/sessions/${sessionToken}/events`;
+            const body = JSON.stringify({ event, detail, visit_id: visitId });
+            try {
+                if (event === 'page_closed' && navigator.sendBeacon) {
+                    navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+                    return;
+                }
+                fetch(url, {
+                    method: 'POST',
+                    keepalive: true,
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body,
+                }).catch(() => {});
+            } catch (e) {
+                // ignore
+            }
+        }
+
+        function optionDetail(option) {
+            if (!option) return {};
+            return {
+                gateway: option.gateway,
+                payment_method: option.payment_method || (option.hosted_fields && option.hosted_fields.metadata && option.hosted_fields.metadata.payment_method) || 'CARD',
+                routing_rule_id: option.routing_rule_id,
+                mode: option.hosted_fields && option.hosted_fields.metadata ? option.hosted_fields.metadata.mode : null,
+            };
+        }
+
+        window.addEventListener('error', (event) => {
+            if (state.errorsReported >= 5) return;
+            state.errorsReported++;
+            track('page_error', { message: event.message || 'Script error', step: state.lastStep });
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+            if (state.errorsReported >= 5) return;
+            state.errorsReported++;
+            const reason = event.reason && event.reason.message ? event.reason.message : String(event.reason || 'Unhandled rejection');
+            track('page_error', { message: reason, step: state.lastStep });
+        });
+
+        // Payer left without paying — records how far they got.
+        window.addEventListener('pagehide', () => {
+            if (state.finished || state.closeReported) return;
+            state.closeReported = true;
+            track('page_closed', { last_step: state.lastStep });
+        });
         const els = {
             title: document.getElementById('invoice-title'),
             copy: document.getElementById('invoice-copy'),
@@ -299,10 +358,13 @@
 
             // Try to load Paya-hosted AccountForm — only available when PAYA_DEVELOPER_ID is set
             try {
-                const res = await fetch(`/api/v1/payment/sessions/${sessionToken}/paya-form-url`);
+                const res = await fetch(`/api/v1/payment/sessions/${sessionToken}/paya-form-url`, {
+                    headers: { 'Accept': 'application/json', 'X-Checkout-Visit': visitId },
+                });
                 const data = await res.json();
                 if (!res.ok || !data.url) {
                     // Developer ID not configured — custom form already shown, button enabled
+                    track('payment_form_ready', { gateway: 'paya', mode: 'bank_form' });
                     return;
                 }
                 // Developer ID configured — switch to hosted iframe, disable button until token received
@@ -313,8 +375,10 @@
                 els.payaIframe.src = data.url;
                 els.payaIframe.style.display = 'block';
                 if (els.payaIframeLoading) els.payaIframeLoading.style.display = 'none';
+                track('payment_form_ready', { gateway: 'paya', mode: 'paya_iframe' });
             } catch (e) {
                 // Network error — custom form shown, button already enabled
+                track('request_failed', { step: 'paya_form_url', message: e && e.message });
             }
         }
 
@@ -337,6 +401,7 @@
             }
             els.submitButton.disabled = false;
             els.submitStatus.textContent = 'Bank account secured. Click Submit payment to continue.';
+            track('bank_account_secured', { gateway: 'paya', mode: 'paya_iframe' });
         });
 
         function showConfirmation(payload) {
@@ -550,7 +615,9 @@
         }
 
         async function loadDetails() {
-            const response = await fetch(`/api/v1/payment/sessions/${sessionToken}`);
+            const response = await fetch(`/api/v1/payment/sessions/${sessionToken}`, {
+                headers: { 'Accept': 'application/json', 'X-Checkout-Visit': visitId },
+            });
             const details = await response.json();
             if (!response.ok) {
                 els.title.textContent = details.message || 'This payment link is no longer available.';
@@ -684,7 +751,9 @@
             // Auto-select first available gateway tile
             if (availableOptions.length > 0) {
                 const firstTile = els.gatewayOptions.querySelector('.pay-tile:not(.pay-tile-cash)');
+                state.autoSelecting = true;
                 if (firstTile) firstTile.click();
+                state.autoSelecting = false;
             } else {
                 els.submitButton.disabled = true;
                 els.submitStatus.textContent = 'Payment cannot be done because required bank details are missing from invoice custom fields.';
@@ -734,6 +803,7 @@
 
             state.selectedOption = null;
             state.cashSelected   = true;
+            track('cash_option_selected');
             els.submitButton.disabled = false;
             els.submitButton.textContent = 'Submit payment';
             els.submitStatus.textContent = '';
@@ -751,6 +821,7 @@
 
         function selectOption(option, tile) {
             state.selectedOption = option;
+            track('option_selected', { ...optionDetail(option), reason: state.autoSelecting ? 'auto_selected' : 'payer_selected' });
 
             // Deselect all tiles
             document.querySelectorAll('.pay-tile').forEach((t) => {
@@ -836,24 +907,30 @@
         }
 
         function handleTokenizerResponse(resp) {
+            const gateway = state.selectedOption ? state.selectedOption.gateway : null;
+
             if (!resp || typeof resp !== 'object') {
                 els.submitButton.disabled = false;
                 els.submitStatus.textContent = 'Unable to read the gateway response.';
+                track('card_tokenize_failed', { gateway, status: 'unreadable_response', message: els.submitStatus.textContent });
                 return;
             }
 
             switch (resp.status) {
                 case 'success':
                     state.token = resp.token || '';
+                    track('card_tokenized', { gateway });
                     submitPayment();
                     return;
                 case 'validation':
                     els.submitButton.disabled = false;
                     els.submitStatus.textContent = 'Please complete the highlighted gateway fields before continuing.';
+                    track('card_tokenize_failed', { gateway, status: 'validation', message: els.submitStatus.textContent });
                     return;
                 default:
                     els.submitButton.disabled = false;
                     els.submitStatus.textContent = resp.msg || 'The gateway could not tokenize this card.';
+                    track('card_tokenize_failed', { gateway, status: resp.status || 'error', message: els.submitStatus.textContent });
             }
         }
 
@@ -862,6 +939,8 @@
             const metadata = option.hosted_fields.metadata || {};
 
             if (!fields.script_url || !metadata.public_key) {
+                // No public key resolved for this MID — the card form cannot be shown.
+                track('payment_form_unavailable', { gateway: option.gateway, mode: 'tokenizer', reason: !metadata.public_key ? 'missing_public_key' : 'missing_script_url' });
                 els.mockTokenPanel.classList.remove('hidden');
                 return;
             }
@@ -870,12 +949,14 @@
                 await loadScript(fields.script_url);
             } catch (error) {
                 resetToken('Unable to load the FluidPay tokenizer library.');
+                track('payment_form_unavailable', { gateway: option.gateway, mode: 'tokenizer', reason: 'script_load_failed' });
                 els.mockTokenPanel.classList.remove('hidden');
                 return;
             }
 
             if (typeof window.Tokenizer !== 'function') {
                 resetToken('FluidPay tokenizer is not available on this page.');
+                track('payment_form_unavailable', { gateway: option.gateway, mode: 'tokenizer', reason: 'tokenizer_missing' });
                 els.mockTokenPanel.classList.remove('hidden');
                 return;
             }
@@ -916,6 +997,7 @@
             els.fluidpayPanel.classList.remove('hidden');
             els.submitButton.disabled = false;
             els.submitStatus.textContent = 'Enter your card details and click Submit payment.';
+            track('payment_form_ready', { gateway: option.gateway, mode: 'tokenizer' });
         }
 
         async function setupCardEntry() {
@@ -943,6 +1025,7 @@
                 state.token = '__DIRECT_PAY__';
                 els.submitButton.disabled = false;
                 els.submitStatus.textContent = 'Ready to submit the invoice amount.';
+                track('payment_form_ready', { gateway: option.gateway, mode });
                 return;
             }
 
@@ -951,6 +1034,7 @@
                     await loadScript(option.hosted_fields.fields.script_url);
                 } catch (error) {
                     resetToken('Unable to load the hosted card library. Enter a gateway token to continue testing.');
+                    track('payment_form_unavailable', { gateway: option.gateway, mode, reason: 'script_load_failed' });
                     els.mockTokenPanel.classList.remove('hidden');
                     return;
                 }
@@ -958,6 +1042,7 @@
 
             if (mode === 'collectjs' && window.CollectJS) {
                 els.hostedFields.classList.remove('hidden');
+                track('payment_form_ready', { gateway: option.gateway, mode });
                 return;
             }
 
@@ -969,6 +1054,8 @@
                 return;
             }
 
+            // No real payment form for this option — only the test token box is left.
+            track('payment_form_unavailable', { gateway: option.gateway, mode, reason: 'no_hosted_fields' });
             els.mockTokenPanel.classList.remove('hidden');
         }
 
@@ -989,48 +1076,82 @@
                 ? `Submitting ${state.selectedOption.gateway.toUpperCase()} sandbox payment...`
                 : 'Submitting payment...';
 
-            const response = await fetch(`/api/v1/payment/sessions/${sessionToken}/submit`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-                },
-                body: JSON.stringify({
-                    token: state.token,
-                    routing_rule_id: state.selectedOption.routing_rule_id,
-                    payment_method: state.selectedOption.payment_method || state.selectedOption.hosted_fields.metadata.payment_method || 'CARD',
-                    ...(state.payaBankToken ? { paya_bank_token: state.payaBankToken } : {}),
-                    ...(state.cardholder ? state.cardholder : {}),
-                }),
-            });
+            let response;
+            let payload = {};
+            try {
+                response = await fetch(`/api/v1/payment/sessions/${sessionToken}/submit`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                        'X-Checkout-Visit': visitId,
+                    },
+                    body: JSON.stringify({
+                        token: state.token,
+                        routing_rule_id: state.selectedOption.routing_rule_id,
+                        payment_method: state.selectedOption.payment_method || state.selectedOption.hosted_fields.metadata.payment_method || 'CARD',
+                        ...(state.payaBankToken ? { paya_bank_token: state.payaBankToken } : {}),
+                        ...(state.cardholder ? state.cardholder : {}),
+                    }),
+                });
+            } catch (e) {
+                // The request never reached us — the server has no record of this attempt.
+                els.submitStatus.textContent = 'Network error. Please check your connection and try again.';
+                els.submitButton.disabled = false;
+                track('request_failed', { ...optionDetail(state.selectedOption), step: 'submit', message: e && e.message });
+                return;
+            }
 
-            const payload = await response.json();
+            try {
+                payload = await response.json();
+            } catch (e) {
+                payload = {};
+            }
 
             if (!response.ok) {
                 els.submitStatus.textContent = payload.message || 'Payment failed.';
                 els.submitButton.disabled = false;
+                track('payment_failed_shown', { ...optionDetail(state.selectedOption), status: String(response.status), message: els.submitStatus.textContent });
                 const cancelUrl = state.details?.invoice?.cancel_redirect_url;
                 if (cancelUrl) {
                     els.submitStatus.textContent += ' Redirecting you back...';
-                    setTimeout(() => { window.location.href = cancelUrl; }, 3000);
+                    setTimeout(() => {
+                        state.finished = true;
+                        track('redirected_to_cancel_url');
+                        window.location.href = cancelUrl;
+                    }, 3000);
                 }
                 return;
             }
 
+            state.finished = true;
+            track('confirmation_shown', { ...optionDetail(state.selectedOption), status: String(response.status) });
             showConfirmation(payload);
         }
 
         els.submitButton.addEventListener('click', async () => {
-            if (state.cashSelected) { showCashInstructions(); return; }
-            if (!state.selectedOption) return;
+            if (state.cashSelected) {
+                state.finished = true;
+                track('cash_instructions_shown');
+                showCashInstructions();
+                return;
+            }
+            if (!state.selectedOption) {
+                track('submit_blocked', { reason: 'no_option_selected' });
+                return;
+            }
 
             const mode = state.selectedOption.hosted_fields.metadata.mode;
+            const blocked = (reason) => track('submit_blocked', { ...optionDetail(state.selectedOption), reason, message: els.submitStatus.textContent });
+            track('submit_clicked', optionDetail(state.selectedOption));
 
             {
                 const firstName = els.cardholderFirstName ? els.cardholderFirstName.value.trim() : '';
                 const lastName  = els.cardholderLastName  ? els.cardholderLastName.value.trim()  : '';
                 if (!firstName || !lastName) {
                     els.submitStatus.textContent = "Please enter the payer's first and last name.";
+                    blocked('missing_name');
                     return;
                 }
 
@@ -1040,6 +1161,7 @@
                 const zip      = els.cardholderZip       ? els.cardholderZip.value.trim()       : '';
                 if (!address1 || !city || !stateAbbr || !zip) {
                     els.submitStatus.textContent = 'Please enter the full billing address.';
+                    blocked('missing_billing_address');
                     return;
                 }
 
@@ -1069,10 +1191,12 @@
                 const account = els.payaAccount ? els.payaAccount.value.trim() : '';
                 if (!routing || routing.length !== 9) {
                     els.submitStatus.textContent = 'Please enter a valid 9-digit routing number.';
+                    blocked('invalid_routing_number');
                     return;
                 }
                 if (!account || account.length < 4) {
                     els.submitStatus.textContent = 'Please enter a valid account number.';
+                    blocked('invalid_account_number');
                     return;
                 }
                 els.submitButton.disabled = true;
@@ -1082,7 +1206,9 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                            'X-Checkout-Visit': visitId,
                         },
                         body: JSON.stringify({
                             routing_number: routing,
@@ -1102,6 +1228,7 @@
                 } catch (e) {
                     els.submitStatus.textContent = 'Network error. Please try again.';
                     els.submitButton.disabled = false;
+                    track('request_failed', { ...optionDetail(state.selectedOption), step: 'tokenize_bank', message: e && e.message });
                 }
                 return;
             }
@@ -1109,6 +1236,7 @@
             if (mode === 'tokenizer') {
                 if (!state.fluidpayTokenizer || typeof state.fluidpayTokenizer.submit !== 'function') {
                     els.submitStatus.textContent = 'FluidPay tokenizer is not ready yet.';
+                    blocked('tokenizer_not_ready');
                     return;
                 }
                 els.submitButton.disabled = true;
@@ -1117,11 +1245,15 @@
                 return;
             }
 
-            if (!state.token) return;
+            if (!state.token) {
+                blocked('no_payment_token');
+                return;
+            }
             await submitPayment();
         });
 
-        loadDetails().catch(() => {
+        loadDetails().catch((e) => {
+            track('request_failed', { step: 'load_details', message: e && e.message });
             els.title.textContent = 'Unable to load payment session';
             els.copy.textContent = 'Please contact support or request a new payment link.';
         });
