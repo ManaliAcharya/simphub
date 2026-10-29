@@ -605,7 +605,8 @@
                         @endif
                     </div>
 
-                    {{-- ACH settlement notifications (Lawcus) --}}
+                    {{-- ACH settlement notifications (Lawcus) — hidden until Paya gives us a settlement status endpoint. --}}
+                    @if (app(\Modules\Outbound\Services\PayaAchStatusService::class)->isConfigured())
                     <div class="cc-card">
                         <div class="cc-card-title">ACH Settlement Notifications</div>
                         <div class="cc-card-desc">ACH (Paya) payments take a few business days to settle and can still be
@@ -626,6 +627,7 @@
                             <button type="submit" class="button primary" style="font-size:13px;">Save ACH settings</button>
                         </form>
                     </div>
+                    @endif
                 @endif
 
                 {{-- Default Account (Wave) --}}

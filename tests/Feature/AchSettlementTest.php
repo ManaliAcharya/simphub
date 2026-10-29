@@ -102,6 +102,10 @@ class AchSettlementTest extends TestCase
             'lawcus_ach_settlement_notify' => $on,
         ]);
 
+        $this->configurePaya(false);
+        $this->assertFalse($client('LAWCUS', true)->tracksAchSettlement('paya'));
+
+        $this->configurePaya(true);
         $this->assertTrue($client('LAWCUS', true)->tracksAchSettlement('Paya'));
         $this->assertFalse($client('LAWCUS', false)->tracksAchSettlement('paya'));
         $this->assertFalse($client('LAWCUS', true)->tracksAchSettlement('fluidpay'));
