@@ -700,6 +700,9 @@ class PmsIntegrationController extends Controller
                 ])
                 ->where('pms_client_id', $pmsClientId)
                 ->latest('created_at')
+                // One poll can record several invoices in the same second, and ids are
+                // UUIDs, so break the tie by invoice number to keep the newest on top.
+                ->orderByDesc('invoice_number')
                 ->get();
 
         // Latest payment session per invoice, so the Invoice List tab can tell "never
