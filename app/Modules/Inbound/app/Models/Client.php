@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Modules\Auth\Models\ClientAccount;
+use Modules\Outbound\Services\PayaAchStatusService;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
 
@@ -148,11 +149,13 @@ class Client extends Model
 
     /**
      * Lawcus ACH (Paya) payments are followed to settlement: the firm hears about them once
-     * they settle, or is told to reverse them in Lawcus if they're returned.
+     * they settle, or is told to reverse them in Lawcus if they're returned. Off everywhere
+     * until Paya gives us a settlement status endpoint (PAYA_STATUS_WSDL / _METHOD).
      */
     public function tracksAchSettlement(string $gateway): bool
     {
-        return strtoupper((string) $this->client_pms) === 'LAWCUS'
+        return app(PayaAchStatusService::class)->isConfigured()
+            && strtoupper((string) $this->client_pms) === 'LAWCUS'
             && (bool) $this->lawcus_ach_settlement_notify
             && strtolower($gateway) === 'paya';
     }
