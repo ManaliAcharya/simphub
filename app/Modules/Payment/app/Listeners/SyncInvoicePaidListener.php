@@ -88,7 +88,7 @@ class SyncInvoicePaidListener
             $connection = $this->zohoOAuth->ensureValidAccessToken($connection);
             $organizationId = $this->resolveOrganizationId($connection, (array) $invoice->raw_payload);
 
-            $amount = round(((int) $transaction->amount_cents) / 100, 2);
+            $amount = self::invoicePortion($transaction, $invoice);
 
             $payload = [
                 'customer_id' => (string) $invoice->external_client_id,
@@ -141,7 +141,7 @@ class SyncInvoicePaidListener
 
             $connection = $this->clioOAuth->ensureValidAccessToken($connection);
 
-            $amount        = round(((int) $transaction->amount_cents) / 100, 2);
+            $amount        = self::invoicePortion($transaction, $invoice);
             $billId        = (string) $invoice->external_invoice_id;
             $date          = now()->toDateString();
             $paymentMethod = $this->clioPaymentType((string) $transaction->gateway);
@@ -209,14 +209,7 @@ class SyncInvoicePaidListener
 
             $connection = $this->qbOAuth->ensureValidAccessToken($connection);
 
-            $feeCents   = (int) ($transaction->fee_cents ?? 0);
-            $totalCents = (int) $transaction->amount_cents;
-
-            // If fee_cents wasn't stored correctly, derive it from the difference
-            // between what was actually charged and the invoice face value.
-            if ($feeCents === 0 && $totalCents > (int) $invoice->amount_cents) {
-                $feeCents = $totalCents - (int) $invoice->amount_cents;
-            }
+            $feeCents = self::feeCents($transaction, $invoice);
 
             $hasSurchargeAccount = (bool) ($client->qb_surcharge_enabled ?? false)
                 && is_string($client->qb_surcharge_account_id ?? null)
@@ -228,7 +221,7 @@ class SyncInvoicePaidListener
             // 1. QB Payment for invoice amount only → closes invoice via LinkedTxn
             // 2. QB Journal Entry: Debit bank / Credit Surcharge Income (no AR involvement)
             if ($feeCents > 0 && $hasSurchargeAccount) {
-                $invoiceAmount = round((int) $invoice->amount_cents / 100, 2);
+                $invoiceAmount = self::invoicePortion($transaction, $invoice);
                 $feeAmount     = round($feeCents / 100, 2);
                 $desc          = "Surcharge for invoice #{$invoice->external_invoice_id}";
 
@@ -311,8 +304,8 @@ class SyncInvoicePaidListener
                 return;
             }
 
-            // ── Standard mode: no surcharge split ──────────────────────────────
-            $amount = round($totalCents / 100, 2);
+            // ── Fee sync off: the invoice amount only; the fee isn't recorded ──
+            $amount = self::invoicePortion($transaction, $invoice);
 
             $payload = [
                 'TotalAmt'      => $amount,
@@ -341,7 +334,9 @@ class SyncInvoicePaidListener
                 'qb_payment_id' => $qbPaymentId !== '' ? $qbPaymentId : null,
             ])->save();
 
-            $this->recordFeeSync($transaction, $invoice, $feeCents, 'quickbooks', Transaction::FEE_NOT_SPLIT, 'no surcharge account: fee booked as customer credit');
+            $client->qb_surcharge_enabled
+                ? $this->recordFeeSync($transaction, $invoice, $feeCents, 'quickbooks', Transaction::FEE_NOT_RECORDED, 'surcharge sync on but no income account chosen: fee not recorded')
+                : $this->recordFeeSync($transaction, $invoice, $feeCents, 'quickbooks', Transaction::FEE_OFF, 'surcharge sync off: fee not recorded');
 
             AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
                 'pms_source'          => 'quickbooks',
@@ -349,6 +344,7 @@ class SyncInvoicePaidListener
                 'gateway'             => $transaction->gateway,
                 'gateway_txn_id'      => $transaction->gateway_txn_id,
                 'external_invoice_id' => $invoice->external_invoice_id,
+                'invoice_amount'      => $amount,
                 'deposit_account_id'  => $client->qb_default_account_id ?? null,
                 'qb_payment_id'       => $qbPaymentId,
             ]);
@@ -395,14 +391,7 @@ class SyncInvoicePaidListener
                 ? $client->wave_default_account_id
                 : null;
 
-            $feeCents   = (int) ($transaction->fee_cents ?? 0);
-            $totalCents = (int) $transaction->amount_cents;
-
-            // If fee_cents wasn't stored correctly, derive it from the difference
-            // between what was actually charged and the invoice face value.
-            if ($feeCents === 0 && $totalCents > (int) $invoice->amount_cents) {
-                $feeCents = $totalCents - (int) $invoice->amount_cents;
-            }
+            $feeCents = self::feeCents($transaction, $invoice);
 
             $hasSurchargeAccount = (bool) ($client->wave_surcharge_enabled ?? false)
                 && is_string($client->wave_surcharge_account_id ?? null)
@@ -412,7 +401,7 @@ class SyncInvoicePaidListener
             // 1. Wave Payment for invoice amount only → closes invoice via invoicePaymentCreateManual
             // 2. Wave Money Transaction: deposit fee to bank account, categorize to Surcharge Income (no AR involvement)
             if ($feeCents > 0 && $hasSurchargeAccount) {
-                $invoiceAmount = round((int) $invoice->amount_cents / 100, 2);
+                $invoiceAmount = self::invoicePortion($transaction, $invoice);
                 $feeAmount     = round($feeCents / 100, 2);
                 $desc          = "Surcharge for invoice #{$invoice->invoice_number}";
 
@@ -462,8 +451,8 @@ class SyncInvoicePaidListener
                 return;
             }
 
-            // ── Standard mode: no surcharge split ──────────────────────────────
-            $amount = round($totalCents / 100, 2);
+            // ── Fee sync off: the invoice amount only; the fee isn't recorded ──
+            $amount = self::invoicePortion($transaction, $invoice);
 
             $this->waveApi->recordInvoicePayment(
                 $connection,
@@ -477,7 +466,9 @@ class SyncInvoicePaidListener
 
             $invoice->forceFill(['pms_sync_status' => 'SYNCED'])->save();
 
-            $this->recordFeeSync($transaction, $invoice, $feeCents, 'wave', Transaction::FEE_NOT_SPLIT, 'no surcharge account: fee recorded as part of the invoice payment');
+            $client->wave_surcharge_enabled
+                ? $this->recordFeeSync($transaction, $invoice, $feeCents, 'wave', Transaction::FEE_NOT_RECORDED, 'surcharge sync on but no income account chosen: fee not recorded')
+                : $this->recordFeeSync($transaction, $invoice, $feeCents, 'wave', Transaction::FEE_OFF, 'surcharge sync off: fee not recorded');
 
             AuditLogger::log('PMS_PAYMENT_RECORDED', 'invoice', $invoice->id, [
                 'pms_source'          => 'wave',
@@ -486,6 +477,7 @@ class SyncInvoicePaidListener
                 'gateway_txn_id'      => $transaction->gateway_txn_id,
                 'external_invoice_id' => $invoice->external_invoice_id,
                 'invoice_relay_id'    => $invoiceRelayId,
+                'invoice_amount'      => $amount,
             ]);
         } catch (\Throwable $exception) {
             $invoice->forceFill(['pms_sync_status' => 'FAILED'])->save();
@@ -545,8 +537,8 @@ class SyncInvoicePaidListener
     }
 
     /**
-     * PMSs with no fee account setting (Zoho, Zoho CRM, Clio, AdvancedMD record the
-     * full amount; Lawcus only the invoice portion) — tracked once the payment is in.
+     * PMSs with no fee sync setting (Zoho, Clio, AdvancedMD, Lawcus) record only the invoice
+     * portion, so the fee is left out on purpose — tracked once the payment is in.
      */
     private function recordFeeSyncWithoutSplitSupport(Transaction $transaction, mixed $invoice): void
     {
@@ -559,15 +551,40 @@ class SyncInvoicePaidListener
             return;
         }
 
+        $this->recordFeeSync($transaction, $invoice, self::feeCents($transaction, $invoice), $pms, Transaction::FEE_OFF, 'no fee sync for this PMS: fee not recorded');
+    }
+
+    /**
+     * The fee charged on top of the invoice. If fee_cents wasn't stored, it's derived from
+     * the difference between what was actually charged and the invoice face value.
+     */
+    public static function feeCents(Transaction $transaction, mixed $invoice): int
+    {
         $feeCents = (int) ($transaction->fee_cents ?? 0);
 
         if ($feeCents === 0 && (int) $transaction->amount_cents > (int) $invoice->amount_cents) {
             $feeCents = (int) $transaction->amount_cents - (int) $invoice->amount_cents;
         }
 
-        $pms === 'lawcus'
-            ? $this->recordFeeSync($transaction, $invoice, $feeCents, $pms, Transaction::FEE_NOT_RECORDED, 'Lawcus records only the invoice amount')
-            : $this->recordFeeSync($transaction, $invoice, $feeCents, $pms, Transaction::FEE_NOT_SPLIT, 'no fee account setting for this PMS: fee recorded as part of the payment');
+        return $feeCents;
+    }
+
+    /**
+     * What's applied to the invoice in the PMS: the charge minus the fee, never more than
+     * the invoice amount. The fee is never part of the invoice payment — on dual pricing the
+     * processor keeps it, and booking it there leaves an overpayment / customer credit. It's
+     * synced separately only when the client's surcharge (fee sync) setting is on.
+     */
+    public static function invoicePortion(Transaction $transaction, mixed $invoice): float
+    {
+        $cents        = (int) $transaction->amount_cents - self::feeCents($transaction, $invoice);
+        $invoiceCents = (int) $invoice->amount_cents;
+
+        if ($invoiceCents > 0) {
+            $cents = min($cents, $invoiceCents);
+        }
+
+        return round(max($cents, 0) / 100, 2);
     }
 
     private function wavePaymentMethod(string $gateway): string
@@ -604,7 +621,7 @@ class SyncInvoicePaidListener
 
             $connection = $this->advancedMdSession->ensureValidSession($connection);
 
-            $totalCents = (int) $transaction->amount_cents;
+            $totalCents = (int) round(self::invoicePortion($transaction, $invoice) * 100);
             if ($totalCents <= 0) {
 
                 AuditLogger::log('AdvancedMD_DEBUG', 'invoice', $invoice->id, [
