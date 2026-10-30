@@ -13,6 +13,7 @@ use Modules\Inbound\Models\WaveConnection;
 use Modules\Inbound\Models\AdvancedMdPractice;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
+use Modules\Inbound\Services\ClioTrustPaymentSyncService;
 use Modules\Inbound\Services\LawcusPaymentSyncService;
 use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksOAuthService;
@@ -41,6 +42,7 @@ class SyncInvoicePaidListener
         private readonly AdvancedMdApiClient $advancedMdApi,
         private readonly LawcusPaymentSyncService $lawcusPaymentSync,
         private readonly ZohoCrmPaymentSyncService $zohoCrmPaymentSync,
+        private readonly ClioTrustPaymentSyncService $clioTrustPaymentSync,
     ) {}
 
     public function handle(PaymentApproved $event): void
@@ -133,6 +135,14 @@ class SyncInvoicePaidListener
 
     private function syncToClio(Transaction $transaction, mixed $invoice, mixed $client): void
     {
+        // Trust Requests are deposited into the firm's Clio trust account, never recorded as a
+        // regular bill payment (which can't name the account).
+        if ($invoice->fund_type === 'TRUST') {
+            $this->clioTrustPaymentSync->sync($transaction, $invoice, self::invoicePortion($transaction, $invoice));
+
+            return;
+        }
+
         try {
             $connection = ClioConnection::query()
                 ->where('provider', 'clio')

@@ -196,6 +196,11 @@ class PmsIntegrationController extends Controller
             ->first(fn (array $a): bool => (string) ($a['account_id'] ?? '') === (string) $validated['clio_default_bank_account_id']);
 
         abort_unless(is_array($selected), 422, 'Selected bank account is invalid. Please choose from the dropdown.');
+        abort_if(
+            self::isClioTrustAccount($selected),
+            422,
+            'A trust account cannot be the default account. Choose it under Trust Requests instead.'
+        );
 
         $client->forceFill([
             'clio_default_bank_account_id'   => (string) $selected['account_id'],
@@ -206,6 +211,74 @@ class PmsIntegrationController extends Controller
             'pms_client_id' => $client->pms_client_id,
             'success'       => 'Default Clio bank account saved.',
         ]);
+    }
+
+    /**
+     * Trust Request settings: the Clio trust account their payments are deposited to,
+     * and whether their payment links are emailed (off until the firm approves wording).
+     */
+    public function saveClioTrustSettings(
+        Request $request,
+        ClioOAuthService $clioOAuth,
+        ClioApiClient $clioApi,
+    ): RedirectResponse {
+        $validated = $request->validate([
+            'pms_client_id'              => ['required', 'string'],
+            'clio_trust_bank_account_id' => ['nullable', 'string', 'max:100'],
+            'clio_send_trust_links'      => ['nullable', 'boolean'],
+        ]);
+
+        $client = Client::query()
+            ->where('pms_client_id', $validated['pms_client_id'])
+            ->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'CLIO', 422, 'Trust settings are only supported for Clio clients.');
+
+        $trustAccountId   = null;
+        $trustAccountName = null;
+
+        if (! empty($validated['clio_trust_bank_account_id'])) {
+            $connection = ClioConnection::query()
+                ->where('provider', 'clio')
+                ->where('pms_client_id', $client->pms_client_id)
+                ->latest('created_at')
+                ->firstOrFail();
+
+            $selected = collect($clioApi->fetchBankAccounts($clioOAuth->ensureValidAccessToken($connection)))
+                ->first(fn (array $a): bool => (string) ($a['account_id'] ?? '') === (string) $validated['clio_trust_bank_account_id']);
+
+            abort_unless(
+                is_array($selected) && self::isClioTrustAccount($selected),
+                422,
+                'Choose a Clio bank account of type Trust.'
+            );
+
+            $trustAccountId   = (string) $selected['account_id'];
+            $trustAccountName = (string) ($selected['account_name'] ?? '');
+        }
+
+        $client->forceFill([
+            'clio_trust_bank_account_id'   => $trustAccountId,
+            'clio_trust_bank_account_name' => $trustAccountName,
+            'clio_send_trust_links'        => (bool) ($validated['clio_send_trust_links'] ?? false),
+        ])->save();
+
+        AuditLogger::log('CLIO_TRUST_SETTINGS_UPDATED', 'client', (string) $client->id, [
+            'pms_client_id'         => $client->pms_client_id,
+            'trust_bank_account_id' => $trustAccountId,
+            'send_trust_links'      => $client->clio_send_trust_links,
+        ]);
+
+        return redirect()->route('inbound.clio.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => 'Trust Request settings saved.',
+        ]);
+    }
+
+    /** Clio bank account types are OperatingAccount and TrustAccount. */
+    public static function isClioTrustAccount(array $account): bool
+    {
+        return strtolower((string) ($account['account_type'] ?? '')) === 'trustaccount';
     }
 
     public function saveLawcusDefaultBankAccount(

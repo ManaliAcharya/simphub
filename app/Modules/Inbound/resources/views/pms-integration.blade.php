@@ -489,11 +489,22 @@
                 {{-- Default Account (Clio) --}}
                 @if ($provider === 'clio' && $client && $connection)
                     <div class="cc-card">
+                        @php
+                            $clioAccounts = collect($clio_bank_accounts ?? []);
+                            $isClioTrustAccount = fn ($a) => \Modules\Inbound\Http\Controllers\PmsIntegrationController::isClioTrustAccount($a);
+                            $clioOperatingAccounts = $clioAccounts->reject($isClioTrustAccount);
+                            $clioTrustAccounts = $clioAccounts->filter($isClioTrustAccount);
+                            $clioDefaultIsTrust = $clioTrustAccounts->contains(fn ($a) => (string) $a['account_id'] === (string) $client->clio_default_bank_account_id);
+                        @endphp
                         <div class="cc-card-title">Default Clio Bank Account</div>
-                        <div class="cc-card-desc">Bank account used when recording payments back to Clio.</div>
+                        <div class="cc-card-desc">Operating account used when recording invoice payments back to Clio. Trust Request payments use the trust account below.</div>
                         @if ($client->clio_default_bank_account_name)
                             <div style="font-size:13px;font-weight:600;color:#1a1a2e;margin-bottom:12px;">Currently:
                                 {{ $client->clio_default_bank_account_name }}</div>
+                        @endif
+                        @if ($clioDefaultIsTrust)
+                            <div class="cc-notice error" role="alert" style="margin-bottom:12px;">The default account is a trust account, so
+                                regular invoice payments would be recorded into trust. Choose an operating account.</div>
                         @endif
                         @if (!empty($clio_bank_account_load_error))
                             <div class="cc-notice error">{{ $clio_bank_account_load_error }}</div>
@@ -505,7 +516,7 @@
                                     <label>Select bank account</label>
                                     <select name="clio_default_bank_account_id" required>
                                         <option value="">Choose account…</option>
-                                        @foreach ($clio_bank_accounts as $account)
+                                        @foreach ($clioOperatingAccounts as $account)
                                             <option value="{{ $account['account_id'] }}" @selected((string) $client->clio_default_bank_account_id === (string) $account['account_id'])>
                                                 {{ $account['account_name'] }}{{ $account['account_type'] ? ' (' . $account['account_type'] . ')' : '' }}
                                             </option>
@@ -518,6 +529,43 @@
                         @else
                             <div class="cc-notice error">No Clio bank accounts returned. Reconnect or verify the user
                                 has access.</div>
+                        @endif
+                    </div>
+
+                    {{-- Trust Requests (Clio) --}}
+                    <div class="cc-card">
+                        <div class="cc-card-title">Trust Requests</div>
+                        <div class="cc-card-desc">Clio Trust Requests are paid to the IOLTA MID (Gateway Credentials, IOLTA tab) and
+                            deposited to this Clio trust account on the client's matter ledger.</div>
+                        @if (empty($clio_bank_account_load_error))
+                            <form method="POST" action="{{ route('inbound.clio.trust-settings') }}">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <div class="cc-field">
+                                    <label for="clio-trust-account">Trust bank account</label>
+                                    @if ($clioTrustAccounts->isEmpty())
+                                        <div class="cc-notice error">No Clio bank account of type Trust found. Create the trust
+                                            account in Clio first; until then trust payments are not recorded back.</div>
+                                    @else
+                                        <select id="clio-trust-account" name="clio_trust_bank_account_id">
+                                            <option value="">Not set — trust payments won't be recorded</option>
+                                            @foreach ($clioTrustAccounts as $account)
+                                                <option value="{{ $account['account_id'] }}" @selected((string) $client->clio_trust_bank_account_id === (string) $account['account_id'])>{{ $account['account_name'] }}</option>
+                                            @endforeach
+                                        </select>
+                                    @endif
+                                </div>
+                                <div class="cc-field">
+                                    <input type="hidden" name="clio_send_trust_links" value="0">
+                                    <label style="display:flex;align-items:center;gap:8px;font-weight:500;">
+                                        <input type="checkbox" name="clio_send_trust_links" value="1" @checked($client->clio_send_trust_links)>
+                                        Email payment links for Trust Requests
+                                    </label>
+                                    <div style="font-size:12px;color:#6b7280;margin-top:4px;">Off: Trust Requests appear in the Invoice
+                                        List but no email is sent (use Resend to send one). Turn on once the trust email wording is approved.</div>
+                                </div>
+                                <button type="submit" class="button primary" style="font-size:13px;">Save trust settings</button>
+                            </form>
                         @endif
                     </div>
                 @endif

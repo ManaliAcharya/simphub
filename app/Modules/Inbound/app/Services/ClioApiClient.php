@@ -74,26 +74,99 @@ class ClioApiClient
         return $accountId;
     }
 
+    /**
+     * Field sets tried in order. `kind` tells a Trust Request (a bill of kind trust) from a
+     * regular invoice and `matters` names the matter it was requested for; if Clio rejects
+     * them we fall back to the fields that have always worked, and only then to no filter.
+     */
+    private const BILL_FIELD_SETS = [
+        'id,number,total,balance,state,kind,matters{id},client{id,name,primary_email_address}',
+        'id,number,total,balance,state,client{id,name,primary_email_address}',
+    ];
+
     public function fetchBill(ClioConnection $connection, string $externalInvoiceId): array
     {
-        //"/api/v4/webhooks.json?fields=id,url,events,status"
-        //https://paymentmiddleware.myreporthub.dev/api/v1/inbound/webhooks/clio?pms_client_id=c50d4823-40c9-4167-a4a4-db44aa7deb21
-        $response = $this->authenticatedRequest($connection)
-            ->get("/api/v4/bills/{$externalInvoiceId}.json" , [
-                'fields' => 'id,number,total,balance,state,client{id,name,primary_email_address}'
-            ]);
+        foreach (self::BILL_FIELD_SETS as $fields) {
+            $response = $this->authenticatedRequest($connection)
+                ->get("/api/v4/bills/{$externalInvoiceId}.json", ['fields' => $fields]);
 
-        if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
-            Log::warning('Clio bill fetch rejected requested fields, retrying without field filter.', [
+            if (! ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields')) {
+                return $response->throw()->json();
+            }
+
+            Log::warning('Clio bill fetch rejected requested fields, retrying with fewer.', [
                 'external_invoice_id' => $externalInvoiceId,
+                'fields' => $fields,
                 'error' => $response->json(),
             ]);
-
-            $response = $this->authenticatedRequest($connection)
-                ->get("/api/v4/bills/{$externalInvoiceId}.json");
         }
 
-        return $response->throw()->json();
+        return $this->authenticatedRequest($connection)
+            ->get("/api/v4/bills/{$externalInvoiceId}.json")
+            ->throw()
+            ->json();
+    }
+
+    /**
+     * Whether Clio lists this bill under the documented `type=trust` bill filter — the
+     * fallback check when the bill itself didn't return its `kind`.
+     */
+    public function isTrustBill(ClioConnection $connection, string $billId): bool
+    {
+        $query = http_build_query(['type' => 'trust', 'fields' => 'id']).'&ids[]='.rawurlencode($billId);
+
+        $bills = (array) ($this->authenticatedRequest($connection)
+            ->get("/api/v4/bills.json?{$query}")
+            ->throw()
+            ->json('data') ?? []);
+
+        return collect($bills)->contains(fn ($bill) => is_array($bill) && (string) ($bill['id'] ?? '') === $billId);
+    }
+
+    /** A Trust Request's per-matter amounts. */
+    public function fetchTrustLineItems(ClioConnection $connection, string $billId): array
+    {
+        return (array) ($this->authenticatedRequest($connection)
+            ->get('/api/v4/trust_line_items.json', [
+                'bill_id' => $billId,
+                'fields'  => 'id,total,matter{id}',
+                'limit'   => 200,
+            ])
+            ->throw()
+            ->json('data') ?? []);
+    }
+
+    /**
+     * Transactions on one bank account for one client created since a time — used to spot a
+     * deposit we already made.
+     */
+    public function fetchBankTransactions(ClioConnection $connection, string $bankAccountId, string $clientId, string $createdSince): array
+    {
+        return (array) ($this->authenticatedRequest($connection)
+            ->get('/api/v4/bank_transactions.json', [
+                'bank_account_id' => $bankAccountId,
+                'client_id'       => $clientId,
+                'created_since'   => $createdSince,
+                'fields'          => 'id,amount,description',
+                'limit'           => 200,
+            ])
+            ->throw()
+            ->json('data') ?? []);
+    }
+
+    /** Records a deposit into a Clio bank account (e.g. the firm's trust account for a client/matter). */
+    public function recordBankTransaction(ClioConnection $connection, array $payload): array
+    {
+        return $this->authenticatedRequest($connection)
+            ->post('/api/v4/bank_transactions.json', ['data' => $payload])
+            ->throw()
+            ->json();
+    }
+
+    public function updateWebhookExpiry(ClioConnection $connection, string $webhookId, string $expiresAt): Response
+    {
+        return $this->authenticatedRequest($connection)
+            ->patch("/api/v4/webhooks/{$webhookId}.json", ['data' => ['expires_at' => $expiresAt]]);
     }
 
     public function fetchContact(ClioConnection $connection, string $externalClientId): array

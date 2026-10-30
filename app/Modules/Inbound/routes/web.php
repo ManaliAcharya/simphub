@@ -89,6 +89,9 @@ Route::middleware('web')->group(function (): void {
         Route::post('/inbound/clio/default-bank-account', [PmsIntegrationController::class, 'saveClioDefaultBankAccount'])
             ->name('inbound.clio.default-bank-account');
 
+        Route::post('/inbound/clio/trust-settings', [PmsIntegrationController::class, 'saveClioTrustSettings'])
+            ->name('inbound.clio.trust-settings');
+
         Route::post('/inbound/quickbooks/default-account', [PmsIntegrationController::class, 'saveQbDefaultAccount'])
             ->name('inbound.quickbooks.default-account');
 
