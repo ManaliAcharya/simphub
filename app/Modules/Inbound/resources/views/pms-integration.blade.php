@@ -537,7 +537,10 @@
                         <div class="cc-card-title">Trust Requests</div>
                         <div class="cc-card-desc">Clio Trust Requests are paid to the IOLTA MID (Gateway Credentials, IOLTA tab) and
                             deposited to this Clio trust account on the client's matter ledger.</div>
-                        @if (empty($clio_bank_account_load_error))
+                        @if (!empty($clio_bank_account_load_error))
+                            <div class="cc-notice error">Couldn't load Clio bank accounts, so trust settings can't be changed
+                                right now: {{ $clio_bank_account_load_error }}</div>
+                        @else
                             <form method="POST" action="{{ route('inbound.clio.trust-settings') }}">
                                 @csrf
                                 <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
