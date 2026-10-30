@@ -44,8 +44,16 @@ class ClioTrustRequestTest extends TestCase
     public function test_only_clio_trust_accounts_count_as_trust(): void
     {
         $this->assertTrue(PmsIntegrationController::isClioTrustAccount(['account_type' => 'TrustAccount']));
+        $this->assertTrue(PmsIntegrationController::isClioTrustAccount(['account_type' => 'Trust']));
         $this->assertFalse(PmsIntegrationController::isClioTrustAccount(['account_type' => 'OperatingAccount']));
+        $this->assertFalse(PmsIntegrationController::isClioTrustAccount(['account_type' => 'Operating']));
         $this->assertFalse(PmsIntegrationController::isClioTrustAccount([]));
+    }
+
+    public function test_clio_trust_filter_wins_over_the_type_text(): void
+    {
+        $this->assertTrue(PmsIntegrationController::isClioTrustAccount(['account_type' => '', 'is_trust' => true]));
+        $this->assertFalse(PmsIntegrationController::isClioTrustAccount(['account_type' => 'Trust', 'is_trust' => false]));
     }
 
     public function test_single_matter_trust_request_is_deposited_to_that_matter(): void

@@ -275,10 +275,17 @@ class PmsIntegrationController extends Controller
         ]);
     }
 
-    /** Clio bank account types are OperatingAccount and TrustAccount. */
+    /**
+     * `is_trust` comes from Clio's own trust-account filter (see ClioApiClient::fetchBankAccounts);
+     * the type text ("Trust" / "TrustAccount") is only a fallback.
+     */
     public static function isClioTrustAccount(array $account): bool
     {
-        return strtolower((string) ($account['account_type'] ?? '')) === 'trustaccount';
+        if (array_key_exists('is_trust', $account)) {
+            return (bool) $account['is_trust'];
+        }
+
+        return str_contains(strtolower((string) ($account['account_type'] ?? '')), 'trust');
     }
 
     public function saveLawcusDefaultBankAccount(

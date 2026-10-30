@@ -201,15 +201,45 @@ class ClioApiClient
             return [];
         }
 
+        $trustIds = $this->fetchTrustBankAccountIds($connection);
+
         return collect($accounts)
             ->filter(fn ($account) => is_array($account))
             ->map(fn (array $account): array => [
                 'account_id'   => (string) ($account['id']   ?? ''),
                 'account_name' => (string) ($account['name'] ?? 'Unknown'),
                 'account_type' => (string) ($account['type'] ?? ''),
+                'is_trust'     => $trustIds !== null
+                    ? in_array((string) ($account['id'] ?? ''), $trustIds, true)
+                    : str_contains(strtolower((string) ($account['type'] ?? '')), 'trust'),
             ])
             ->filter(fn (array $account): bool => $account['account_id'] !== '')
             ->sortBy(fn (array $account) => strtolower($account['account_name']))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Ids of the firm's trust accounts, from Clio's documented `type=TrustAccount` filter —
+     * the account's own `type` text isn't documented ("Trust" in the Clio UI). Null when the
+     * filter call fails, so the caller falls back to the type text.
+     */
+    private function fetchTrustBankAccountIds(ClioConnection $connection): ?array
+    {
+        $response = $this->authenticatedRequest($connection)
+            ->get('/api/v4/bank_accounts.json', ['type' => 'TrustAccount', 'fields' => 'id']);
+
+        if ($response->failed()) {
+            Log::warning('Clio trust bank account lookup failed; falling back to the account type text.', [
+                'status' => $response->status(),
+            ]);
+
+            return null;
+        }
+
+        return collect((array) ($response->json('data') ?? []))
+            ->map(fn ($account) => is_array($account) ? (string) ($account['id'] ?? '') : '')
+            ->filter(fn (string $id) => $id !== '')
             ->values()
             ->all();
     }
