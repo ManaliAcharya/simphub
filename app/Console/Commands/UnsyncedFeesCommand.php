@@ -62,7 +62,7 @@ class UnsyncedFeesCommand extends Command
         );
 
         $this->line(sprintf(
-            '%d payment(s), $%s in fees. NOT_SPLIT: the fee is in the invoice payment (in QuickBooks, a customer credit). NOT_RECORDED: the fee is not in the PMS.',
+            '%d payment(s), $%s in fees. NOT_SPLIT: synced before fees were left out of the invoice payment, so the fee is in it (in QuickBooks, a customer credit) — reduce that payment to the invoice amount. NOT_RECORDED: surcharge sync is on but the fee is not in the PMS.',
             $rows->count(),
             number_format($rows->sum('fee_cents') / 100, 2),
         ));

@@ -714,8 +714,9 @@
                             <div>
                                 <div class="cc-card-title" style="margin-bottom:2px;">Surcharge Income Account</div>
                                 <div class="cc-card-desc" style="margin:0;">
-                                    When enabled, surcharge is split in QuickBooks: invoice settled at face value,
-                                    surcharge posted to a separate income account.
+                                    Payments always settle the invoice at its face value. On: the surcharge is also
+                                    posted to the income account below. Off: the surcharge isn't recorded in QuickBooks.
+                                    Leave off for dual pricing, where the processor keeps the surcharge.
                                 </div>
                             </div>
                             <form method="POST" action="{{ route('inbound.quickbooks.surcharge-toggle') }}"
@@ -826,8 +827,9 @@
                             <div>
                                 <div class="cc-card-title" style="margin-bottom:2px;">Surcharge Income Account</div>
                                 <div class="cc-card-desc" style="margin:0;">
-                                    When enabled, surcharge is split in Wave: invoice settled at face value,
-                                    surcharge posted to a separate income account.
+                                    Payments always settle the invoice at its face value. On: the surcharge is also
+                                    posted to the income account below. Off: the surcharge isn't recorded in Wave.
+                                    Leave off for dual pricing, where the processor keeps the surcharge.
                                 </div>
                             </div>
                             <form method="POST" action="{{ route('inbound.wave.surcharge-toggle') }}"
