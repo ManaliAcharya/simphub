@@ -17,13 +17,16 @@ class ClioOAuthService
 
     public function authorizationUrl(string $pmsClientId): string
     {
-        return config('services.clio.base_url').'/oauth/authorize?'.http_build_query([
+        // Access comes from the permissions set on the Clio app; a blank CLIO_SCOPE sends no scope at all.
+        $scope = trim((string) config('services.clio.scope', 'openid'));
+
+        return config('services.clio.base_url').'/oauth/authorize?'.http_build_query(array_filter([
             'response_type' => 'code',
             'client_id'     => $this->clientId(),
             'redirect_uri'  => $this->redirectUri(),
-            'scope'         => config('services.clio.scope', 'openid'),
+            'scope'         => $scope,
             'state'         => $this->state->make('clio', $pmsClientId),
-        ]);
+        ], fn ($value) => $value !== ''));
     }
 
     public function exchangeCode(string $code, string $pmsClientId): ClioConnection
