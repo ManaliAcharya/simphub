@@ -8,6 +8,7 @@ use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Services\PaymentSessionService;
+use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClioConnection;
 use Modules\Payment\Services\PaymentLinkService;
 use RuntimeException;
@@ -27,7 +28,9 @@ class ClioInvoiceIngestionService
         $pmsClientId = $this->resolvePmsClientId($triggerPayload);
         $connection = $this->oauth->ensureValidAccessToken($this->resolveConnection($pmsClientId));
         $invoicePayload = $this->client->fetchBill($connection, $externalInvoiceId);
-        $normalized = $this->normalizeInvoice($invoicePayload, $triggerPayload);
+        $isTrust = self::isTrustKind((array) Arr::get($invoicePayload, 'data', $invoicePayload))
+            ?? $this->client->isTrustBill($connection, $externalInvoiceId);
+        $normalized = $this->normalizeInvoice($invoicePayload, $triggerPayload, $isTrust);
         $customerPayload = $this->fetchCustomerPayload($connection, (string) $normalized['external_client_id']);
         $recipientEmails = $this->extractClientEmails($invoicePayload);
 
@@ -98,7 +101,19 @@ class ClioInvoiceIngestionService
 
         $emailsSent = 0;
 
-        if ($this->isApprovedState($result['invoice']->status)) {
+        // Trust Request links are held until the firm approves the trust email wording and
+        // the client turns sending on; staff can still send one with Resend.
+        $trustLinkHeld = $result['invoice']->fund_type === 'TRUST' && ! $this->sendsTrustLinks($pmsClientId);
+
+        if ($trustLinkHeld && $result['created_session']) {
+            AuditLogger::log('PAYMENT_LINK_HELD', 'payment_session', $result['payment_session']->id, [
+                'invoice_id'    => $result['invoice']->id,
+                'pms_client_id' => $pmsClientId,
+                'reason'        => 'trust_links_disabled',
+            ]);
+        }
+
+        if (! $trustLinkHeld && $this->isApprovedState($result['invoice']->status)) {
             // No PDF passed here - PaymentLinkService generates one itself from our
             // own invoice data (same generator used for every PMS), since Clio's own
             // bill-preview API isn't reliably available for this app/account.
@@ -137,6 +152,38 @@ class ClioInvoiceIngestionService
         return in_array(strtoupper($status), config('services.clio.approved_bill_states', ['APPROVED']), true);
     }
 
+    private function sendsTrustLinks(string $pmsClientId): bool
+    {
+        return (bool) Client::query()->where('pms_client_id', $pmsClientId)->value('clio_send_trust_links');
+    }
+
+    /**
+     * Clio Trust Requests are bills whose `kind` is trust (regular invoices are
+     * revenue_kind). Null when the bill didn't return its kind, so the caller asks Clio.
+     */
+    public static function isTrustKind(array $bill): ?bool
+    {
+        $kind = strtolower(trim((string) ($bill['kind'] ?? '')));
+
+        return $kind === '' ? null : str_contains($kind, 'trust');
+    }
+
+    /** The bill's matter when it's for exactly one; a bill for several matters has none. */
+    public static function singleMatterId(array $bill): ?string
+    {
+        $matterIds = collect((array) ($bill['matters'] ?? []))
+            ->map(fn ($matter) => is_array($matter) ? (string) ($matter['id'] ?? '') : '')
+            ->filter(fn (string $id) => $id !== '')
+            ->unique()
+            ->values();
+
+        if ($matterIds->count() === 1) {
+            return $matterIds->first();
+        }
+
+        return Arr::get($bill, 'matter.id') ? (string) Arr::get($bill, 'matter.id') : null;
+    }
+
     private function fetchCustomerPayload(ClioConnection $connection, string $externalClientId): array
     {
         if (trim($externalClientId) === '') {
@@ -150,7 +197,11 @@ class ClioInvoiceIngestionService
         }
     }
 
-    private function normalizeInvoice(array $invoicePayload, array $triggerPayload): array
+    /**
+     * $isTrust comes from Clio's own bill, never the trigger payload — whether money goes to
+     * the IOLTA MID and trust account is decided by Clio alone.
+     */
+    private function normalizeInvoice(array $invoicePayload, array $triggerPayload, bool $isTrust): array
     {
         $data = Arr::get($invoicePayload, 'data', $invoicePayload);
         $id = Arr::get($data, 'id');
@@ -160,11 +211,6 @@ class ClioInvoiceIngestionService
         }
 
         $total = Arr::get($data, 'total', Arr::get($data, 'balance', 0));
-        $fundType = strtoupper((string) (
-            Arr::get($data, 'fund_type')
-            ?? Arr::get($triggerPayload, 'fund_type')
-            ?? 'OPERATING'
-        ));
 
         return [
             'external_invoice_id' => (string) $id,
@@ -176,11 +222,9 @@ class ClioInvoiceIngestionService
                 ?? Arr::get($data, 'matter.client.id')
                 ?? $id
             ),
-            'external_matter_id' => Arr::get($data, 'matter.id')
-                ? (string) Arr::get($data, 'matter.id')
-                : null,
+            'external_matter_id' => self::singleMatterId((array) $data),
             'status' => strtoupper((string) (Arr::get($data, 'state') ?? 'PENDING')),
-            'fund_type' => in_array($fundType, ['TRUST', 'OPERATING'], true) ? $fundType : 'OPERATING',
+            'fund_type' => $isTrust ? 'TRUST' : 'OPERATING',
             'amount_cents' => $this->extractAmountInCents($data, $triggerPayload, $total),
             'currency' => $this->extractCurrency($data, $triggerPayload, $total),
         ];

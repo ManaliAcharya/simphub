@@ -6,6 +6,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Modules\Inbound\Jobs\PollAdvancedMdChargesJob;
 use Modules\Inbound\Jobs\PollLawcusInvoicesJob;
 use Modules\Inbound\Jobs\PollWaveInvoicesJob;
+use Modules\Inbound\Jobs\RenewClioWebhooksJob;
 use Modules\Inbound\Services\Connectors\ClioConnector;
 use Modules\Inbound\Services\Connectors\LawcusConnector;
 use Modules\Inbound\Services\Connectors\QuickBooksConnector;
@@ -80,6 +81,11 @@ class InboundServiceProvider extends ModuleServiceProvider
                 ->onOneServer();
 
             $schedule->job(PollLawcusInvoicesJob::class)->everyFiveMinutes()
+                ->withoutOverlapping()
+                ->onOneServer();
+
+            // Clio webhooks expire; renewed well ahead so bills and Trust Requests keep arriving.
+            $schedule->job(RenewClioWebhooksJob::class)->dailyAt('03:00')
                 ->withoutOverlapping()
                 ->onOneServer();
 

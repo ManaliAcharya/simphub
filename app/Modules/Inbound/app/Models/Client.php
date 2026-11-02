@@ -55,6 +55,7 @@ class Client extends Model
             'subscription_api_key_created_at' => 'datetime',
             'lawcus_send_trust_links'         => 'boolean',
             'lawcus_ach_settlement_notify'    => 'boolean',
+            'clio_send_trust_links'           => 'boolean',
         ];
     }
 
@@ -116,12 +117,13 @@ class Client extends Model
     }
 
     /**
-     * Lawcus clients configure their IOLTA MID here, so their trust money must never fall
-     * back to the operating credentials — a trust payment without one is refused.
+     * Lawcus and Clio clients send Trust Requests and configure their IOLTA MID here, so their
+     * trust money must never fall back to the operating credentials — a trust payment without
+     * one is refused.
      */
     public function requiresIoltaMid(): bool
     {
-        return strtoupper((string) $this->client_pms) === 'LAWCUS';
+        return in_array(strtoupper((string) $this->client_pms), ['LAWCUS', 'CLIO'], true);
     }
 
     /** The keys an IOLTA MID needs, since trust money is charged with these alone. */

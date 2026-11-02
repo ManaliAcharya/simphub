@@ -23,9 +23,10 @@ class ClioInvoiceIngestionApiTest extends TestCase
         config()->set('services.clio.api_base_url', 'https://app.clio.com');
 
         Http::fake([
-            'https://app.clio.com/api/v4/bills/123.json' => Http::response([
+            'https://app.clio.com/api/v4/bills/123.json*' => Http::response([
                 'data' => [
                     'id' => 123,
+                    'kind' => 'trust_kind',
                     'state' => 'open',
                     'total' => '500.00',
                     'currency' => 'usd',
@@ -41,7 +42,6 @@ class ClioInvoiceIngestionApiTest extends TestCase
 
         $response = $this->postJson('/api/v1/inbound/invoices/clio', [
             'invoice_id' => '123',
-            'fund_type' => 'TRUST',
         ]);
 
         $response->assertAccepted();

@@ -51,6 +51,38 @@ class ClioWebhookService
         return $data;
     }
 
+    /**
+     * Pushes the webhook's expiry out again so invoices (and Trust Requests, which are bills)
+     * keep arriving. If Clio no longer has the webhook — e.g. it already expired — a new one
+     * is registered.
+     */
+    public function renewWebhook(ClioConnection $connection): array
+    {
+        $webhookId = trim((string) $connection->webhook_id);
+
+        if ($webhookId === '') {
+            return $this->registerInvoiceCreatedWebhook($connection);
+        }
+
+        $expiresAt = CarbonImmutable::now()->addDays(max(1, (int) config('services.clio.webhook_expiry_days', 30)));
+        $response = $this->client->updateWebhookExpiry($connection, $webhookId, $expiresAt->toIso8601String());
+
+        if ($response->status() === 404) {
+            return $this->registerInvoiceCreatedWebhook($connection);
+        }
+
+        $response->throw();
+
+        $data = (array) $response->json('data', []);
+
+        $connection->forceFill([
+            'webhook_expires_at' => Arr::get($data, 'expires_at', $expiresAt->toIso8601String()),
+            'last_error' => null,
+        ])->save();
+
+        return $data;
+    }
+
     public function handleIncoming(Request $request): Response
     {
         $pmsClientId = (string) $request->query('pms_client_id', '');

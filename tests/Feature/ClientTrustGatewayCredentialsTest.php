@@ -72,15 +72,16 @@ class ClientTrustGatewayCredentialsTest extends TestCase
         $this->assertFalse($this->client(self::IOLTA_FLUIDPAY)->hasIoltaMid('paya'));
     }
 
-    public function test_only_lawcus_clients_require_an_iolta_mid(): void
+    public function test_only_lawcus_and_clio_clients_require_an_iolta_mid(): void
     {
         $this->assertTrue((new Client)->forceFill(['client_pms' => 'LAWCUS'])->requiresIoltaMid());
+        $this->assertTrue((new Client)->forceFill(['client_pms' => 'CLIO'])->requiresIoltaMid());
         $this->assertFalse((new Client)->forceFill(['client_pms' => 'QUICKBOOKS'])->requiresIoltaMid());
     }
 
     public function test_other_clients_trust_money_keeps_the_operating_keys_but_not_the_operating_mid(): void
     {
-        $creds = $this->client([], 'CLIO')->gatewayCredentialsFor('fluidpay', 'TRUST');
+        $creds = $this->client([], 'QUICKBOOKS')->gatewayCredentialsFor('fluidpay', 'TRUST');
 
         $this->assertArrayNotHasKey('mid_identifier', $creds);
         $this->assertArrayNotHasKey('processor_id', $creds);

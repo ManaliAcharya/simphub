@@ -157,8 +157,8 @@
                     ['key' => 'processor_id', 'label' => 'Processor ID', 'type' => 'text'],
                 ]);
                 $commonEnv = $gwCreds['environment'] ?? '';
-                // Trust requests come from Lawcus; they're paid to the IOLTA MID set up per gateway.
-                $showIolta = strtoupper((string) $client->client_pms) === 'LAWCUS';
+                // Trust requests come from Lawcus and Clio; they're paid to the IOLTA MID set up per gateway.
+                $showIolta = $client->requiresIoltaMid();
                 $trustCreds = $showIolta ? (array) ($client->trust_gateway_credentials ?? []) : [];
             @endphp
             @if(count($activeGateways))
