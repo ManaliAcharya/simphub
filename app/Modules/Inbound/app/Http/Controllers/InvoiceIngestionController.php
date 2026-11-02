@@ -61,6 +61,16 @@ class InvoiceIngestionController extends Controller
         $invoice = $result['invoice'];
         $session = $result['payment_session'];
 
+        // Not ingested on purpose (e.g. a Clio bill from before the firm connected).
+        if ($invoice === null) {
+            return response()->json([
+                'status'              => 'skipped',
+                'reason'              => $result['skipped'] ?? null,
+                'external_invoice_id' => $externalInvoiceId,
+                'emails_sent'         => 0,
+            ], 202);
+        }
+
         // Custom PMS: run the full payment flow synchronously and return the result.
         if ($source === 'custom') {
             try {

@@ -2,8 +2,10 @@
 
 namespace Modules\Inbound\Services;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
@@ -39,6 +41,17 @@ class ClioInvoiceIngestionService
             ->where('pms_client_id', $pmsClientId)
             ->where('external_invoice_id', $normalized['external_invoice_id'])
             ->exists();
+
+        // No backlog: a bill created before the firm connected is never picked up, even
+        // when an edit in Clio sends us an "updated" event for it after go-live.
+        if (! $existedBefore && self::createdBeforeConnection((array) Arr::get($invoicePayload, 'data', $invoicePayload), $connection)) {
+            Log::info('Clio bill created before the firm connected; not ingested.', [
+                'pms_client_id'       => $pmsClientId,
+                'external_invoice_id' => $normalized['external_invoice_id'],
+            ]);
+
+            return ['invoice' => null, 'payment_session' => null, 'emails_sent' => 0, 'skipped' => 'created_before_connection'];
+        }
 
         $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $pmsClientId) {
             $invoice = Invoice::query()->updateOrCreate(
@@ -150,6 +163,26 @@ class ClioInvoiceIngestionService
     private function isApprovedState(string $status): bool
     {
         return in_array(strtoupper($status), config('services.clio.approved_bill_states', ['APPROVED']), true);
+    }
+
+    /**
+     * Whether the bill (invoice or Trust Request) was created in Clio before the firm first
+     * connected — a reconnect keeps the original connection row, so its created_at is go-live.
+     * A bill that didn't return created_at can't be dated and is let through.
+     */
+    public static function createdBeforeConnection(array $bill, ClioConnection $connection): bool
+    {
+        $createdAt = trim((string) ($bill['created_at'] ?? ''));
+
+        if ($createdAt === '' || $connection->created_at === null) {
+            return false;
+        }
+
+        try {
+            return CarbonImmutable::parse($createdAt)->lessThan($connection->created_at);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function sendsTrustLinks(string $pmsClientId): bool
