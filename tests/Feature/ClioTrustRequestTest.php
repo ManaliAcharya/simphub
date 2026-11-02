@@ -7,6 +7,7 @@ use Modules\Billing\Models\Invoice;
 use Modules\Inbound\Http\Controllers\PmsIntegrationController;
 use Modules\Inbound\Jobs\RenewClioWebhooksJob;
 use Modules\Inbound\Models\Client;
+use Modules\Inbound\Models\ClioConnection;
 use Modules\Inbound\Services\ClioInvoiceIngestionService;
 use Modules\Inbound\Services\ClioTrustPaymentSyncService;
 use Tests\TestCase;
@@ -25,6 +26,23 @@ class ClioTrustRequestTest extends TestCase
     {
         $this->assertNull(ClioInvoiceIngestionService::isTrustKind([]));
         $this->assertNull(ClioInvoiceIngestionService::isTrustKind(['kind' => '']));
+    }
+
+    public function test_bills_created_before_the_firm_connected_are_not_picked_up(): void
+    {
+        $connection = (new ClioConnection)->forceFill(['created_at' => CarbonImmutable::parse('2026-11-02 15:00:00', 'UTC')]);
+
+        $this->assertTrue(ClioInvoiceIngestionService::createdBeforeConnection(['created_at' => '2026-11-02T09:59:00-05:00'], $connection));
+        $this->assertFalse(ClioInvoiceIngestionService::createdBeforeConnection(['created_at' => '2026-11-02T10:01:00-05:00'], $connection));
+        $this->assertFalse(ClioInvoiceIngestionService::createdBeforeConnection(['created_at' => '2026-11-05T08:00:00-05:00'], $connection));
+    }
+
+    public function test_a_bill_without_a_created_date_is_let_through(): void
+    {
+        $connection = (new ClioConnection)->forceFill(['created_at' => CarbonImmutable::parse('2026-11-02 15:00:00', 'UTC')]);
+
+        $this->assertFalse(ClioInvoiceIngestionService::createdBeforeConnection([], $connection));
+        $this->assertFalse(ClioInvoiceIngestionService::createdBeforeConnection(['created_at' => 'not a date'], $connection));
     }
 
     public function test_matter_is_set_only_when_the_bill_is_for_one(): void

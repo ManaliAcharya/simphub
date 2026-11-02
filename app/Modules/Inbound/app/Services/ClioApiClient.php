@@ -80,8 +80,8 @@ class ClioApiClient
      * them we fall back to the fields that have always worked, and only then to no filter.
      */
     private const BILL_FIELD_SETS = [
-        'id,number,total,balance,state,kind,matters{id},client{id,name,primary_email_address}',
-        'id,number,total,balance,state,client{id,name,primary_email_address}',
+        'id,number,total,balance,state,kind,created_at,matters{id},client{id,name,primary_email_address}',
+        'id,number,total,balance,state,created_at,client{id,name,primary_email_address}',
     ];
 
     public function fetchBill(ClioConnection $connection, string $externalInvoiceId): array
