@@ -2,6 +2,7 @@
 
 namespace Modules\Payment\Http\Controllers;
 
+use App\Support\UsState;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -167,6 +168,14 @@ class PaymentSessionController extends Controller
             $paymentSession->forceFill(['status' => 'AWAITING_PAYMENT'])->save();
         }
 
+        // Autofill often sends the full state name ("Florida"); gateways need the code ("FL").
+        if (is_array($request->input('billing_address'))) {
+            $request->merge(['billing_address' => array_merge(
+                $request->input('billing_address'),
+                ['state' => UsState::toCode($request->input('billing_address.state'))],
+            )]);
+        }
+
         try {
             $request->validate([
                 'token'                  => ['required', 'string'],
@@ -180,6 +189,8 @@ class PaymentSessionController extends Controller
                 'billing_address.city'     => ['required', 'string', 'max:100'],
                 'billing_address.state'    => ['required', 'string', 'max:2'],
                 'billing_address.zip'      => ['required', 'string', 'max:10'],
+            ], [
+                'billing_address.state.max' => 'Please enter a valid US state, e.g. FL or Florida.',
             ]);
         } catch (ValidationException $exception) {
             $this->audit->record($paymentSession, 'PAYMENT_ATTEMPT_FAILED', [

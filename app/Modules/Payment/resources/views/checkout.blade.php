@@ -58,7 +58,7 @@
                             </div>
                             <div class="field-plain">
                                 <label>State</label>
-                                <input id="cardholder-state" type="text" maxlength="2" autocomplete="billing address-level1" required />
+                                <input id="cardholder-state" type="text" maxlength="40" placeholder="FL or Florida" autocomplete="billing address-level1" required />
                             </div>
                         </div>
                         <div class="field-plain" style="margin-top:8px;">
