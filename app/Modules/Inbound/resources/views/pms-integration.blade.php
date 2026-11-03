@@ -1483,7 +1483,7 @@
                             </button>
                         </div>
                         <div class="cc-card-desc">Route transactions to different merchant accounts based on the
-                            per-invoice fee toggle.{{ $isClio ? ' Trust Requests use their own IOLTA routes and fall back to the IOLTA MID in Gateway Credentials, never an operating MID.' : '' }}</div>
+                            per-invoice fee toggle.{{ $isClio ? ' Bills use the Operating MID tab and Trust Requests the IOLTA MID tab.' : '' }}</div>
 
                         <div id="qb-mid-body">
                             @if (!$client->qb_fee_override_enabled)
@@ -1524,7 +1524,63 @@
                                 <div id="qb-mid-section"
                                     style="{{ $client->qb_multi_mid_enabled ? '' : 'display:none;' }}">
 
+                                    @if ($isClio)
+                                        @php
+                                            // A save error about an IOLTA route reopens that tab.
+                                            $midActiveFund = str_contains((string) session('error'), 'IOLTA') ? 'TRUST' : 'OPERATING';
+                                        @endphp
+                                        <div role="tablist" aria-label="MID account" class="qb-mid-tabs"
+                                            style="display:flex;gap:4px;border-bottom:1px solid rgba(19,34,56,.12);margin-bottom:16px;">
+                                            @foreach (['OPERATING' => 'Operating MID', 'TRUST' => 'IOLTA MID'] as $tabFund => $tabLabel)
+                                                @php $tabActive = $tabFund === $midActiveFund; @endphp
+                                                <button type="button" role="tab" id="qb-mid-tab-{{ strtolower($tabFund) }}"
+                                                    aria-controls="qb-mid-panel-{{ strtolower($tabFund) }}"
+                                                    aria-selected="{{ $tabActive ? 'true' : 'false' }}" tabindex="{{ $tabActive ? '0' : '-1' }}"
+                                                    style="display:flex;align-items:center;gap:8px;padding:9px 14px;border:none;background:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;margin-bottom:-1px;border-bottom:2px solid {{ $tabActive ? '#132238' : 'transparent' }};color:{{ $tabActive ? '#132238' : '#6b7c93' }};">
+                                                    {{ $tabLabel }}
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                        <script>
+                                            (function() {
+                                                var tabs = Array.prototype.slice.call(document.querySelectorAll('.qb-mid-tabs [role=tab]'));
+
+                                                function select(tab) {
+                                                    tabs.forEach(function(t) {
+                                                        var on = t === tab;
+                                                        t.setAttribute('aria-selected', on ? 'true' : 'false');
+                                                        t.tabIndex = on ? 0 : -1;
+                                                        t.style.borderBottomColor = on ? '#132238' : 'transparent';
+                                                        t.style.color = on ? '#132238' : '#6b7c93';
+                                                        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+                                                    });
+                                                }
+
+                                                tabs.forEach(function(tab, i) {
+                                                    tab.addEventListener('click', function() { select(tab); });
+                                                    // Arrow keys move between tabs (WAI-ARIA tabs pattern).
+                                                    tab.addEventListener('keydown', function(e) {
+                                                        var step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+                                                        if (!step) return;
+                                                        e.preventDefault();
+                                                        var next = tabs[(i + step + tabs.length) % tabs.length];
+                                                        select(next);
+                                                        next.focus();
+                                                    });
+                                                });
+                                            })();
+                                        </script>
+                                    @endif
+
                                     @foreach ($midFundTypes as $fundType)
+                                    {{-- Both panels stay in the form (only hidden), so saving keeps every route. --}}
+                                    <div id="qb-mid-panel-{{ strtolower($fundType) }}"
+                                        @if ($isClio) role="tabpanel" aria-labelledby="qb-mid-tab-{{ strtolower($fundType) }}" tabindex="0" @if ($fundType !== $midActiveFund) hidden @endif @endif>
+                                    @if ($isClio && $fundType === 'TRUST')
+                                        <div style="font-size:12px;color:var(--cc-text-2);margin-bottom:12px;">Trust Requests use
+                                            these IOLTA MIDs, never an operating one. With no IOLTA route for the field's value,
+                                            the IOLTA MID in Gateway Credentials is used.</div>
+                                    @endif
                                     @foreach (['fees_on' => ['label' => 'TOGGLE ON — Fees Passed Through', 'desc' => 'Used when the '.($isClio ? 'Clio' : 'QB').' custom field = Yes. Customer pays the processing fee.', 'color' => '#f0fdf4', 'border' => '#a7f3d0', 'pill_bg' => '#065f46', 'pill_color' => '#fff'], 'fees_off' => ['label' => 'TOGGLE OFF — Fees Absorbed', 'desc' => 'Used when the '.($isClio ? 'Clio' : 'QB').' custom field = No or not set. Merchant absorbs the fee.', 'color' => '#f9fafb', 'border' => '#e5e7eb', 'pill_bg' => '#6b7280', 'pill_color' => '#fff']] as $routeType => $routeConfig)
                                         <div
                                             style="margin-bottom:16px;border:1px solid {{ $routeConfig['border'] }};border-radius:var(--cc-r-md);overflow:hidden;">
@@ -1533,7 +1589,7 @@
                                                 <span
                                                     style="background:{{ $routeConfig['pill_bg'] }};color:{{ $routeConfig['pill_color'] }};padding:2px 10px;border-radius:999px;font-size:11px;font-weight:700;">{{ strtoupper(str_replace('_', ' ', $routeType)) }}</span>
                                                 <span
-                                                    style="font-size:13px;font-weight:600;color:var(--cc-text);">{{ $isClio ? ($fundType === 'TRUST' ? 'Trust Requests (IOLTA) — ' : 'Bills — ') : '' }}{{ $routeConfig['label'] }}</span>
+                                                    style="font-size:13px;font-weight:600;color:var(--cc-text);">{{ $routeConfig['label'] }}</span>
                                             </div>
                                             <div
                                                 style="padding:14px 16px;background:#fff;font-size:12px;color:var(--cc-text-2);border-bottom:1px solid {{ $routeConfig['border'] }};">
@@ -1785,6 +1841,7 @@
                                             </div>
                                         </div>
                                     @endforeach
+                                    </div>{{-- end qb-mid-panel --}}
                                     @endforeach
 
                                 </div>{{-- end qb-mid-section --}}
