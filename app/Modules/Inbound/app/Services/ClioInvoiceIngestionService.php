@@ -35,6 +35,7 @@ class ClioInvoiceIngestionService
         $normalized = $this->normalizeInvoice($invoicePayload, $triggerPayload, $isTrust);
         $customerPayload = $this->fetchCustomerPayload($connection, (string) $normalized['external_client_id']);
         $recipientEmails = $this->extractClientEmails($invoicePayload);
+        $matterPayload = $this->fetchMatterPayload($connection, $normalized, $pmsClientId);
 
         $existedBefore = Invoice::query()
             ->where('pms_source', 'clio')
@@ -53,7 +54,7 @@ class ClioInvoiceIngestionService
             return ['invoice' => null, 'payment_session' => null, 'emails_sent' => 0, 'skipped' => 'created_before_connection'];
         }
 
-        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $pmsClientId) {
+        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $matterPayload, $triggerPayload, $recipientEmails, $pmsClientId) {
             $invoice = Invoice::query()->updateOrCreate(
                 [
                     'pms_source' => 'clio',
@@ -74,6 +75,7 @@ class ClioInvoiceIngestionService
                         'trigger'  => $triggerPayload,
                         'invoice'  => $invoicePayload,
                         'customer' => $customerPayload,
+                        'matter'   => $matterPayload,
                     ],
                     'recipient_emails' => $recipientEmails,
                     'synced_at'        => now(),
@@ -226,6 +228,42 @@ class ClioInvoiceIngestionService
         try {
             return $this->client->fetchContact($connection, $externalClientId);
         } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * The bill's matter with its custom field values, which hold the Per-Invoice Fee
+     * Override field — for Trust Requests too, which pick between the IOLTA routes. A bill
+     * for several matters has no single matter, so the field is then read from the contact.
+     *
+     * Best-effort: the bill was just fetched with the same token, so a failure here is
+     * audited and the field then reads from the contact, else as blank, which follows the
+     * merchant's blank default.
+     */
+    private function fetchMatterPayload(ClioConnection $connection, array $normalized, string $pmsClientId): array
+    {
+        $matterId = (string) ($normalized['external_matter_id'] ?? '');
+
+        if ($matterId === '') {
+            return [];
+        }
+
+        try {
+            return $this->client->fetchMatter($connection, $matterId);
+        } catch (\Throwable $e) {
+            Log::warning('Clio matter fetch failed — fee override field read from the contact only', [
+                'pms_client_id' => $pmsClientId,
+                'matter_id'     => $matterId,
+                'error'         => $e->getMessage(),
+            ]);
+
+            AuditLogger::log('CLIO_MATTER_FETCH_FAILED', 'client', $pmsClientId, [
+                'matter_id'           => $matterId,
+                'external_invoice_id' => $normalized['external_invoice_id'],
+                'error'               => $e->getMessage(),
+            ]);
+
             return [];
         }
     }

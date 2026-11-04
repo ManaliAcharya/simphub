@@ -1196,12 +1196,15 @@
                         :features="$features" />
                 </div>
 
-                {{-- ── QB-specific configuration (only for QuickBooks) ── --}}
-                @if ($provider === 'quickbooks' && $client)
+                {{-- ── Per-Invoice Fee Override + Multi-MID (QuickBooks and Clio) ── --}}
+                @if (in_array($provider, ['quickbooks', 'clio'], true) && $client)
                     @php
+                        $isClio = $provider === 'clio';
                         $midRoutes = \Modules\Inbound\Models\ClientMidRoute::where('client_id', $client->id)
                             ->get()
-                            ->keyBy(fn($r) => $r->route_type . '_' . $r->gateway);
+                            ->keyBy(fn($r) => $r->fund_type . '_' . $r->route_type . '_' . $r->gateway);
+                        // Clio Trust Requests get their own (IOLTA) routes.
+                        $midFundTypes = $isClio ? ['OPERATING', 'TRUST'] : ['OPERATING'];
                         $pausedGateways = array_map('strtolower', $client->paused_payment_gateways ?? []);
                         $clientGateways = array_values(
                             array_diff(
@@ -1221,8 +1224,15 @@
                                 <span id="qb-override-chev">&#9660;</span>
                             </button>
                         </div>
-                        <div class="cc-card-desc">Allow individual QuickBooks invoices to override the client-level fee
-                            setting using a custom Yes/No field.</div>
+                        <div class="cc-card-desc">
+                            @if ($isClio)
+                                Allow individual Clio bills and Trust Requests to override the client-level
+                                fee setting using a Yes/No custom field on the bill's matter.
+                            @else
+                                Allow individual QuickBooks invoices to override the client-level fee
+                                setting using a custom Yes/No field.
+                            @endif
+                        </div>
 
                         <div id="qb-override-body">
                             <form method="POST"
@@ -1239,8 +1249,9 @@
                                     <div>
                                         <div style="font-size:14px;font-weight:600;color:var(--cc-text);">Enable
                                             Per-Invoice Override</div>
-                                        <div style="font-size:12px;color:var(--cc-text-2);margin-top:1px;">Read a QB
-                                            custom field on each invoice to override the fee setting.</div>
+                                        <div style="font-size:12px;color:var(--cc-text-2);margin-top:1px;">
+                                            {{ $isClio ? 'Read a Clio matter custom field on each bill' : 'Read a QB custom field on each invoice' }}
+                                            to override the fee setting.</div>
                                     </div>
                                     <div
                                         style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700;">
@@ -1259,12 +1270,20 @@
                                 <div id="qb-ovr-section"
                                     style="{{ $client->qb_fee_override_enabled ? '' : 'display:none;' }}">
                                     <div class="cc-field" style="margin-bottom:14px;">
-                                        <label>QBO Custom Field Name</label>
+                                        <label>{{ $isClio ? 'Clio Custom Field Name' : 'QBO Custom Field Name' }}</label>
                                         <input type="text" name="qb_fee_override_field"
                                             value="{{ old('qb_fee_override_field', $client->qb_fee_override_field ?? 'Cash Discount') }}"
                                             placeholder="e.g. Fee Override">
-                                        <div style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">Must match
-                                            the exact custom field name on the QuickBooks invoice template.</div>
+                                        <div style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">
+                                            @if ($isClio)
+                                                Must match the exact name of the Matter custom field in Clio (a
+                                                Contact custom field of the same name is used when the matter's is
+                                                blank).
+                                            @else
+                                                Must match the exact custom field name on the QuickBooks invoice
+                                                template.
+                                            @endif
+                                        </div>
                                     </div>
 
                                     {{-- What a blank field means --}}
@@ -1285,11 +1304,24 @@
                                             Pass fees to customer (same as "Yes")
                                         </label>
                                         <div style="font-size:12px;color:var(--cc-text-3);margin-top:6px;">
-                                            Set "No" on an invoice or customer to absorb the fee for them. Changing this
+                                            Set "No" on {{ $isClio ? 'a matter or contact' : 'an invoice or customer' }} to absorb the fee for them. Changing this
                                             applies straight away to every unpaid invoice whose field is blank, including
                                             payment links already sent.</div>
                                     </fieldset>
 
+                                    @if ($isClio)
+                                    {{-- How to set up the custom field in Clio --}}
+                                    <div
+                                        style="padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--cc-r-md);margin-bottom:14px;">
+                                        <div style="font-size:13px;color:#1e40af;line-height:1.6;">
+                                            <strong>Set up the custom field in Clio</strong>
+                                            (Settings &rarr; Custom Fields &rarr; Matters &rarr; Add) with the name
+                                            above, as a Text Line, a Picklist with "Yes" and "No" options, or a
+                                            Checkbox (checked = Yes). The value is read when the bill syncs, so
+                                            change the matter before the bill is approved or edit the bill afterwards.
+                                        </div>
+                                    </div>
+                                    @else
                                     {{-- How to set up the custom field in QuickBooks --}}
                                     <div
                                         style="padding:12px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:var(--cc-r-md);margin-bottom:14px;">
@@ -1321,6 +1353,7 @@
                                             </div>
                                         </div>
                                     </div>
+                                    @endif
 
                                     {{-- Field mapping table --}}
                                     <div style="margin-bottom:14px;">
@@ -1386,7 +1419,8 @@
                         </div>
                     </div>
 
-                    {{-- Ready to Send? --}}
+                    {{-- Ready to Send? (QuickBooks only) --}}
+                    @unless ($isClio)
                     <div class="cc-card" id="qb-rts-card">
                         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
                             <div class="cc-card-title">Ready to Send?</div>
@@ -1437,6 +1471,7 @@
                             </form>
                         </div>
                     </div>
+                    @endunless
 
                     {{-- Multi-MID Routing --}}
                     <div class="cc-card" id="qb-mid-card">
@@ -1448,7 +1483,7 @@
                             </button>
                         </div>
                         <div class="cc-card-desc">Route transactions to different merchant accounts based on the
-                            per-invoice fee toggle.</div>
+                            per-invoice fee toggle.{{ $isClio ? ' Bills use the Operating MID tab and Trust Requests the IOLTA MID tab.' : '' }}</div>
 
                         <div id="qb-mid-body">
                             @if (!$client->qb_fee_override_enabled)
@@ -1489,7 +1524,64 @@
                                 <div id="qb-mid-section"
                                     style="{{ $client->qb_multi_mid_enabled ? '' : 'display:none;' }}">
 
-                                    @foreach (['fees_on' => ['label' => 'TOGGLE ON — Fees Passed Through', 'desc' => 'Used when the QB custom field = Yes. Customer pays the processing fee.', 'color' => '#f0fdf4', 'border' => '#a7f3d0', 'pill_bg' => '#065f46', 'pill_color' => '#fff'], 'fees_off' => ['label' => 'TOGGLE OFF — Fees Absorbed', 'desc' => 'Used when the QB custom field = No or not set. Merchant absorbs the fee.', 'color' => '#f9fafb', 'border' => '#e5e7eb', 'pill_bg' => '#6b7280', 'pill_color' => '#fff']] as $routeType => $routeConfig)
+                                    @if ($isClio)
+                                        @php
+                                            // A save error about an IOLTA route reopens that tab.
+                                            $midActiveFund = str_contains((string) session('error'), 'IOLTA') ? 'TRUST' : 'OPERATING';
+                                        @endphp
+                                        <div role="tablist" aria-label="MID account" class="qb-mid-tabs"
+                                            style="display:flex;gap:4px;border-bottom:1px solid rgba(19,34,56,.12);margin-bottom:16px;">
+                                            @foreach (['OPERATING' => 'Operating MID', 'TRUST' => 'IOLTA MID'] as $tabFund => $tabLabel)
+                                                @php $tabActive = $tabFund === $midActiveFund; @endphp
+                                                <button type="button" role="tab" id="qb-mid-tab-{{ strtolower($tabFund) }}"
+                                                    aria-controls="qb-mid-panel-{{ strtolower($tabFund) }}"
+                                                    aria-selected="{{ $tabActive ? 'true' : 'false' }}" tabindex="{{ $tabActive ? '0' : '-1' }}"
+                                                    style="display:flex;align-items:center;gap:8px;padding:9px 14px;border:none;background:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;margin-bottom:-1px;border-bottom:2px solid {{ $tabActive ? '#132238' : 'transparent' }};color:{{ $tabActive ? '#132238' : '#6b7c93' }};">
+                                                    {{ $tabLabel }}
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                        <script>
+                                            (function() {
+                                                var tabs = Array.prototype.slice.call(document.querySelectorAll('.qb-mid-tabs [role=tab]'));
+
+                                                function select(tab) {
+                                                    tabs.forEach(function(t) {
+                                                        var on = t === tab;
+                                                        t.setAttribute('aria-selected', on ? 'true' : 'false');
+                                                        t.tabIndex = on ? 0 : -1;
+                                                        t.style.borderBottomColor = on ? '#132238' : 'transparent';
+                                                        t.style.color = on ? '#132238' : '#6b7c93';
+                                                        document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+                                                    });
+                                                }
+
+                                                tabs.forEach(function(tab, i) {
+                                                    tab.addEventListener('click', function() { select(tab); });
+                                                    // Arrow keys move between tabs (WAI-ARIA tabs pattern).
+                                                    tab.addEventListener('keydown', function(e) {
+                                                        var step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+                                                        if (!step) return;
+                                                        e.preventDefault();
+                                                        var next = tabs[(i + step + tabs.length) % tabs.length];
+                                                        select(next);
+                                                        next.focus();
+                                                    });
+                                                });
+                                            })();
+                                        </script>
+                                    @endif
+
+                                    @foreach ($midFundTypes as $fundType)
+                                    {{-- Both panels stay in the form (only hidden), so saving keeps every route. --}}
+                                    <div id="qb-mid-panel-{{ strtolower($fundType) }}"
+                                        @if ($isClio) role="tabpanel" aria-labelledby="qb-mid-tab-{{ strtolower($fundType) }}" tabindex="0" @if ($fundType !== $midActiveFund) hidden @endif @endif>
+                                    @if ($isClio && $fundType === 'TRUST')
+                                        <div style="font-size:12px;color:var(--cc-text-2);margin-bottom:12px;">Trust Requests use
+                                            these IOLTA MIDs, never an operating one. With no IOLTA route for the field's value,
+                                            the IOLTA MID in Gateway Credentials is used.</div>
+                                    @endif
+                                    @foreach (['fees_on' => ['label' => 'TOGGLE ON — Fees Passed Through', 'desc' => 'Used when the '.($isClio ? 'Clio' : 'QB').' custom field = Yes. Customer pays the processing fee.', 'color' => '#f0fdf4', 'border' => '#a7f3d0', 'pill_bg' => '#065f46', 'pill_color' => '#fff'], 'fees_off' => ['label' => 'TOGGLE OFF — Fees Absorbed', 'desc' => 'Used when the '.($isClio ? 'Clio' : 'QB').' custom field = No or not set. Merchant absorbs the fee.', 'color' => '#f9fafb', 'border' => '#e5e7eb', 'pill_bg' => '#6b7280', 'pill_color' => '#fff']] as $routeType => $routeConfig)
                                         <div
                                             style="margin-bottom:16px;border:1px solid {{ $routeConfig['border'] }};border-radius:var(--cc-r-md);overflow:hidden;">
                                             <div
@@ -1506,10 +1598,10 @@
                                                 @if (count($clientGateways))
                                                     @foreach ($clientGateways as $gw)
                                                         @php
-                                                            $key = $routeType . '_' . $gw;
+                                                            $key = $fundType . '_' . $routeType . '_' . $gw;
                                                             $existing = $midRoutes[$key] ?? null;
                                                             $gwUp = strtoupper($gw);
-                                                            $idx = $routeType . '_' . $gw;
+                                                            $idx = ($fundType === 'TRUST' ? 'trust_' : '') . $routeType . '_' . $gw;
                                                         @endphp
                                                         <div
                                                             style="background:#f9fafb;border:1px solid var(--cc-border);border-radius:var(--cc-r-md);padding:14px;margin-bottom:10px;">
@@ -1534,6 +1626,9 @@
                                                             <input type="hidden"
                                                                 name="routes[{{ $idx }}][gateway]"
                                                                 value="{{ $gw }}">
+                                                            <input type="hidden"
+                                                                name="routes[{{ $idx }}][fund_type]"
+                                                                value="{{ $fundType }}">
 
                                                             <div id="mid-fields-{{ $idx }}">
                                                                 @php
@@ -1600,7 +1695,7 @@
                                                                             <button type="button"
                                                                                 class="button fluidpay-test-creds"
                                                                                 data-test-url="{{ route('inbound.clients.fluidpay-test-credentials', $client->pms_client_id) }}"
-                                                                                data-route-type="{{ $routeType }}"
+                                                                                data-route-type="{{ $routeType }}" data-fund-type="{{ $fundType }}"
                                                                                 data-mid-input="mid-identifier-{{ $idx }}"
                                                                                 data-api-input="cred-{{ $idx }}-api_key"
                                                                                 data-public-input="cred-{{ $idx }}-public_key"
@@ -1656,7 +1751,7 @@
                                                                                 id="mid-identifier-{{ $idx }}"
                                                                                 class="fluidpay-mid-select"
                                                                                 name="routes[{{ $idx }}][mid_identifier]"
-                                                                                data-route-type="{{ $routeType }}"
+                                                                                data-route-type="{{ $routeType }}" data-fund-type="{{ $fundType }}"
                                                                                 data-api-input="cred-{{ $idx }}-api_key"
                                                                                 data-status="mid-status-{{ $idx }}"
                                                                                 data-current="{{ $currentMid }}">
@@ -1691,7 +1786,7 @@
                                                                         <select
                                                                             class="fluidpay-processor-select"
                                                                             data-mid-input="mid-identifier-{{ $idx }}"
-                                                                            data-route-type="{{ $routeType }}"
+                                                                            data-route-type="{{ $routeType }}" data-fund-type="{{ $fundType }}"
                                                                             data-api-input="cred-{{ $idx }}-api_key"
                                                                             data-current="{{ $currentProcessorId }}"
                                                                             name="routes[{{ $idx }}][processor_id]">
@@ -1745,6 +1840,8 @@
                                                 @endif
                                             </div>
                                         </div>
+                                    @endforeach
+                                    </div>{{-- end qb-mid-panel --}}
                                     @endforeach
 
                                 </div>{{-- end qb-mid-section --}}
@@ -1844,6 +1941,7 @@
                                         setStatus(select, 'Fetching MIDs from FluidPay…');
                                         post(merchantsUrl, {
                                                 route_type: select.dataset.routeType,
+                                                fund_type: select.dataset.fundType || null,
                                                 api_key: typedKey(select) || null,
                                             })
                                             .then(function(data) {
@@ -1924,6 +2022,7 @@
                                         post(processorsUrl, {
                                                 merchant_id: merchantId,
                                                 route_type: select.dataset.routeType,
+                                                fund_type: select.dataset.fundType || null,
                                                 api_key: key || null,
                                             })
                                             .then(function(data) {

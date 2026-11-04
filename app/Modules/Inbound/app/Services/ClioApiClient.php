@@ -189,6 +189,34 @@ class ClioApiClient
         return $response->throw()->json();
     }
 
+    /**
+     * The matter with its custom field values — the Per-Invoice Fee Override field (and so
+     * the Multi-MID route) is read from here, as Clio bills carry no custom fields. A
+     * picklist value is the option's id, so the option text is asked for too; if Clio
+     * rejects that nesting, retry with the plain fields.
+     */
+    public function fetchMatter(ClioConnection $connection, string $matterId): array
+    {
+        $response = $this->authenticatedRequest($connection)
+            ->get("/api/v4/matters/{$matterId}.json", [
+                'fields' => 'id,display_number,custom_field_values{id,field_name,field_type,value,picklist_option{id,option}}',
+            ]);
+
+        if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
+            Log::warning('Clio matter fetch rejected requested fields, retrying with plain custom field values.', [
+                'matter_id' => $matterId,
+                'error' => $response->json(),
+            ]);
+
+            $response = $this->authenticatedRequest($connection)
+                ->get("/api/v4/matters/{$matterId}.json", [
+                    'fields' => 'id,display_number,custom_field_values{id,field_name,field_type,value}',
+                ]);
+        }
+
+        return $response->throw()->json();
+    }
+
     public function fetchBankAccounts(ClioConnection $connection): array
     {
         $response = $this->authenticatedRequest($connection)
