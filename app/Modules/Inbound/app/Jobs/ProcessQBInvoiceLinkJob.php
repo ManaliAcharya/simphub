@@ -14,6 +14,7 @@ use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\QuickBooksConnection;
+use Modules\Inbound\Services\QbReadyToSend;
 use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksEmailResolver;
 use Modules\Payment\Services\PaymentLinkService;
@@ -119,9 +120,12 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         PaymentSession $session,
     ): void {
         $client = Client::query()->where('pms_client_id', $invoice->pms_client_id)->first();
+        $readyToSendMode = QbReadyToSend::mode($client);
 
-        if (! ($client?->auto_resend_on_change)) {
-            Log::info('ProcessQBInvoiceLinkJob: auto-resend-on-change disabled for client, skipping resend', [
+        // "Ready to Send?" manual mode — sending is entirely manual (Invoice List tab), so
+        // this job never auto-resends on an edit either.
+        if ($readyToSendMode === QbReadyToSend::MANUAL) {
+            Log::info('ProcessQBInvoiceLinkJob: ready-to-send is manual for this client, skipping auto-resend', [
                 'invoice_id'    => $invoice->id,
                 'qb_invoice_id' => $this->entityId,
                 'pms_client_id' => $invoice->pms_client_id,
@@ -129,11 +133,10 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
             return;
         }
 
-        // "Ready to Send?" gate — layers on top of auto_resend_on_change above. Once a
-        // client opts in, sending is entirely manual (Invoice List tab), so this job
-        // never auto-resends on an edit for them either.
-        if ($client?->ready_to_send_enabled) {
-            Log::info('ProcessQBInvoiceLinkJob: ready-to-send is manual for this client, skipping auto-resend', [
+        // Trigger mode sends on every save once its field is filled in, so it doesn't
+        // depend on auto_resend_on_change; the field check runs below, on the live invoice.
+        if ($readyToSendMode === QbReadyToSend::AUTO && ! ($client?->auto_resend_on_change)) {
+            Log::info('ProcessQBInvoiceLinkJob: auto-resend-on-change disabled for client, skipping resend', [
                 'invoice_id'    => $invoice->id,
                 'qb_invoice_id' => $this->entityId,
                 'pms_client_id' => $invoice->pms_client_id,
@@ -162,6 +165,24 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
                 'error'      => $e->getMessage(),
             ]);
             return;
+        }
+
+        // "Ready to Send?" trigger mode — checked against the invoice just saved in QB, not
+        // the stored copy, which the parallel ingestion may not have refreshed yet.
+        if ($readyToSendMode === QbReadyToSend::TRIGGER) {
+            $liveInvoice = (clone $invoice)->forceFill([
+                'raw_payload' => array_merge((array) $invoice->raw_payload, ['invoice' => $liveData]),
+            ]);
+
+            if (! QbReadyToSend::triggerOn($client, $liveInvoice)) {
+                Log::info('ProcessQBInvoiceLinkJob: ready-to-send trigger field is not Yes, skipping send', [
+                    'invoice_id'    => $invoice->id,
+                    'qb_invoice_id' => $this->entityId,
+                    'pms_client_id' => $invoice->pms_client_id,
+                    'field_name'    => QbReadyToSend::fieldName($client),
+                ]);
+                return;
+            }
         }
 
         // Compare against Balance (what ingestion stores in amount_cents), not TotalAmt.
@@ -220,8 +241,8 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         // give it the live QuickBooks invoice — also in-memory only.
         $invoice->raw_payload = array_merge((array) $invoice->raw_payload, ['invoice' => $liveData]);
 
-        // If this session has never actually sent yet (e.g. its first real "Yes" only
-        // happened on this later edit, having been gated blank on the initial sync),
+        // If this session has never actually sent yet (e.g. a trigger-mode invoice whose
+        // field only turned Yes on this later edit, having been blank/No on the initial sync),
         // route through sendInvoiceLinkOnce so first_email_sent_at/reminders get seeded
         // correctly — resendPaymentLink() doesn't touch either.
         if ($session->payment_link_sent_at === null) {
