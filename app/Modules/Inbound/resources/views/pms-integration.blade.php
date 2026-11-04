@@ -1216,6 +1216,10 @@
                     @endphp
 
                     {{-- Per-Invoice Fee Override --}}
+                    @php
+                        $ovrLockedByRts = ! $isClio && $client->qb_fee_override_enabled
+                            && \Modules\Inbound\Services\QbReadyToSend::dependsOnOverrideField($client);
+                    @endphp
                     <div class="cc-card" id="qb-override-card">
                         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
                             <div class="cc-card-title">Per-Invoice Fee Override</div>
@@ -1240,8 +1244,6 @@
                                 @csrf
                                 <input type="hidden" name="qb_multi_mid_enabled"
                                     value="{{ $client->qb_multi_mid_enabled ? '1' : '0' }}">
-                                <input type="hidden" name="ready_to_send_enabled"
-                                    value="{{ $client->ready_to_send_enabled ? '1' : '0' }}">
 
                                 {{-- Enable toggle --}}
                                 <div
@@ -1262,9 +1264,19 @@
                                             style="padding:5px 14px;border:none;cursor:pointer;font-family:inherit;{{ $client->qb_fee_override_enabled ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">ON</button>
                                         <button type="button" id="qb-ovr-off"
                                             onclick="qbToggle('qb-override-val','qb-ovr-on','qb-ovr-off',false,'qb-ovr-section')"
-                                            style="padding:5px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $client->qb_fee_override_enabled ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
+                                            @disabled($ovrLockedByRts)
+                                            @if ($ovrLockedByRts) aria-describedby="qb-ovr-rts-lock" @endif
+                                            style="padding:5px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:{{ $ovrLockedByRts ? 'not-allowed' : 'pointer' }};font-family:inherit;{{ $client->qb_fee_override_enabled ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
                                     </div>
                                 </div>
+
+                                @if ($ovrLockedByRts)
+                                    <div id="qb-ovr-rts-lock"
+                                        style="padding:10px 14px;background:#fffbeb;border:1px solid #fde68a;border-radius:var(--cc-r-md);font-size:13px;color:#92400e;margin-bottom:14px;">
+                                        Trigger-Send (in Ready to Send? below) uses this field, so it can't be turned off.
+                                        To turn it off, first give Trigger-Send its own field name or switch to another mode.
+                                    </div>
+                                @endif
 
                                 {{-- Field name + mapping (shown when override is ON) --}}
                                 <div id="qb-ovr-section"
@@ -1429,9 +1441,9 @@
                                 <span id="qb-rts-chev">&#9660;</span>
                             </button>
                         </div>
-                        <div class="cc-card-desc">Let the merchant tinker with and save an invoice repeatedly without
-                            emailing the customer — the invoice still syncs into SimpHub, but the payment link only
-                            goes out once someone manually clicks Send on the Invoice List tab.</div>
+                        <div class="cc-card-desc">Choose when saving an invoice in QuickBooks emails the customer the
+                            payment link. Every invoice still syncs into SimpHub, and the Send button on the Invoice
+                            List tab works in every mode.</div>
 
                         <div id="qb-rts-body">
                             <form method="POST"
@@ -1444,26 +1456,62 @@
                                 <input type="hidden" name="qb_multi_mid_enabled"
                                     value="{{ $client->qb_multi_mid_enabled ? '1' : '0' }}">
 
-                                {{-- Enable toggle --}}
-                                <div
-                                    style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;">
-                                    <div>
-                                        <div style="font-size:14px;font-weight:600;color:var(--cc-text);">Enable
-                                            Ready to Send?</div>
-                                        <div style="font-size:12px;color:var(--cc-text-2);margin-top:1px;">Require a
-                                            manual Send click before the payment link ever emails the customer.</div>
-                                    </div>
-                                    <div
-                                        style="display:flex;border:1px solid rgba(19,34,56,.15);border-radius:8px;overflow:hidden;font-size:12px;font-weight:700;">
-                                        <input type="hidden" name="ready_to_send_enabled" id="qb-rts-val"
-                                            value="{{ $client->ready_to_send_enabled ? '1' : '0' }}">
-                                        <button type="button" id="qb-rts-on"
-                                            onclick="qbToggle('qb-rts-val','qb-rts-on','qb-rts-off',true)"
-                                            style="padding:5px 14px;border:none;cursor:pointer;font-family:inherit;{{ $client->ready_to_send_enabled ? 'background:#132238;color:#fff;' : 'background:#fff;color:#9ca3af;' }}">ON</button>
-                                        <button type="button" id="qb-rts-off"
-                                            onclick="qbToggle('qb-rts-val','qb-rts-on','qb-rts-off',false)"
-                                            style="padding:5px 14px;border:none;border-left:1px solid rgba(19,34,56,.15);cursor:pointer;font-family:inherit;{{ $client->ready_to_send_enabled ? 'background:#fff;color:#9ca3af;' : 'background:#f1f5f9;color:#374151;' }}">OFF</button>
-                                    </div>
+                                {{-- Send mode --}}
+                                @php
+                                    $rtsMode = \Modules\Inbound\Services\QbReadyToSend::mode($client);
+                                    $rtsModes = [
+                                        'auto' => ['Auto-Send', 'Every save in QuickBooks emails the customer the payment link.'],
+                                        'trigger' => ['Trigger-Send', 'Saves sync without emailing until the custom field below is set to Yes on the invoice. After that, every save emails the payment link, so the merchant never leaves QuickBooks.'],
+                                        'manual' => ['Manual Send', 'Nothing is emailed automatically. The merchant clicks Send on the Invoice List tab.'],
+                                    ];
+                                @endphp
+                                <fieldset style="border:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;">
+                                    <legend style="font-size:14px;font-weight:600;color:var(--cc-text);margin-bottom:8px;">
+                                        Send mode</legend>
+                                    @foreach ($rtsModes as $value => [$label, $help])
+                                        <label
+                                            style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;background:#f8f9fb;border:1px solid rgba(19,34,56,.08);border-radius:10px;cursor:pointer;">
+                                            <input type="radio" name="ready_to_send_mode" value="{{ $value }}"
+                                                onchange="qbRtsMode(this.value)" @checked($rtsMode === $value)
+                                                aria-describedby="qb-rts-help-{{ $value }}" style="margin-top:3px;">
+                                            <span>
+                                                <span style="display:block;font-size:14px;font-weight:600;color:var(--cc-text);">{{ $label }}</span>
+                                                <span id="qb-rts-help-{{ $value }}"
+                                                    style="display:block;font-size:12px;color:var(--cc-text-2);margin-top:1px;">{{ $help }}</span>
+                                            </span>
+                                        </label>
+                                    @endforeach
+                                </fieldset>
+
+                                {{-- Trigger field name --}}
+                                @php
+                                    $rtsOverrideField = $client->qb_fee_override_field ?: 'Cash Discount';
+                                    $rtsOwnField = $client->ready_to_send_field ?? 'Ready to Send';
+                                    $rtsUseOverride = (bool) old('ready_to_send_use_override_field', $client->ready_to_send_use_override_field);
+                                    $rtsLocked = $client->qb_fee_override_enabled && $rtsUseOverride;
+                                @endphp
+                                <div id="qb-rts-trigger-section" class="cc-field"
+                                    style="margin-top:14px;{{ $rtsMode === 'trigger' ? '' : 'display:none;' }}">
+                                    {{-- Only offered while Per-Invoice Override is on; locks the name to its field. --}}
+                                    @if ($client->qb_fee_override_enabled)
+                                        <input type="hidden" name="ready_to_send_use_override_field" value="0">
+                                        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer;">
+                                            <input type="checkbox" name="ready_to_send_use_override_field" value="1"
+                                                id="qb-rts-use-override" onchange="qbRtsUseOverride(this.checked)"
+                                                @checked($rtsUseOverride)>
+                                            Use the same field as Per-Invoice Override
+                                        </label>
+                                    @endif
+                                    <label for="qb-rts-field">QBO Custom Field Name</label>
+                                    <input type="text" id="qb-rts-field" name="ready_to_send_field" maxlength="100"
+                                        value="{{ $rtsLocked ? $rtsOverrideField : old('ready_to_send_field', $rtsOwnField) }}"
+                                        data-own="{{ $rtsOwnField }}" data-override="{{ $rtsOverrideField }}"
+                                        placeholder="e.g. Ready to Send" aria-describedby="qb-rts-field-help"
+                                        @readonly($rtsLocked)
+                                        style="{{ $rtsLocked ? 'background:#f1f5f9;color:var(--cc-text-2);' : '' }}">
+                                    <div id="qb-rts-field-help" style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">
+                                        Create this custom field in QuickBooks. "Yes" (or "Y") starts sending; blank,
+                                        "No" or any other value doesn't send.</div>
                                 </div>
 
                                 <button type="submit" class="button primary"
@@ -2103,6 +2151,18 @@
                             document.getElementById(offId).style.background = on ? '#fff' : '#f1f5f9';
                             document.getElementById(offId).style.color = on ? '#9ca3af' : '#374151';
                             if (sectionId) document.getElementById(sectionId).style.display = on ? '' : 'none';
+                        }
+
+                        function qbRtsMode(mode) {
+                            document.getElementById('qb-rts-trigger-section').style.display = mode === 'trigger' ? '' : 'none';
+                        }
+
+                        function qbRtsUseOverride(on) {
+                            var input = document.getElementById('qb-rts-field');
+                            input.value = on ? input.dataset.override : input.dataset.own;
+                            input.readOnly = on;
+                            input.style.background = on ? '#f1f5f9' : '';
+                            input.style.color = on ? 'var(--cc-text-2)' : '';
                         }
 
                         function qbSurchargeToggle() {

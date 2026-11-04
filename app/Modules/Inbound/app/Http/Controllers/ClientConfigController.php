@@ -18,6 +18,7 @@ use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClientMidRoute;
 use Modules\Inbound\Models\EmailConfiguration;
 use Modules\Inbound\Models\PmsConnection;
+use Modules\Inbound\Services\QbReadyToSend;
 use Modules\Inbound\Services\SubscriptionService;
 use Modules\Inbound\Services\ZohoRegionResolver;
 use Modules\Payment\Services\QbFeeOverride;
@@ -584,17 +585,43 @@ class ClientConfigController extends Controller
             'qb_fee_override_field'   => ['nullable', 'string', 'max:100'],
             'qb_fee_override_blank_default' => ['nullable', Rule::in([QbFeeOverride::BLANK_ABSORB, QbFeeOverride::BLANK_PASS])],
             'qb_multi_mid_enabled'    => ['nullable', 'boolean'],
-            'ready_to_send_enabled'   => ['nullable', 'boolean'],
+            'ready_to_send_mode'      => ['nullable', Rule::in(QbReadyToSend::MODES)],
+            'ready_to_send_field'     => ['nullable', 'string', 'max:100'],
+            'ready_to_send_use_override_field' => ['nullable', 'boolean'],
         ]);
+
+        // Trigger-Send may read the Per-Invoice Override field; never leave it pointing at
+        // an override that's off, or its invoices would silently stop sending.
+        $rtsPosted       = isset($validated['ready_to_send_mode']);
+        $overrideEnabled = (bool) ($validated['qb_fee_override_enabled'] ?? false);
+        $usesOverride    = $rtsPosted
+            ? $validated['ready_to_send_mode'] === QbReadyToSend::TRIGGER && (bool) ($validated['ready_to_send_use_override_field'] ?? false)
+            : QbReadyToSend::dependsOnOverrideField($client);
+
+        if ($usesOverride && ! $overrideEnabled) {
+            return redirect()->back()->withInput()->with('error', $rtsPosted
+                ? 'Turn on Per-Invoice Fee Override before Trigger-Send can use its field.'
+                : 'Per-Invoice Fee Override can\'t be turned off while Trigger-Send uses its field. Switch Trigger-Send to its own field name or another mode first.');
+        }
 
         $client->update([
             'qb_fee_override_enabled' => (bool) ($validated['qb_fee_override_enabled'] ?? false),
             'qb_fee_override_field'   => $validated['qb_fee_override_field'] ?? 'Cash Discount',
             'qb_multi_mid_enabled'    => (bool) ($validated['qb_multi_mid_enabled'] ?? false),
-            'ready_to_send_enabled'   => (bool) ($validated['ready_to_send_enabled'] ?? false),
             // Only the override form sends this; other forms posting here leave it as it is.
             ...(isset($validated['qb_fee_override_blank_default'])
                 ? ['qb_fee_override_blank_default' => $validated['qb_fee_override_blank_default']]
+                : []),
+            // Likewise only the Ready to Send form.
+            ...($rtsPosted
+                ? [
+                    'ready_to_send_mode'  => $validated['ready_to_send_mode'],
+                    'ready_to_send_use_override_field' => (bool) ($validated['ready_to_send_use_override_field'] ?? false),
+                    // While shared, the box shows the override's name; keep the merchant's own.
+                    ...(! empty($validated['ready_to_send_use_override_field'])
+                        ? []
+                        : ['ready_to_send_field' => trim((string) ($validated['ready_to_send_field'] ?? '')) ?: QbReadyToSend::DEFAULT_FIELD]),
+                ]
                 : []),
         ]);
 

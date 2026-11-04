@@ -97,10 +97,9 @@ class QuickBooksInvoiceIngestionService
         $useNativePdf = $client?->qb_use_native_pdf ?? true;
         $pdf = $useNativePdf ? $this->client->fetchInvoicePdf($connection, $externalInvoiceId) : null;
 
-        // "Ready to Send?" gate: when enabled, invoices still sync into SimpHub as normal,
-        // but the payment link never auto-sends — the merchant sends it manually from the
-        // Invoice List tab once they're actually ready (ClientConfigController::sendInvoice).
-        $shouldSend = ! ($client?->ready_to_send_enabled);
+        // "Ready to Send?" gate: the invoice always syncs into SimpHub; the mode decides
+        // whether this save also emails the payment link (see QbReadyToSend).
+        $shouldSend = QbReadyToSend::sendsOnSync($client, $result['invoice'], $result['created_session']);
 
         $emailsSent = $shouldSend
             ? $this->paymentLinks->sendInvoiceLinkOnce(
