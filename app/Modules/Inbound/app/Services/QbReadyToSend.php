@@ -61,19 +61,43 @@ class QbReadyToSend
         return self::mode($client) === self::TRIGGER && (bool) $client?->ready_to_send_use_override_field;
     }
 
-    /** Values that count as Yes, compared trimmed and case-insensitively. */
+    /**
+     * Shared-field mode: Trigger-Send is on and reads the (enabled) Per-Invoice Override
+     * field. Built for QBO Simple Start, which allows only one custom field, so that one
+     * field both releases the invoice and picks the fee (and the Multi-MID route).
+     */
+    public static function sharesOverrideField(?Client $client): bool
+    {
+        return $client !== null && self::mode($client) === self::TRIGGER && self::usesOverrideField($client);
+    }
+
+    /** Values that count as Yes / No, compared trimmed and case-insensitively. */
     public const YES_VALUES = ['yes', 'y'];
+    public const NO_VALUES = ['no', 'n'];
 
     /**
-     * Whether the trigger field reads Yes. Blank, No and any other value (e.g. a typo)
-     * don't send, so a data-entry mistake never emails a customer early. Pass an invoice
-     * whose raw_payload holds the version just saved in QB.
+     * Whether the trigger field releases the invoice. Pass an invoice whose raw_payload
+     * holds the version just saved in QB.
+     *
+     * - Own field: only Yes sends. Blank, No and anything else (e.g. a typo) hold, so a
+     *   data-entry mistake never emails a customer early.
+     * - Shared field: Yes sends with the fee passed and No sends with it absorbed (each
+     *   through its Multi-MID route, see QbFeeOverride::passesFee()); blank and anything
+     *   else hold.
      */
     public static function triggerOn(Client $client, Invoice $invoice): bool
     {
         $value = self::invoiceFieldValue($invoice, self::fieldName($client));
 
-        return $value !== null && in_array(strtolower($value), self::YES_VALUES, true);
+        if ($value === null) {
+            return false;
+        }
+
+        $sending = self::sharesOverrideField($client)
+            ? [...self::YES_VALUES, ...self::NO_VALUES]
+            : self::YES_VALUES;
+
+        return in_array(strtolower($value), $sending, true);
     }
 
     /**

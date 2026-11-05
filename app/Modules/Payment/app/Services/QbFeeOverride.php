@@ -4,6 +4,7 @@ namespace Modules\Payment\Services;
 
 use Modules\Billing\Models\Invoice;
 use Modules\Inbound\Models\Client;
+use Modules\Inbound\Services\QbReadyToSend;
 
 /**
  * Per-Invoice Fee Override: a PMS custom field decides whether the processing fee is
@@ -53,7 +54,11 @@ class QbFeeOverride
             return $client->qb_fee_override_blank_default === self::BLANK_PASS;
         }
 
-        return strtolower($value) === 'yes';
+        // When "Ready to Send?" Trigger-Send shares this field, Y also passes, matching
+        // the Yes/Y that releases the invoice; anything else (No/N included) absorbs.
+        $passValues = QbReadyToSend::sharesOverrideField($client) ? QbReadyToSend::YES_VALUES : ['yes'];
+
+        return in_array(strtolower($value), $passValues, true);
     }
 
     /**
