@@ -86,6 +86,12 @@ Route::middleware('web')->group(function (): void {
         Route::post('/inbound/zohocrm/contact-fields', [PmsIntegrationController::class, 'saveZohoCrmContactFields'])
             ->name('inbound.zohocrm.contact-fields');
 
+        Route::post('/inbound/zohocrm/books-settings', [PmsIntegrationController::class, 'saveZohoCrmBooksSettings'])
+            ->name('inbound.zohocrm.books-settings');
+
+        Route::post('/inbound/zohocrm/books-retry', [PmsIntegrationController::class, 'retryZohoCrmBooksSync'])
+            ->name('inbound.zohocrm.books-retry');
+
         Route::post('/inbound/clio/default-bank-account', [PmsIntegrationController::class, 'saveClioDefaultBankAccount'])
             ->name('inbound.clio.default-bank-account');
 

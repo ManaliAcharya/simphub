@@ -72,7 +72,22 @@ return [
         'client_id' => env('ZOHO_CLIENT_ID'),
         'client_secret' => env('ZOHO_CLIENT_SECRET'),
         'redirect_uri' => env('ZOHO_CRM_REDIRECT_URI', rtrim(env('APP_URL', 'http://localhost'), '/').'/inbound/zohocrm/callback'),
-        'scope' => env('ZOHO_CRM_SCOPE', 'ZohoCRM.modules.contacts.READ,ZohoCRM.modules.contacts.UPDATE,ZohoCRM.settings.fields.ALL,ZohoCRM.org.READ'),
+        // The Zoho Books scopes let the same connection create the subscription invoices and
+        // payments in Books (see ZohoBooksSubscriptionSyncService).
+        'scope' => env('ZOHO_CRM_SCOPE', implode(',', [
+            'ZohoCRM.modules.contacts.READ',
+            'ZohoCRM.modules.contacts.UPDATE',
+            'ZohoCRM.settings.fields.ALL',
+            'ZohoCRM.org.READ',
+            'ZohoBooks.settings.READ',
+            'ZohoBooks.accountants.READ',
+            'ZohoBooks.contacts.CREATE',
+            'ZohoBooks.contacts.READ',
+            'ZohoBooks.invoices.CREATE',
+            'ZohoBooks.invoices.READ',
+            'ZohoBooks.invoices.UPDATE',
+            'ZohoBooks.customerpayments.CREATE',
+        ])),
         'api_version' => env('ZOHO_CRM_API_VERSION', 'v8'),
         // Which Contact fields receive the payment values is mapped per client on the
         // config page (see ZohoCrmPaymentSyncService).

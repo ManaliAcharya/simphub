@@ -479,6 +479,7 @@
                 {{-- Contact fields written after each payment (Zoho CRM) --}}
                 @if ($provider === 'zohocrm' && $client && $connection)
                     @include('inbound::clients.partials.zohocrm-contact-fields')
+                    @include('inbound::clients.partials.zohocrm-books-settings')
                 @endif
 
                 {{-- Subscription API credentials (Zoho CRM) --}}

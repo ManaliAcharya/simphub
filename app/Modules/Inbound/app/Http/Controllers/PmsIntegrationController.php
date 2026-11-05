@@ -28,6 +28,7 @@ use Modules\Inbound\Models\WaveConnection;
 use Modules\Inbound\Services\WaveApiClient;
 use Modules\Inbound\Services\WaveOAuthService;
 use Modules\Inbound\Services\ZohoApiClient;
+use Modules\Inbound\Services\ZohoBooksSubscriptionSyncService;
 use Modules\Inbound\Services\ZohoCrmPaymentSyncService;
 use Modules\Inbound\Services\ZohoOAuthService;
 use Modules\Billing\Models\Invoice;
@@ -166,6 +167,75 @@ class PmsIntegrationController extends Controller
             'pms_client_id' => $client->pms_client_id,
             'success'       => 'Zoho CRM Contact field mapping saved.',
         ]);
+    }
+
+    public function saveZohoCrmBooksSettings(Request $request, ZohoBooksSubscriptionSyncService $booksSync): RedirectResponse
+    {
+        $validated = $request->validate([
+            'pms_client_id'   => ['required', 'string'],
+            'enabled'         => ['nullable', 'boolean'],
+            'organization_id' => ['nullable', 'string', 'max:64'],
+            'account_id'      => ['nullable', 'string', 'max:64'],
+            'item_id'         => ['nullable', 'string', 'max:64'],
+        ]);
+
+        [$client, $connection] = $this->zohoCrmClientConnection($validated['pms_client_id']);
+
+        try {
+            $settings = $booksSync->saveSettings($connection, $validated);
+        } catch (\Throwable $e) {
+            return redirect()->route('inbound.zohocrm.page', [
+                'pms_client_id' => $client->pms_client_id,
+                'error'         => 'Zoho Books settings not saved: '.$e->getMessage(),
+            ]);
+        }
+
+        AuditLogger::log('ZOHOCRM_BOOKS_SETTINGS_SAVED', 'client', (string) $client->id, [
+            'pms_client_id' => $client->pms_client_id,
+            'settings'      => $settings,
+        ]);
+
+        return redirect()->route('inbound.zohocrm.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => $settings['enabled']
+                ? 'Zoho Books settings saved. Paid subscription invoices will now be created in Zoho Books.'
+                : 'Zoho Books settings saved.',
+        ]);
+    }
+
+    public function retryZohoCrmBooksSync(Request $request, ZohoBooksSubscriptionSyncService $booksSync): RedirectResponse
+    {
+        $validated = $request->validate(['pms_client_id' => ['required', 'string']]);
+
+        [$client] = $this->zohoCrmClientConnection($validated['pms_client_id']);
+
+        $queued = $booksSync->queueFailed($client->pms_client_id);
+
+        AuditLogger::log('ZOHOCRM_BOOKS_SYNC_RETRIED', 'client', (string) $client->id, [
+            'pms_client_id' => $client->pms_client_id,
+            'queued'        => $queued,
+        ]);
+
+        return redirect()->route('inbound.zohocrm.page', [
+            'pms_client_id' => $client->pms_client_id,
+            'success'       => "Retrying {$queued} Zoho Books ".($queued === 1 ? 'invoice' : 'invoices').'. Refresh in a minute to see the result.',
+        ]);
+    }
+
+    /** @return array{0: Client, 1: PmsConnection} */
+    private function zohoCrmClientConnection(string $pmsClientId): array
+    {
+        $client = Client::query()->where('pms_client_id', $pmsClientId)->firstOrFail();
+
+        abort_unless(strtoupper((string) $client->client_pms) === 'ZOHOCRM', 422, 'Zoho Books invoices are only supported for Zoho CRM clients.');
+
+        $connection = PmsConnection::query()
+            ->where('provider', 'zohocrm')
+            ->where('pms_client_id', $client->pms_client_id)
+            ->latest('created_at')
+            ->firstOrFail();
+
+        return [$client, $connection];
     }
 
     public function saveClioDefaultBankAccount(

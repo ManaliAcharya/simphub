@@ -19,7 +19,9 @@ use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksOAuthService;
 use Modules\Inbound\Services\WaveApiClient;
 use Modules\Inbound\Services\WaveOAuthService;
+use Modules\Inbound\Jobs\SyncZohoBooksPaymentJob;
 use Modules\Inbound\Services\ZohoApiClient;
+use Modules\Inbound\Services\ZohoBooksSubscriptionSyncService;
 use Modules\Inbound\Services\ZohoCrmPaymentSyncService;
 use Modules\Inbound\Services\ZohoOAuthService;
 use Modules\Inbound\Services\AdvancedMdApiClient;
@@ -43,6 +45,7 @@ class SyncInvoicePaidListener
         private readonly LawcusPaymentSyncService $lawcusPaymentSync,
         private readonly ZohoCrmPaymentSyncService $zohoCrmPaymentSync,
         private readonly ClioTrustPaymentSyncService $clioTrustPaymentSync,
+        private readonly ZohoBooksSubscriptionSyncService $zohoBooksSync,
     ) {}
 
     public function handle(PaymentApproved $event): void
@@ -67,7 +70,7 @@ class SyncInvoicePaidListener
 
         match (strtolower((string) $invoice->pms_source)) {
             'zoho'       => $this->syncToZoho($transaction, $invoice, $client),
-            'zohocrm'    => $this->zohoCrmPaymentSync->sync($transaction, $invoice),
+            'zohocrm'    => $this->syncToZohoCrm($transaction, $invoice),
             'clio'       => $this->syncToClio($transaction, $invoice, $client),
             'quickbooks' => $this->syncToQuickBooks($transaction, $invoice, $client),
             'lawcus'     => $this->syncToLawcus($transaction, $invoice, $client),
@@ -129,6 +132,29 @@ class SyncInvoicePaidListener
                 'transaction_id' => $transaction->id,
                 'gateway' => $transaction->gateway,
                 'error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * The Contact update and the Zoho Books sync are independent: a failure in one never
+     * stops the other. Books runs queued (several API calls) and retries on its own.
+     */
+    private function syncToZohoCrm(Transaction $transaction, mixed $invoice): void
+    {
+        $this->zohoCrmPaymentSync->sync($transaction, $invoice);
+
+        try {
+            if ($this->zohoBooksSync->shouldSync($invoice)) {
+                $this->zohoBooksSync->markQueued($invoice);
+                SyncZohoBooksPaymentJob::dispatch($invoice->id, $transaction->id);
+            }
+        } catch (\Throwable $exception) {
+            // With the sync queue driver the job runs inline; its failure is already
+            // recorded on the invoice and must not break the payment flow.
+            Log::warning('Zoho Books sync could not be queued or failed inline', [
+                'invoice_id' => $invoice->id,
+                'error'      => $exception->getMessage(),
             ]);
         }
     }
