@@ -1301,8 +1301,13 @@
                                     {{-- What a blank field means --}}
                                     @php
                                         $qbBlankDefault = old('qb_fee_override_blank_default', $client->qb_fee_override_blank_default ?? 'absorb');
+                                        // Trigger-Send sharing this field holds blank invoices, so the choice
+                                        // rarely applies; greyed out, but still selectable.
+                                        $qbBlankHeld = ! $isClio && \Modules\Inbound\Services\QbReadyToSend::sharesOverrideField($client);
                                     @endphp
-                                    <fieldset class="cc-field" style="margin-bottom:14px;border:none;padding:0;">
+                                    <fieldset class="cc-field"
+                                        style="margin-bottom:14px;border:none;padding:0;{{ $qbBlankHeld ? 'opacity:.55;' : '' }}"
+                                        @if ($qbBlankHeld) aria-describedby="qb-blank-held-note" @endif>
                                         <legend style="font-size:13px;font-weight:600;color:var(--cc-text);margin-bottom:6px;">
                                             When the field is blank</legend>
                                         <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:6px;cursor:pointer;">
@@ -1319,6 +1324,11 @@
                                             Set "No" on {{ $isClio ? 'a matter or contact' : 'an invoice or customer' }} to absorb the fee for them. Changing this
                                             applies straight away to every unpaid invoice whose field is blank, including
                                             payment links already sent.</div>
+                                        @if ($qbBlankHeld)
+                                            <div id="qb-blank-held-note" style="font-size:12px;color:var(--cc-text-2);margin-top:6px;">
+                                                Ready to Send? Trigger-Send uses this field, so invoices with it blank are held and
+                                                not sent. This only applies to one sent with the Send button on the Invoice List tab.</div>
+                                        @endif
                                     </fieldset>
 
                                     @if ($isClio)
@@ -1510,8 +1520,13 @@
                                         @readonly($rtsLocked)
                                         style="{{ $rtsLocked ? 'background:#f1f5f9;color:var(--cc-text-2);' : '' }}">
                                     <div id="qb-rts-field-help" style="font-size:12px;color:var(--cc-text-3);margin-top:3px;">
-                                        Create this custom field in QuickBooks. "Yes" (or "Y") starts sending; blank,
-                                        "No" or any other value doesn't send.</div>
+                                        <span id="qb-rts-help-own" @if ($rtsLocked) style="display:none;" @endif>
+                                            Create this custom field in QuickBooks. "Yes" (or "Y") starts sending; blank,
+                                            "No" or any other value doesn't send.</span>
+                                        <span id="qb-rts-help-shared" @unless ($rtsLocked) style="display:none;" @endunless>
+                                            One field does both jobs: "Yes" (or "Y") sends and passes the fee to the customer
+                                            (Multi-MID Fees-ON MID); "No" (or "N") sends and absorbs it (Fees-OFF MID); blank
+                                            or any other value holds the invoice.</span></div>
                                 </div>
 
                                 <button type="submit" class="button primary"
@@ -2163,6 +2178,8 @@
                             input.readOnly = on;
                             input.style.background = on ? '#f1f5f9' : '';
                             input.style.color = on ? 'var(--cc-text-2)' : '';
+                            document.getElementById('qb-rts-help-own').style.display = on ? 'none' : '';
+                            document.getElementById('qb-rts-help-shared').style.display = on ? '' : 'none';
                         }
 
                         function qbSurchargeToggle() {

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use Modules\Billing\Models\Invoice;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Services\QbReadyToSend;
+use Modules\Payment\Services\QbFeeOverride;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -128,6 +129,67 @@ class QbReadyToSendTest extends TestCase
 
         $client->forceFill(['ready_to_send_mode' => 'manual', 'ready_to_send_use_override_field' => true]);
         $this->assertFalse(QbReadyToSend::dependsOnOverrideField($client));
+    }
+
+    public static function sharedFieldDecisions(): array
+    {
+        // [field value, sends?, passes fee (Multi-MID fees_on)?]
+        return [
+            'Yes' => ['Yes', true, true],
+            'Y' => ['y', true, true],
+            'yes, padded' => [' YES ', true, true],
+            'No' => ['No', true, false],
+            'N' => ['n', true, false],
+            'no, padded' => [' NO ', true, false],
+            'blank' => [null, false, null],
+            'typo' => ['Ys', false, null],
+        ];
+    }
+
+    #[DataProvider('sharedFieldDecisions')]
+    public function test_shared_field_sends_on_yes_and_no_and_picks_the_fee(?string $value, bool $sends, ?bool $passesFee): void
+    {
+        $client = $this->sharedFieldClient();
+        $invoice = $this->invoiceWith($value, 'Cash Discount');
+
+        $this->assertSame($sends, QbReadyToSend::triggerOn($client, $invoice));
+
+        if ($passesFee !== null) {
+            $this->assertSame($passesFee, QbFeeOverride::passesFee($client, $invoice));
+        }
+    }
+
+    public function test_own_field_still_holds_on_no(): void
+    {
+        $client = (new Client)->forceFill(['ready_to_send_mode' => 'trigger', 'ready_to_send_field' => 'Ready to Send']);
+
+        $this->assertFalse(QbReadyToSend::triggerOn($client, $this->invoiceWith('No')));
+        $this->assertFalse(QbReadyToSend::triggerOn($client, $this->invoiceWith('N')));
+    }
+
+    public function test_y_passes_the_fee_only_when_the_field_is_shared(): void
+    {
+        $invoice = $this->invoiceWith('Y', 'Cash Discount');
+        $this->assertTrue(QbFeeOverride::passesFee($this->sharedFieldClient(), $invoice));
+
+        // Per-Invoice Override on its own keeps its rule: only "Yes" passes.
+        $ownField = $this->sharedFieldClient()->forceFill(['ready_to_send_use_override_field' => false]);
+        $this->assertFalse(QbFeeOverride::passesFee($ownField, $invoice));
+
+        $autoMode = $this->sharedFieldClient()->forceFill(['ready_to_send_mode' => 'auto']);
+        $this->assertFalse(QbFeeOverride::passesFee($autoMode, $invoice));
+    }
+
+    private function sharedFieldClient(): Client
+    {
+        return (new Client)->forceFill([
+            'ready_to_send_mode' => 'trigger',
+            'ready_to_send_field' => 'Ready to Send',
+            'ready_to_send_use_override_field' => true,
+            'qb_fee_override_enabled' => true,
+            'qb_fee_override_field' => 'Cash Discount',
+            'qb_fee_override_blank_default' => 'absorb',
+        ]);
     }
 
     private function invoiceWith(?string $value, string $fieldName = 'Ready to Send'): Invoice
