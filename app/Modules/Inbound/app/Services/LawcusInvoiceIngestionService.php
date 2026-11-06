@@ -10,6 +10,7 @@ use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Services\PaymentSessionService;
+use Modules\Inbound\Jobs\SendTrustRequestLinkJob;
 use Modules\Inbound\Mail\LawcusConnectionBrokenMail;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\LawcusConnection;
@@ -126,6 +127,16 @@ class LawcusInvoiceIngestionService
                 'pms_client_id' => $pmsClientId,
                 'reason'        => 'trust_links_disabled',
             ]);
+
+            $result['emails_sent'] = 0;
+
+            return $result;
+        }
+
+        // A Trust Request's link waits a moment and goes out only if it's still unpaid — the
+        // firm may be recording a check or wire it has already received (SendTrustRequestLinkJob).
+        if ($result['invoice']->fund_type === 'TRUST') {
+            SendTrustRequestLinkJob::dispatchDelayed($result['invoice']);
 
             $result['emails_sent'] = 0;
 
