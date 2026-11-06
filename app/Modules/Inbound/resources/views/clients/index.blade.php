@@ -511,6 +511,12 @@
                                                 {{ number_format($client->ach_fee_percent ?? 0, 2) }}%
                                             </div>
                                         @endif
+                                        @if ($client->fee_surcharge_enabled && $client->requiresIoltaMid())
+                                            <div style="font-size:11px;color:#6b7280;margin-top:1px;">
+                                                IOLTA: CC {{ number_format($client->trust_cc_fee_percent ?? 0, 2) }}% &nbsp; ACH
+                                                {{ number_format($client->trust_ach_fee_percent ?? 0, 2) }}%
+                                            </div>
+                                        @endif
                                     @endif
                                 </td>
                                 <td>
