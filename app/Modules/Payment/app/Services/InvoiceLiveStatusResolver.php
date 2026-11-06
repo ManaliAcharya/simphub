@@ -8,11 +8,15 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
 use Modules\Billing\Models\Invoice;
 use Modules\Inbound\Models\ClioConnection;
+use Modules\Inbound\Models\LawcusConnection;
 use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Models\WaveConnection;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
+use Modules\Inbound\Services\LawcusApiClient;
+use Modules\Inbound\Services\LawcusInvoiceIngestionService;
+use Modules\Inbound\Services\LawcusOAuthService;
 use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksOAuthService;
 use Modules\Inbound\Services\WaveApiClient;
@@ -24,7 +28,8 @@ use Modules\Inbound\Services\ZohoOAuthService;
  * Read-only live payment-status check used by the invoice reminder job. Deliberately
  * does not go through InboundInvoiceProcessor's ingestion pipeline — that would also
  * trigger the resend-on-update side effect, conflating two independently-toggleable
- * features. Supports Clio, Zoho, Wave, QuickBooks only (see plan for scope).
+ * features. Supports Clio, Zoho, Wave, QuickBooks and Lawcus only (see plan for scope).
+ * Also re-checks a new Trust Request before its link is emailed (SendTrustRequestLinkJob).
  */
 class InvoiceLiveStatusResolver
 {
@@ -37,6 +42,8 @@ class InvoiceLiveStatusResolver
         private readonly WaveApiClient $waveApi,
         private readonly QuickBooksOAuthService $quickBooksOAuth,
         private readonly QuickBooksApiClient $quickBooksApi,
+        private readonly LawcusOAuthService $lawcusOAuth,
+        private readonly LawcusApiClient $lawcusApi,
     ) {}
 
     /**
@@ -50,6 +57,7 @@ class InvoiceLiveStatusResolver
                 'zoho'       => $this->resolveZohoBalance($invoice),
                 'wave'       => $this->resolveWaveBalance($invoice),
                 'quickbooks' => $this->resolveQuickBooksBalance($invoice),
+                'lawcus'     => $this->resolveLawcusBalance($invoice),
                 default      => null,
             };
         } catch (RequestException $e) {
@@ -123,6 +131,33 @@ class InvoiceLiveStatusResolver
         $data       = Arr::get($payload, 'data', $payload);
 
         return (float) (Arr::get($data, 'balance') ?? Arr::get($data, 'total', 0));
+    }
+
+    private function resolveLawcusBalance(Invoice $invoice): float|string|null
+    {
+        // Only the latest connection per client is live after a reconnect.
+        $connection = LawcusConnection::query()
+            ->where('provider', 'lawcus')
+            ->where('pms_client_id', $invoice->pms_client_id)
+            ->orderByDesc('created_at')
+            ->first();
+
+        if (! $connection) {
+            return null;
+        }
+
+        $connection = $this->lawcusOAuth->ensureValidAccessToken($connection);
+        $payload    = $this->lawcusApi->fetchBill($connection, $invoice->external_invoice_id);
+        $data       = (array) Arr::get($payload, 'data', $payload);
+
+        if (LawcusInvoiceIngestionService::hasNothingDue($data)) {
+            return 0.0;
+        }
+
+        $amountDue = Arr::get($data, 'amount_due');
+
+        // Without an amount due the balance can't be told, so the caller treats it as unknown.
+        return is_numeric($amountDue) ? (float) $amountDue : null;
     }
 
     private function resolveZohoBalance(Invoice $invoice): float|string|null

@@ -10,6 +10,7 @@ use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Services\PaymentSessionService;
+use Modules\Inbound\Jobs\SendTrustRequestLinkJob;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClioConnection;
 use Modules\Payment\Services\PaymentLinkService;
@@ -128,7 +129,16 @@ class ClioInvoiceIngestionService
             ]);
         }
 
-        if (! $trustLinkHeld && $this->isApprovedState($result['invoice']->status)) {
+        $isTrust = $result['invoice']->fund_type === 'TRUST';
+
+        // A Trust Request's link waits a moment and goes out only if it's still unpaid — the
+        // firm may be recording a check or wire it has already received (SendTrustRequestLinkJob).
+        if ($isTrust && ! $trustLinkHeld && $this->isApprovedState($result['invoice']->status)
+            && $result['payment_session']->payment_link_sent_at === null) {
+            SendTrustRequestLinkJob::dispatchDelayed($result['invoice']);
+        }
+
+        if (! $isTrust && ! $trustLinkHeld && $this->isApprovedState($result['invoice']->status)) {
             // No PDF passed here - PaymentLinkService generates one itself from our
             // own invoice data (same generator used for every PMS), since Clio's own
             // bill-preview API isn't reliably available for this app/account.
