@@ -80,7 +80,7 @@ class InboundServiceProvider extends ModuleServiceProvider
                 ->withoutOverlapping()
                 ->onOneServer();
 
-            $schedule->job(PollLawcusInvoicesJob::class)->everyFiveMinutes()
+            $schedule->job(PollLawcusInvoicesJob::class)->everyMinute()
                 ->withoutOverlapping()
                 ->onOneServer();
 

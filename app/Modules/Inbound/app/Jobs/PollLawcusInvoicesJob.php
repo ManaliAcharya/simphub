@@ -4,6 +4,7 @@ namespace Modules\Inbound\Jobs;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -25,7 +26,7 @@ use Throwable;
  * The list is used rather than the AR report because the report leaves out Trust
  * Requests (type TRUST), which route to the firm's IOLTA MID.
  */
-class PollLawcusInvoicesJob implements ShouldQueue
+class PollLawcusInvoicesJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -33,6 +34,12 @@ class PollLawcusInvoicesJob implements ShouldQueue
     use SerializesModels;
 
     public int $tries = 1;
+
+    /**
+     * Scheduled every minute; a slow run must not overlap the next or the same invoice
+     * could be ingested (and emailed) twice. Expires so a killed worker can't block polling.
+     */
+    public int $uniqueFor = 600;
 
     /**
      * Auth failures (revoked/deleted token) are counted by LawcusOAuthService; past this
