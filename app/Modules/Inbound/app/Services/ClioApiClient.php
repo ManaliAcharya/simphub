@@ -199,7 +199,8 @@ class ClioApiClient
     {
         $response = $this->authenticatedRequest($connection)
             ->get("/api/v4/matters/{$matterId}.json", [
-                'fields' => 'id,display_number,custom_field_values{id,field_name,field_type,value,picklist_option{id,option}}',
+                // billing_method (hourly / flat / contingency) picks the payment email template.
+                'fields' => 'id,display_number,billing_method,custom_field_values{id,field_name,field_type,value,picklist_option{id,option}}',
             ]);
 
         if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
@@ -210,7 +211,7 @@ class ClioApiClient
 
             $response = $this->authenticatedRequest($connection)
                 ->get("/api/v4/matters/{$matterId}.json", [
-                    'fields' => 'id,display_number,custom_field_values{id,field_name,field_type,value}',
+                    'fields' => 'id,display_number,billing_method,custom_field_values{id,field_name,field_type,value}',
                 ]);
         }
 

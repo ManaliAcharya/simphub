@@ -2503,6 +2503,126 @@
                         </div>
                     </div>
 
+                    {{-- Per-trigger templates (law firms): the subject/body above is the billable invoice
+                         template; flat fee invoices and Trust Requests (retainer requests) get their own. --}}
+                    @if ($client->requiresIoltaMid())
+                        @php
+                            $emailTemplates = (array) ($emailConfig?->templates ?? []);
+                            $templateTabs = [
+                                \Modules\Payment\Services\PaymentEmailTemplate::FLAT_FEE => [
+                                    'label'   => 'Flat fee invoice',
+                                    'desc'    => 'Regular invoices on a flat fee matter. Blank fields use the billable invoice settings above.',
+                                    'subject' => $emailConfig?->subject_template ?? 'Invoice #{invoice_number} – Payment Required',
+                                    'updated' => $emailConfig?->subject_template_updated ?? 'Updated: Invoice #{invoice_number} – Payment Required',
+                                    'reminder' => $client->reminder_subject_template ?? 'Reminder: Invoice {invoice_number} is awaiting payment',
+                                ],
+                                \Modules\Payment\Services\PaymentEmailTemplate::RETAINER => [
+                                    'label'   => 'Retainer request',
+                                    'desc'    => 'Trust Requests. The email reads as a retainer deposit request ("Deposit Amount", not "Invoice"). Put the firm\'s payment methods here — this replaces the separate payment methods email.',
+                                    'subject' => \Modules\Payment\Services\PaymentEmailTemplate::RETAINER_SUBJECT,
+                                    'updated' => \Modules\Payment\Services\PaymentEmailTemplate::RETAINER_SUBJECT_UPDATED,
+                                    'reminder' => \Modules\Payment\Services\PaymentEmailTemplate::RETAINER_REMINDER_SUBJECT,
+                                ],
+                            ];
+                        @endphp
+                        <div class="cc-card">
+                            <div class="cc-card-title">Templates by Trigger</div>
+                            <div class="cc-card-desc">
+                                The email is picked automatically: Trust Requests use the retainer request template,
+                                invoices on a flat fee matter the flat fee template, and every other invoice the billable
+                                invoice settings above. The same variables work here.
+                            </div>
+
+                            <div role="tablist" aria-label="Email template" id="email-tpl-tabs"
+                                style="display:flex;gap:4px;border-bottom:1px solid var(--cc-border);margin-bottom:14px;">
+                                @foreach ($templateTabs as $kind => $tab)
+                                    <button type="button" role="tab" id="email-tpl-tab-{{ $kind }}"
+                                        aria-controls="email-tpl-panel-{{ $kind }}"
+                                        aria-selected="{{ $loop->first ? 'true' : 'false' }}" tabindex="{{ $loop->first ? '0' : '-1' }}"
+                                        style="padding:8px 14px;border:none;background:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;margin-bottom:-1px;border-bottom:2px solid {{ $loop->first ? '#132238' : 'transparent' }};color:{{ $loop->first ? '#132238' : '#6b7c93' }};">
+                                        {{ $tab['label'] }}
+                                    </button>
+                                @endforeach
+                            </div>
+
+                            @foreach ($templateTabs as $kind => $tab)
+                                @php $tpl = (array) ($emailTemplates[$kind] ?? []); @endphp
+                                <div id="email-tpl-panel-{{ $kind }}" role="tabpanel"
+                                    aria-labelledby="email-tpl-tab-{{ $kind }}" tabindex="0" @unless ($loop->first) hidden @endunless>
+                                    <p style="font-size:12px;color:var(--cc-text-2);margin:0 0 12px;">{{ $tab['desc'] }}</p>
+
+                                    <div class="cc-field">
+                                        <label for="email-tpl-{{ $kind }}-subject">Initial email subject</label>
+                                        <input type="text" id="email-tpl-{{ $kind }}-subject" name="templates[{{ $kind }}][subject]" maxlength="500"
+                                            value="{{ old("templates.$kind.subject", $tpl['subject'] ?? '') }}"
+                                            placeholder="{{ $tab['subject'] }}">
+                                    </div>
+                                    <div class="cc-field">
+                                        <label for="email-tpl-{{ $kind }}-updated">Resend / updated subject</label>
+                                        <input type="text" id="email-tpl-{{ $kind }}-updated" name="templates[{{ $kind }}][subject_updated]" maxlength="500"
+                                            value="{{ old("templates.$kind.subject_updated", $tpl['subject_updated'] ?? '') }}"
+                                            placeholder="{{ $tab['updated'] }}">
+                                    </div>
+                                    <div class="cc-field">
+                                        <label for="email-tpl-{{ $kind }}-reminder">Reminder subject</label>
+                                        <input type="text" id="email-tpl-{{ $kind }}-reminder" name="templates[{{ $kind }}][reminder_subject]" maxlength="500"
+                                            value="{{ old("templates.$kind.reminder_subject", $tpl['reminder_subject'] ?? '') }}"
+                                            placeholder="{{ $tab['reminder'] }}">
+                                    </div>
+                                    <div class="cc-field">
+                                        <label for="email-tpl-{{ $kind }}-header">Header text</label>
+                                        <textarea id="email-tpl-{{ $kind }}-header" name="templates[{{ $kind }}][body_header]" rows="3" maxlength="5000"
+                                            style="width:100%;padding:8px 12px;border:1px solid var(--cc-border);border-radius:var(--cc-r-sm);font-size:13px;font-family:inherit;resize:vertical;background:#fafafa;">{{ old("templates.$kind.body_header", $tpl['body_header'] ?? '') }}</textarea>
+                                    </div>
+                                    <div class="cc-field">
+                                        <label for="email-tpl-{{ $kind }}-footer">Footer text</label>
+                                        <textarea id="email-tpl-{{ $kind }}-footer" name="templates[{{ $kind }}][body_footer]" rows="3" maxlength="5000"
+                                            style="width:100%;padding:8px 12px;border:1px solid var(--cc-border);border-radius:var(--cc-r-sm);font-size:13px;font-family:inherit;resize:vertical;background:#fafafa;">{{ old("templates.$kind.body_footer", $tpl['body_footer'] ?? '') }}</textarea>
+                                    </div>
+                                    @php
+                                        // Flat fee follows the billable PDF setting until saved; a retainer request has no invoice PDF by default.
+                                        $tplPdf = (bool) ($tpl['attach_pdf'] ?? ($kind === \Modules\Payment\Services\PaymentEmailTemplate::FLAT_FEE ? ($emailConfig ? $emailConfig->attach_pdf : true) : false));
+                                    @endphp
+                                    <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:0;">
+                                        <input type="hidden" name="templates[{{ $kind }}][attach_pdf]" value="0">
+                                        <input type="checkbox" name="templates[{{ $kind }}][attach_pdf]" value="1" @checked(old("templates.$kind.attach_pdf", $tplPdf ? '1' : '0') === '1')>
+                                        Attach the PDF to this email
+                                    </label>
+                                </div>
+                            @endforeach
+
+                            <script>
+                                (function() {
+                                    var tabs = Array.prototype.slice.call(document.querySelectorAll('#email-tpl-tabs [role=tab]'));
+
+                                    function select(tab) {
+                                        tabs.forEach(function(t) {
+                                            var on = t === tab;
+                                            t.setAttribute('aria-selected', on ? 'true' : 'false');
+                                            t.tabIndex = on ? 0 : -1;
+                                            t.style.borderBottomColor = on ? '#132238' : 'transparent';
+                                            t.style.color = on ? '#132238' : '#6b7c93';
+                                            document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+                                        });
+                                    }
+
+                                    tabs.forEach(function(tab, i) {
+                                        tab.addEventListener('click', function() { select(tab); });
+                                        // Arrow keys move between tabs (WAI-ARIA tabs pattern).
+                                        tab.addEventListener('keydown', function(e) {
+                                            var step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+                                            if (!step) return;
+                                            e.preventDefault();
+                                            var next = tabs[(i + step + tabs.length) % tabs.length];
+                                            select(next);
+                                            next.focus();
+                                        });
+                                    });
+                                })();
+                            </script>
+                        </div>
+                    @endif
+
                     {{-- PDF attachment toggle — QuickBooks uses the merged Disabled/QB PDF/SimpHub PDF
                          selector on the Connection tab instead, since "disabled" there needs to set
                          this same attach_pdf flag alongside qb_use_native_pdf. --}}
@@ -2589,6 +2709,18 @@
                             Email Preview
                         </div>
 
+                        @if ($client->requiresIoltaMid())
+                            {{-- Law firms: preview each trigger's template (see Templates by Trigger). --}}
+                            <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-left:auto;margin-right:12px;">
+                                Template
+                                <select id="previewTemplate" style="font:inherit;font-size:13px;padding:4px 8px;">
+                                    <option value="billable_invoice">Billable invoice</option>
+                                    <option value="{{ \Modules\Payment\Services\PaymentEmailTemplate::FLAT_FEE }}">Flat fee invoice</option>
+                                    <option value="{{ \Modules\Payment\Services\PaymentEmailTemplate::RETAINER }}">Retainer request</option>
+                                </select>
+                            </label>
+                        @endif
+
                         <button type="button" id="closePreview" class="cc-preview-close">
 
                             ✕
@@ -2614,12 +2746,12 @@
                                 style="border-collapse:collapse;border:1px solid #ddd;margin:25px 0;">
 
                                 <tr>
-                                    <td><strong>Invoice Number</strong></td>
+                                    <td><strong id="previewNumberLabel">Invoice Number</strong></td>
                                     <td>#1234</td>
                                 </tr>
 
                                 <tr>
-                                    <td><strong>Amount Due</strong></td>
+                                    <td><strong id="previewAmountLabel">Amount Due</strong></td>
                                     <td>USD 00.00</td>
                                 </tr>
 
@@ -2791,6 +2923,12 @@
                     // Open Preview
                     //==========================
 
+                    const previewTemplate = document.getElementById("previewTemplate");
+
+                    if (previewTemplate) {
+                        previewTemplate.addEventListener("change", loadEmailPreview);
+                    }
+
                     previewBtn.addEventListener("click", function() {
 
                         loadEmailPreview();
@@ -2833,11 +2971,31 @@
 
                     function loadEmailPreview() {
 
-                        const subject = document.querySelector('[name="subject_template"]').value;
+                        // Same fallbacks as PaymentEmailTemplate: a blank flat fee field uses the
+                        // billable one; a retainer request never falls back to invoice wording.
+                        const kind = previewTemplate ? previewTemplate.value : "billable_invoice";
+                        const isRetainer = kind === @json(\Modules\Payment\Services\PaymentEmailTemplate::RETAINER);
+                        const billable = function(name) {
+                            return document.querySelector('[name="' + name + '"]').value;
+                        };
+                        const own = function(name) {
+                            const el = document.querySelector('[name="templates[' + kind + '][' + name + ']"]');
+                            return el ? el.value : "";
+                        };
+                        const pick = function(name, billableName, retainerDefault) {
+                            if (kind === "billable_invoice") return billable(billableName);
+                            return own(name) || (isRetainer ? retainerDefault : billable(billableName));
+                        };
 
-                        const header = document.querySelector('[name="body_header"]').value;
+                        const subject = pick("subject", "subject_template", @json(\Modules\Payment\Services\PaymentEmailTemplate::RETAINER_SUBJECT));
 
-                        const footer = document.querySelector('[name="body_footer"]').value;
+                        const header = pick("body_header", "body_header", "");
+
+                        const footer = pick("body_footer", "body_footer", "");
+
+                        document.getElementById("previewNumberLabel").textContent = isRetainer ? "Request Number" : "Invoice Number";
+
+                        document.getElementById("previewAmountLabel").textContent = isRetainer ? "Deposit Amount" : "Amount Due";
 
                         const replyEmail = document.querySelector('[name="reply_to_email"]').value;
 
@@ -2849,11 +3007,16 @@
 
                         document.getElementById("previewSubject").textContent = subject;
 
-                        document.getElementById("previewHeader").innerHTML =
-                            header.replace(/\n/g, "<br>");
+                        // Escaped like the real email (nl2br(e(...))), so the preview shows what's sent.
+                        const asHtml = function(text) {
+                            const div = document.createElement("div");
+                            div.textContent = text;
+                            return div.innerHTML.replace(/\n/g, "<br>");
+                        };
 
-                        document.getElementById("previewFooter").innerHTML =
-                            footer.replace(/\n/g, "<br>");
+                        document.getElementById("previewHeader").innerHTML = asHtml(header);
+
+                        document.getElementById("previewFooter").innerHTML = asHtml(footer);
                         document.getElementById("previewPayButton").style.background =
                             brandColor;
                     }

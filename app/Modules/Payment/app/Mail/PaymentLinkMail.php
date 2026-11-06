@@ -15,6 +15,7 @@ use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\EmailConfiguration;
+use Modules\Payment\Services\PaymentEmailTemplate;
 
 class PaymentLinkMail extends Mailable
 {
@@ -35,11 +36,10 @@ class PaymentLinkMail extends Mailable
     {
         $invoiceRef = $this->invoice->invoice_number ?? $this->invoice->external_invoice_id;
 
-        if ($this->emailConfig) {
-            $template = $this->isResend
-                ? ($this->emailConfig->subject_template_updated ?: $this->emailConfig->subject_template)
-                : $this->emailConfig->subject_template;
+        $emailTemplate = $this->template();
+        $template      = $this->isResend ? $emailTemplate['subject_updated'] : $emailTemplate['subject'];
 
+        if ($template) {
             $subject = $this->replaceVariables((string) $template, [
                 'invoice_number' => (string) $invoiceRef,
                 'amount'         => ($this->invoice->currency ?? 'USD') . ' ' . number_format($this->invoice->amount_cents / 100, 2),
@@ -89,23 +89,28 @@ class PaymentLinkMail extends Mailable
             'merchant_email' => $this->emailConfig?->reply_to_email ?? '',
         ];
 
-        $bodyHeader = $this->emailConfig?->body_header
-            ? $this->replaceVariables($this->emailConfig->body_header, $templateData)
+        $emailTemplate = $this->template();
+
+        $bodyHeader = $emailTemplate['body_header']
+            ? $this->replaceVariables($emailTemplate['body_header'], $templateData)
             : null;
 
-        $bodyFooter = $this->emailConfig?->body_footer
-            ? $this->replaceVariables($this->emailConfig->body_footer, $templateData)
+        $bodyFooter = $emailTemplate['body_footer']
+            ? $this->replaceVariables($emailTemplate['body_footer'], $templateData)
             : null;
+
+        // A Trust Request reads as a retainer deposit request, never as an invoice.
+        $isRetainer = $emailTemplate['kind'] === PaymentEmailTemplate::RETAINER;
 
         return new Content(
             view: 'payment::emails.payment-link',
-            with: compact('logoUrl', 'merchantName', 'primaryColor', 'bodyHeader', 'bodyFooter', 'customerName', 'dueDate'),
+            with: compact('logoUrl', 'merchantName', 'primaryColor', 'bodyHeader', 'bodyFooter', 'customerName', 'dueDate', 'isRetainer'),
         );
     }
 
     public function attachments(): array
     {
-        if ($this->emailConfig !== null && ! $this->emailConfig->attach_pdf) {
+        if (! $this->template()['attach_pdf']) {
             return [];
         }
 
@@ -115,10 +120,18 @@ class PaymentLinkMail extends Mailable
 
         $invoiceRef = $this->invoice->invoice_number ?? $this->invoice->external_invoice_id;
 
+        $fileLabel  = $this->template()['kind'] === PaymentEmailTemplate::RETAINER ? 'Retainer-Request' : 'Invoice';
+
         return [
-            Attachment::fromData(fn () => $this->pdfContent, "Invoice-{$invoiceRef}.pdf")
+            Attachment::fromData(fn () => $this->pdfContent, "{$fileLabel}-{$invoiceRef}.pdf")
                 ->withMime('application/pdf'),
         ];
+    }
+
+    /** The template for this invoice's trigger (billable, flat fee or retainer request). */
+    private function template(): array
+    {
+        return PaymentEmailTemplate::resolve($this->invoice, $this->emailConfig);
     }
 
     private function replaceVariables(string $template, array $data): string

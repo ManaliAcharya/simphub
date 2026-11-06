@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Invoice Payment Reminder</title>
+    <title>{{ !empty($isRetainer) ? 'Retainer Deposit Reminder' : 'Invoice Payment Reminder' }}</title>
 </head>
 <body style="font-family: Arial, sans-serif; color: #14213d; line-height: 1.5; margin: 0; padding: 0; background: #f5f5f5;">
     <div style="max-width: 600px; margin: 32px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.07);">
@@ -23,9 +23,9 @@
             </p>
 
             <p style="margin: 0 0 16px;">
-                This is a friendly reminder that Invoice #{{ $invoice->invoice_number ?? $invoice->external_invoice_id }}
+                This is a friendly reminder that {{ !empty($isRetainer) ? 'Retainer Request' : 'Invoice' }} #{{ $invoice->invoice_number ?? $invoice->external_invoice_id }}
                 for <strong>{{ $invoice->currency }} {{ number_format($invoice->amount_cents / 100, 2) }}</strong>
-                is still awaiting payment.
+                is still awaiting {{ !empty($isRetainer) ? 'your deposit' : 'payment' }}.
             </p>
 
             @if(!empty($dueDate))

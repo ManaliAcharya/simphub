@@ -13,6 +13,7 @@ class EmailConfiguration extends Model
     {
         return [
             'attach_pdf' => 'boolean',
+            'templates'  => 'array',
         ];
     }
 
