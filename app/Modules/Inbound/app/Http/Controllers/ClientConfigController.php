@@ -524,6 +524,8 @@ class ClientConfigController extends Controller
             'fee_mode'               => ['nullable', 'string', Rule::in($allowedModes)],
             'cc_fee_percent'         => ['nullable', 'numeric', 'min:0', 'max:999.99999', 'decimal:0,5'],
             'ach_fee_percent'        => ['nullable', 'numeric', 'min:0', 'max:999.99999', 'decimal:0,5'],
+            'trust_cc_fee_percent'   => ['nullable', 'numeric', 'min:0', 'max:999.99999', 'decimal:0,5'],
+            'trust_ach_fee_percent'  => ['nullable', 'numeric', 'min:0', 'max:999.99999', 'decimal:0,5'],
             'exact_cent_fee_rounding_enabled' => ['nullable', 'boolean'],
             'fee_disclosure'         => [$isCd ? 'required' : 'nullable', 'string', 'max:1000'],
             'cd_business_name'       => [$isCd ? 'required' : 'nullable', 'string', 'max:255'],
@@ -537,11 +539,16 @@ class ClientConfigController extends Controller
             'cd_disclosure'          => ['nullable', 'string', 'max:500'],
         ]);
 
-        // If fee is enabled, at least one gateway fee must be > 0
+        // Lawcus/Clio set a separate fee for their IOLTA MID, on the fee form's IOLTA tab.
+        $hasIoltaTab = $client->requiresIoltaMid();
+
+        // If fee is enabled, at least one gateway fee must be > 0 (on either account tab)
         if ($feeOn) {
-            $ccFee  = (float) ($validated['cc_fee_percent'] ?? 0);
-            $achFee = (float) ($validated['ach_fee_percent'] ?? 0);
-            if ($ccFee <= 0 && $achFee <= 0) {
+            $fees = [$validated['cc_fee_percent'] ?? 0, $validated['ach_fee_percent'] ?? 0];
+            if ($hasIoltaTab) {
+                array_push($fees, $validated['trust_cc_fee_percent'] ?? 0, $validated['trust_ach_fee_percent'] ?? 0);
+            }
+            if (collect($fees)->every(fn ($fee) => (float) $fee <= 0)) {
                 return redirect()->back()
                     ->withErrors(['cc_fee_percent' => 'When processing fee is enabled, at least one gateway fee must be greater than 0.'])
                     ->withInput();
@@ -563,7 +570,7 @@ class ClientConfigController extends Controller
             ], fn($v) => $v !== null && $v !== '');
         }
 
-        $client->update([
+        $client->update(array_merge([
             'fee_surcharge_enabled'  => (bool) ($validated['fee_surcharge_enabled'] ?? false),
             'fee_mode'               => $validated['fee_mode'] ?? 'surcharge',
             'cc_fee_percent'         => $validated['cc_fee_percent'] ?? null,
@@ -571,7 +578,10 @@ class ClientConfigController extends Controller
             'exact_cent_fee_rounding_enabled' => (bool) ($validated['exact_cent_fee_rounding_enabled'] ?? false),
             'fee_disclosure'         => $validated['fee_disclosure'] ?? null,
             'cash_discount_details'  => !empty($cashDetails) ? $cashDetails : null,
-        ]);
+        ], $hasIoltaTab ? [
+            'trust_cc_fee_percent'   => $validated['trust_cc_fee_percent'] ?? null,
+            'trust_ach_fee_percent'  => $validated['trust_ach_fee_percent'] ?? null,
+        ] : []));
 
         return redirect()->back()->with('success', 'Processing fee configuration saved.');
     }

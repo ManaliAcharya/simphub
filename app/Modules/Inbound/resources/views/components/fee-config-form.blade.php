@@ -71,9 +71,37 @@
             </div>
         </div>
 
-        {{-- Gateway Fees — always show both rows --}}
+        {{-- Gateway Fees — always show both rows. Lawcus/Clio get one table per account tab
+             (Operating / IOLTA), since the IOLTA MID can be priced differently. --}}
+        @php
+            $showIolta   = $client->requiresIoltaMid();
+            $feeAccounts = $showIolta
+                ? ['OPERATING' => ['Operating MID', 'cc_fee_percent', 'ach_fee_percent'],
+                   'TRUST'     => ['IOLTA MID', 'trust_cc_fee_percent', 'trust_ach_fee_percent']]
+                : ['OPERATING' => [null, 'cc_fee_percent', 'ach_fee_percent']];
+            // An error on an IOLTA rate reopens that tab.
+            $feeActiveFund = $errors->hasAny(['trust_cc_fee_percent', 'trust_ach_fee_percent']) ? 'TRUST' : 'OPERATING';
+        @endphp
         <div style="margin-bottom:14px;">
             <p style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#6b7c93;margin:0 0 8px;">Gateway Fees</p>
+            @if($showIolta)
+            <div role="tablist" aria-label="Fee account" id="{{ $ns }}-fee-tabs"
+                 style="display:flex;gap:4px;border-bottom:1px solid rgba(19,34,56,.12);margin-bottom:10px;">
+                @foreach($feeAccounts as $tabFund => [$tabLabel])
+                    @php $tabActive = $tabFund === $feeActiveFund; @endphp
+                    <button type="button" role="tab" id="{{ $ns }}-fee-tab-{{ strtolower($tabFund) }}"
+                            aria-controls="{{ $ns }}-fee-panel-{{ strtolower($tabFund) }}"
+                            aria-selected="{{ $tabActive ? 'true' : 'false' }}" tabindex="{{ $tabActive ? '0' : '-1' }}"
+                            style="padding:8px 14px;border:none;background:none;cursor:pointer;font:inherit;font-size:13px;font-weight:600;margin-bottom:-1px;border-bottom:2px solid {{ $tabActive ? '#132238' : 'transparent' }};color:{{ $tabActive ? '#132238' : '#6b7c93' }};">
+                        {{ $tabLabel }}
+                    </button>
+                @endforeach
+            </div>
+            <p style="font-size:12px;color:#6b7c93;margin:0 0 10px;">Bills are charged the Operating MID's fee and Trust Requests the IOLTA MID's. Set a tab to 0% to charge no fee and hide the fee disclosure on its payment page.</p>
+            @endif
+            @foreach($feeAccounts as $tabFund => [$tabLabel, $ccField, $achField])
+            <div id="{{ $ns }}-fee-panel-{{ strtolower($tabFund) }}"
+                 @if($showIolta) role="tabpanel" aria-labelledby="{{ $ns }}-fee-tab-{{ strtolower($tabFund) }}" tabindex="0" @if($tabFund !== $feeActiveFund) hidden @endif @endif>
             <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid rgba(19,34,56,.08);border-radius:10px;overflow:hidden;">
                 <thead>
                     <tr style="background:#f8f9fb;">
@@ -90,9 +118,9 @@
                             @endif
                         </td>
                         <td style="padding:7px 12px;">
-                            <input type="number" name="cc_fee_percent" step="0.00001" min="0" max="999.99999"
-                                   placeholder="0.00000"
-                                   value="{{ old('cc_fee_percent', $client->cc_fee_percent) }}"
+                            <input type="number" name="{{ $ccField }}" step="0.00001" min="0" max="999.99999"
+                                   placeholder="0.00000" @if($tabLabel) aria-label="{{ $tabLabel }} CC / Card fee (%)" @endif
+                                   value="{{ old($ccField, $client->{$ccField}) }}"
                                    style="width:100%;padding:6px 8px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;">
                         </td>
                     </tr>
@@ -104,14 +132,47 @@
                             @endif
                         </td>
                         <td style="padding:7px 12px;">
-                            <input type="number" name="ach_fee_percent" step="0.00001" min="0" max="999.99999"
-                                   placeholder="0.00000"
-                                   value="{{ old('ach_fee_percent', $client->ach_fee_percent) }}"
+                            <input type="number" name="{{ $achField }}" step="0.00001" min="0" max="999.99999"
+                                   placeholder="0.00000" @if($tabLabel) aria-label="{{ $tabLabel }} ACH fee (%)" @endif
+                                   value="{{ old($achField, $client->{$achField}) }}"
                                    style="width:100%;padding:6px 8px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;">
                         </td>
                     </tr>
                 </tbody>
             </table>
+            </div>
+            @endforeach
+            @if($showIolta)
+            <script>
+                (function() {
+                    var tabs = Array.prototype.slice.call(document.querySelectorAll('#{{ $ns }}-fee-tabs [role=tab]'));
+
+                    function select(tab) {
+                        tabs.forEach(function(t) {
+                            var on = t === tab;
+                            t.setAttribute('aria-selected', on ? 'true' : 'false');
+                            t.tabIndex = on ? 0 : -1;
+                            t.style.borderBottomColor = on ? '#132238' : 'transparent';
+                            t.style.color = on ? '#132238' : '#6b7c93';
+                            document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+                        });
+                    }
+
+                    tabs.forEach(function(tab, i) {
+                        tab.addEventListener('click', function() { select(tab); });
+                        // Arrow keys move between tabs (WAI-ARIA tabs pattern).
+                        tab.addEventListener('keydown', function(e) {
+                            var step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+                            if (!step) return;
+                            e.preventDefault();
+                            var next = tabs[(i + step + tabs.length) % tabs.length];
+                            select(next);
+                            next.focus();
+                        });
+                    });
+                })();
+            </script>
+            @endif
         </div>
 
         {{-- Exact-Cent Rounding (IOLTA / trust-account compliance) --}}
@@ -225,6 +286,8 @@
 
 @error('cc_fee_percent')   <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror
 @error('ach_fee_percent')  <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror
+@error('trust_cc_fee_percent')  <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">IOLTA: {{ $message }}</p> @enderror
+@error('trust_ach_fee_percent') <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">IOLTA: {{ $message }}</p> @enderror
 @error('fee_disclosure')   <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror
 @error('cd_business_name') <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror
 @error('cd_address')       <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror

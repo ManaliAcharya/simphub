@@ -328,9 +328,8 @@ class PaymentCheckoutService
         }
 
         if ($applyFee) {
-            $isAch         = strtoupper($paymentMethod) === 'ACH';
-            $feePercentRaw = $isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent;
-            $feePercent    = $feePercentRaw !== null ? (string) $feePercentRaw : '0';
+            // The IOLTA tab's rate for trust money, the operating one otherwise.
+            $feePercent = $feeClient->feePercentFor($paymentMethod, $invoice->fund_type) ?? '0';
             if ((float) $feePercent > 0) {
                 $feeCents = $feeClient->exact_cent_fee_rounding_enabled
                     ? $this->calculateExactFeeCents((int) $invoice->amount_cents, $feePercent)
@@ -764,9 +763,8 @@ class PaymentCheckoutService
 
         $feeCents = 0;
         if ($applyFee) {
-            $isAch         = strtoupper($paymentMethod) === 'ACH';
-            $feePercentRaw = $isAch ? $feeClient->ach_fee_percent : $feeClient->cc_fee_percent;
-            $feePercent    = $feePercentRaw !== null ? (string) $feePercentRaw : '0';
+            // The IOLTA tab's rate for trust money, the operating one otherwise.
+            $feePercent = $feeClient->feePercentFor($paymentMethod, $invoice->fund_type) ?? '0';
             if ((float) $feePercent > 0) {
                 $feeCents = $feeClient->exact_cent_fee_rounding_enabled
                     ? $this->calculateExactFeeCents($invoiceCents, $feePercent)

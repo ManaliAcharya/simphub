@@ -42,6 +42,9 @@ class Client extends Model
             // surcharge/cash-discount rate used to compute IOLTA trust deposits down to the cent.
             'cc_fee_percent'              => 'decimal:5',
             'ach_fee_percent'             => 'decimal:5',
+            // The IOLTA tab's rates — see feePercentFor().
+            'trust_cc_fee_percent'        => 'decimal:5',
+            'trust_ach_fee_percent'       => 'decimal:5',
             'exact_cent_fee_rounding_enabled' => 'boolean',
             'qb_fee_override_enabled'        => 'boolean',
             'qb_multi_mid_enabled'           => 'boolean',
@@ -143,6 +146,26 @@ class Client extends Model
 
         return isset(self::IOLTA_KEYS[$gateway])
             && collect(self::IOLTA_KEYS[$gateway])->every(fn ($key) => trim((string) ($trust[$key] ?? '')) !== '');
+    }
+
+    /**
+     * The processing fee % for a payment method and fund type. A client with an IOLTA MID sets
+     * the trust rate on its IOLTA tab, since that MID can be priced differently; everyone else
+     * has one rate for all money. Null means no rate is set (no fee).
+     */
+    public function feePercentFor(string $paymentMethod, ?string $fundType): ?string
+    {
+        $isAch   = strtoupper($paymentMethod) === 'ACH';
+        $isTrust = strtoupper((string) $fundType) === 'TRUST' && $this->requiresIoltaMid();
+
+        $percent = match (true) {
+            $isTrust && $isAch => $this->trust_ach_fee_percent,
+            $isTrust           => $this->trust_cc_fee_percent,
+            $isAch             => $this->ach_fee_percent,
+            default            => $this->cc_fee_percent,
+        };
+
+        return $percent !== null ? (string) $percent : null;
     }
 
     /** Fields that pick one specific MID, so they never carry over from the operating set to trust. */

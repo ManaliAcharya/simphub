@@ -844,7 +844,9 @@
                 const config = window.feeConfig || {};
                 const gwKey2 = state.selectedOption && state.selectedOption.gateway
                     ? state.selectedOption.gateway.toLowerCase() : '';
-                const text = config.fee_disclosure;
+                const noFee = config.disclose_only_with_fee
+                    && !((state.selectedOption && state.selectedOption.fee_cents) > 0);
+                const text = noFee ? '' : config.fee_disclosure;
                 disclosureEl.textContent = text || '';
                 disclosureEl.style.display = text ? 'block' : 'none';
             }

@@ -119,14 +119,27 @@ class PaymentPageController extends Controller
         }
         // ─────────────────────────────────────────────────────────────────────
 
+        // The rates of this invoice's account tab (IOLTA for trust money at Lawcus/Clio).
+        $ccFeePercent  = (float) ($client->feePercentFor('CARD', $invoice->fund_type) ?? 0);
+        $achFeePercent = (float) ($client->feePercentFor('ACH', $invoice->fund_type) ?? 0);
+
+        // An account tab with no fee (e.g. an interchange-plus IOLTA MID) shows no fee disclosure.
+        $tabHasNoFee = $client->requiresIoltaMid() && $gatewayRates === null
+            && $ccFeePercent <= 0 && $achFeePercent <= 0;
+        if ($tabHasNoFee) {
+            $feeEnabled = false;
+        }
+
         return [
             'client_name'            => $client->client_name,
             'fee_surcharge_enabled'  => $feeEnabled,
             'fee_mode'               => $feeMode,
             'gateway_rates'          => $gatewayRates,      // per-gateway %, null = use cc/ach
-            'cc_fee_percent'         => (float) ($client->cc_fee_percent ?? 0),
-            'ach_fee_percent'        => (float) ($client->ach_fee_percent ?? 0),
-            'fee_disclosure'         => $client->fee_disclosure,
+            'cc_fee_percent'         => $ccFeePercent,
+            'ach_fee_percent'        => $achFeePercent,
+            'fee_disclosure'         => $tabHasNoFee ? null : $client->fee_disclosure,
+            // Per-tab rates can leave one payment method fee-free; don't disclose a fee on it.
+            'disclose_only_with_fee' => $client->requiresIoltaMid(),
             'cash_discount_details'  => (array) ($client->cash_discount_details ?? []),
             'qb_route_type'          => $routeType,         // 'fees_on' | 'fees_off' | null
         ];
