@@ -15,6 +15,7 @@ use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\EmailConfiguration;
+use Modules\Payment\Services\PaymentEmailTemplate;
 
 class PaymentReminderMail extends Mailable
 {
@@ -78,13 +79,15 @@ class PaymentReminderMail extends Mailable
                 'primaryColor' => $primaryColor,
                 'customerName' => $customerName,
                 'dueDate'      => $dueDate,
+                // A Trust Request's reminder asks for the retainer deposit, not an invoice.
+                'isRetainer'   => $this->template()['kind'] === PaymentEmailTemplate::RETAINER,
             ],
         );
     }
 
     public function attachments(): array
     {
-        if ($this->emailConfig !== null && ! $this->emailConfig->attach_pdf) {
+        if (! $this->template()['attach_pdf']) {
             return [];
         }
 
@@ -94,10 +97,18 @@ class PaymentReminderMail extends Mailable
 
         $invoiceRef = $this->invoice->invoice_number ?? $this->invoice->external_invoice_id;
 
+        $fileLabel  = $this->template()['kind'] === PaymentEmailTemplate::RETAINER ? 'Retainer-Request' : 'Invoice';
+
         return [
-            Attachment::fromData(fn () => $this->pdfContent, "Invoice-{$invoiceRef}.pdf")
+            Attachment::fromData(fn () => $this->pdfContent, "{$fileLabel}-{$invoiceRef}.pdf")
                 ->withMime('application/pdf'),
         ];
+    }
+
+    /** The template for this invoice's trigger (billable, flat fee or retainer request). */
+    private function template(): array
+    {
+        return PaymentEmailTemplate::resolve($this->invoice, $this->emailConfig);
     }
 
     private function replaceVariables(string $template, array $data): string

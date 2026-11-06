@@ -1,0 +1,105 @@
+<?php
+
+namespace Modules\Payment\Services;
+
+use Illuminate\Support\Arr;
+use Modules\Billing\Models\Invoice;
+use Modules\Inbound\Models\EmailConfiguration;
+
+/**
+ * Which payment email template an invoice gets, and that template's wording. Law firms
+ * (Clio, Lawcus) send different emails per trigger: a Trust Request is a retainer deposit
+ * request, a regular invoice uses the billable or flat fee template by its matter's billing
+ * type. Every other PMS — and any invoice whose matter type is unknown — uses the billable
+ * template, which is the email configuration's own subject/body.
+ */
+final class PaymentEmailTemplate
+{
+    public const BILLABLE = 'billable_invoice';
+
+    public const FLAT_FEE = 'flat_fee_invoice';
+
+    public const RETAINER = 'retainer_request';
+
+    /** The templates stored in email_configurations.templates; billable uses the base columns. */
+    public const EXTRA_KINDS = [self::FLAT_FEE, self::RETAINER];
+
+    /** Retainer requests never fall back to invoice wording. */
+    public const RETAINER_SUBJECT         = 'Retainer Request #{invoice_number} – Deposit Requested';
+    public const RETAINER_SUBJECT_UPDATED = 'Updated: Retainer Request #{invoice_number} – Deposit Requested';
+
+    public const RETAINER_REMINDER_SUBJECT = 'Reminder: Retainer Request {invoice_number} is awaiting your deposit';
+
+    private const LAW_PMS = ['clio', 'lawcus'];
+
+    public static function kindFor(Invoice $invoice): string
+    {
+        if (! in_array(strtolower((string) $invoice->pms_source), self::LAW_PMS, true)) {
+            return self::BILLABLE;
+        }
+
+        if (strtoupper((string) $invoice->fund_type) === 'TRUST') {
+            return self::RETAINER;
+        }
+
+        return self::isFlatFeeMatter($invoice) ? self::FLAT_FEE : self::BILLABLE;
+    }
+
+    /**
+     * The template for this invoice: subject, subject_updated, reminder_subject, body_header,
+     * body_footer, attach_pdf and kind. A flat fee field left blank uses the billable one; the
+     * billable reminder subject is the client's own (Reminders settings), passed in.
+     *
+     * @return array{kind: string, subject: ?string, subject_updated: ?string, reminder_subject: ?string, body_header: ?string, body_footer: ?string, attach_pdf: bool}
+     */
+    public static function resolve(Invoice $invoice, ?EmailConfiguration $config, ?string $reminderSubject = null): array
+    {
+        $kind = self::kindFor($invoice);
+
+        $billable = [
+            'subject'          => $config?->subject_template,
+            'subject_updated'  => $config?->subject_template_updated ?: $config?->subject_template,
+            'reminder_subject' => $reminderSubject,
+            'body_header'      => $config?->body_header,
+            'body_footer'      => $config?->body_footer,
+            'attach_pdf'       => $config === null || (bool) $config->attach_pdf,
+        ];
+
+        if ($kind === self::BILLABLE) {
+            return ['kind' => $kind] + $billable;
+        }
+
+        $own = array_filter(
+            (array) Arr::get((array) ($config?->templates ?? []), $kind, []),
+            fn ($value) => $value !== null && $value !== '',
+        );
+
+        // A retainer request reads as a deposit request even before the firm writes its own.
+        $fallback = $kind === self::RETAINER
+            ? ['subject' => self::RETAINER_SUBJECT, 'subject_updated' => self::RETAINER_SUBJECT_UPDATED,
+               'reminder_subject' => self::RETAINER_REMINDER_SUBJECT,
+               'body_header' => null, 'body_footer' => null, 'attach_pdf' => false]
+            : $billable;
+
+        $template = array_merge($fallback, $own);
+        $template['attach_pdf'] = (bool) $template['attach_pdf'];
+
+        return ['kind' => $kind] + $template;
+    }
+
+    /**
+     * Whether the invoice's matter bills a flat fee. Clio's matter has billing_method
+     * ("flat"); Lawcus's invoice carries its matter's billing type, when it sends one.
+     */
+    private static function isFlatFeeMatter(Invoice $invoice): bool
+    {
+        $raw = (array) ($invoice->raw_payload ?? []);
+
+        $billingType = Arr::get($raw, 'matter.data.billing_method')
+            ?? Arr::get($raw, 'invoice.data.matter.billing_method')
+            ?? Arr::get($raw, 'invoice.data.matter.billing_type')
+            ?? Arr::get($raw, 'invoice.data.matter_billing_type');
+
+        return is_string($billingType) && str_contains(strtolower($billingType), 'flat');
+    }
+}

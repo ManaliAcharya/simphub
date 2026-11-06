@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <title>Invoice Payment Link</title>
+    <title>{{ !empty($isRetainer) ? 'Retainer Deposit Request' : 'Invoice Payment Link' }}</title>
 </head>
 <body style="font-family: Arial, sans-serif; color: #14213d; line-height: 1.5; margin: 0; padding: 0; background: #f5f5f5;">
     <div style="max-width: 600px; margin: 32px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.07);">
@@ -20,7 +20,7 @@
             <div style="margin-bottom: 20px; color: #374151; font-size: 14px;">{!! nl2br(e($bodyHeader)) !!}</div>
             @endif
 
-            <h2 style="color: #14213d; margin: 0 0 16px; font-size: 20px;">Invoice ready for payment</h2>
+            <h2 style="color: #14213d; margin: 0 0 16px; font-size: 20px;">{{ !empty($isRetainer) ? 'Retainer deposit request' : 'Invoice ready for payment' }}</h2>
 
             @if(!empty($customerName))
             <p style="margin: 0 0 16px;">Hello <strong>{{ $customerName }}</strong>,</p>
@@ -28,11 +28,11 @@
 
             <table style="width: 100%; border-collapse: collapse; margin: 16px 0 24px; font-size: 14px;">
                 <tr>
-                    <td style="padding: 10px 14px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: bold; width: 40%; color: #374151;">Invoice Number</td>
+                    <td style="padding: 10px 14px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: bold; width: 40%; color: #374151;">{{ !empty($isRetainer) ? 'Request Number' : 'Invoice Number' }}</td>
                     <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">#{{ $invoice->invoice_number ?? $invoice->external_invoice_id }}</td>
                 </tr>
                 <tr>
-                    <td style="padding: 10px 14px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: bold; color: #374151;">Amount Due</td>
+                    <td style="padding: 10px 14px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: bold; color: #374151;">{{ !empty($isRetainer) ? 'Deposit Amount' : 'Amount Due' }}</td>
                     <td style="padding: 10px 14px; border: 1px solid #e5e7eb;"><strong>{{ $invoice->currency }} {{ number_format($invoice->amount_cents / 100, 2) }}</strong></td>
                 </tr>
                 @if(!empty($dueDate))

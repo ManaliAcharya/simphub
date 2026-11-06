@@ -21,6 +21,7 @@ use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Services\QbReadyToSend;
 use Modules\Inbound\Services\SubscriptionService;
 use Modules\Inbound\Services\ZohoRegionResolver;
+use Modules\Payment\Services\PaymentEmailTemplate;
 use Modules\Payment\Services\QbFeeOverride;
 use Modules\Routing\Models\RoutingRule;
 use Modules\Routing\Models\TerminalConfiguration;
@@ -1103,7 +1104,32 @@ class ClientConfigController extends Controller
             'reply_to_name'            => ['nullable', 'string', 'max:255'],
             'from_name'                => ['nullable', 'string', 'max:255'],
             'attach_pdf'               => ['nullable', 'in:0,1'],
+            'templates'                => ['nullable', 'array:'.implode(',', PaymentEmailTemplate::EXTRA_KINDS)],
+            'templates.*.subject'         => ['nullable', 'string', 'max:500'],
+            'templates.*.subject_updated' => ['nullable', 'string', 'max:500'],
+            'templates.*.reminder_subject' => ['nullable', 'string', 'max:500'],
+            'templates.*.body_header'     => ['nullable', 'string', 'max:5000'],
+            'templates.*.body_footer'     => ['nullable', 'string', 'max:5000'],
+            'templates.*.attach_pdf'      => ['nullable', 'in:0,1'],
         ]);
+
+        // Law firms pick a template per trigger (flat fee invoice, retainer request); blank
+        // fields fall back as described in PaymentEmailTemplate.
+        $templates = null;
+        if ($client->requiresIoltaMid()) {
+            $templates = [];
+            foreach (PaymentEmailTemplate::EXTRA_KINDS as $kind) {
+                $posted = (array) ($validated['templates'][$kind] ?? []);
+                $templates[$kind] = [
+                    'subject'         => ($posted['subject'] ?? null) ?: null,
+                    'subject_updated' => ($posted['subject_updated'] ?? null) ?: null,
+                    'reminder_subject' => ($posted['reminder_subject'] ?? null) ?: null,
+                    'body_header'     => ($posted['body_header'] ?? null) ?: null,
+                    'body_footer'     => ($posted['body_footer'] ?? null) ?: null,
+                    'attach_pdf'      => ($posted['attach_pdf'] ?? '0') === '1',
+                ];
+            }
+        }
 
         EmailConfiguration::updateOrCreate(
             ['client_id' => $client->id],
@@ -1117,7 +1143,7 @@ class ClientConfigController extends Controller
                 'reply_to_name'            => ($validated['reply_to_name'] ?? null) ?: null,
                 'from_name'                => ($validated['from_name'] ?? null) ?: null,
                 'attach_pdf'               => ($validated['attach_pdf'] ?? '1') === '1',
-            ]
+            ] + ($templates !== null ? ['templates' => $templates] : [])
         );
 
         return redirect()->back()->with('success', 'Email settings saved.');

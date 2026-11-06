@@ -316,7 +316,12 @@ class PaymentLinkService
 
         $paymentUrl  = $this->urlForSession($session);
         $emailConfig = $client ? EmailConfiguration::where('client_id', $client->id)->first() : null;
-        $subject     = (string) ($client?->reminder_subject_template ?? config('reminders.default_subject_template', 'Reminder: Invoice {invoice_number} is awaiting payment'));
+        // The reminder subject follows the trigger's template too (e.g. a retainer request).
+        $subject     = (string) PaymentEmailTemplate::resolve(
+            $invoice,
+            $emailConfig,
+            $client?->reminder_subject_template ?? config('reminders.default_subject_template', 'Reminder: Invoice {invoice_number} is awaiting payment'),
+        )['reminder_subject'];
         $fromName    = $this->resolveFromName($invoice, $client, $emailConfig);
         $pdfContent  = $this->resolvePdfContent($invoice, $paymentUrl, $pdfContent);
         $sent        = 0;
