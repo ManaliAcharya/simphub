@@ -40,7 +40,7 @@ class InvoiceListStatus
                 ->get([
                     'id', 'invoice_id', 'status', 'link_status', 'payment_link_sent_at',
                     'payment_link_last_sent_to', 'last_email_sent_at', 'reminders_sent_count',
-                    'last_reminder_sent_at',
+                    'last_reminder_sent_at', 'reminders_paused_at',
                 ]));
             $transactions = $transactions->concat(DB::table('transactions')
                 ->whereIn('invoice_id', $chunk)
@@ -89,9 +89,12 @@ class InvoiceListStatus
         }
 
         $reminders = (int) ($session->reminders_sent_count ?? 0);
-        $reminderNote = $reminders > 0
-            ? $reminders.' '.str('reminder')->plural($reminders).' sent, last '.$session->last_reminder_sent_at?->format('M j, Y')
-            : null;
+        $reminderNote = implode('. ', array_filter([
+            $reminders > 0
+                ? $reminders.' '.str('reminder')->plural($reminders).' sent, last '.$session->last_reminder_sent_at?->format('M j, Y')
+                : null,
+            $session->reminders_paused_at ? 'Reminders paused '.$session->reminders_paused_at->format('M j, Y') : null,
+        ])) ?: null;
 
         // The first send's claim is set before sending; its recipient list is then
         // corrected to who actually got it, so an empty list means it reached nobody.

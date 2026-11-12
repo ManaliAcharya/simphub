@@ -2878,18 +2878,37 @@
                                         @endforeach
                                         <td>
                                             @if (!empty($invoice->recipient_emails) && $invoice->has_payment_link)
-                                                <form
-                                                    action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
-                                                    method="POST">
-                                                    @csrf
+                                                <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                                                    <form
+                                                        action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
+                                                        method="POST">
+                                                        @csrf
 
-                                                    <input type="hidden" name="provider"
-                                                        value="{{ $provider }}">
+                                                        <input type="hidden" name="provider"
+                                                            value="{{ $provider }}">
 
-                                                    <button type="submit" class="button primary">
-                                                        {{ $invoice->has_been_sent ? 'Resend' : 'Send' }}
-                                                    </button>
-                                                </form>
+                                                        <button type="submit" class="button primary">
+                                                            {{ $invoice->has_been_sent ? 'Resend' : 'Send' }}
+                                                        </button>
+                                                    </form>
+
+                                                    {{-- Pause stops this invoice's reminders (e.g. a check is in the mail);
+                                                         Resume sends one now and restarts the reminder schedule. --}}
+                                                    @if ($invoice->can_pause_reminders)
+                                                        @php $invoiceLabel = $invoice->invoice_number ? 'invoice #' . $invoice->invoice_number : 'this invoice'; @endphp
+                                                        <form
+                                                            action="{{ route('inbound.clients.invoice-reminders', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
+                                                            method="POST">
+                                                            @csrf
+                                                            <input type="hidden" name="action" value="{{ $invoice->reminders_paused ? 'resume' : 'pause' }}">
+                                                            <button type="submit" class="button secondary"
+                                                                aria-label="{{ $invoice->reminders_paused ? 'Resume reminders for ' : 'Pause reminders for ' }}{{ $invoiceLabel }}"
+                                                                title="{{ $invoice->reminders_paused ? 'Send a reminder now and restart the reminder schedule' : 'Stop reminders for this invoice' }}">
+                                                                {{ $invoice->reminders_paused ? 'Resume' : 'Pause' }}
+                                                            </button>
+                                                        </form>
+                                                    @endif
+                                                </div>
                                             @else
                                                 -
                                             @endif

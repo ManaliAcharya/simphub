@@ -34,6 +34,7 @@ use Modules\Inbound\Services\ZohoOAuthService;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Payment\Services\InvoiceListStatus;
+use Modules\Payment\Services\InvoiceReminderPause;
 
 class PmsIntegrationController extends Controller
 {
@@ -860,7 +861,7 @@ class PmsIntegrationController extends Controller
         $latestSessionByInvoice = PaymentSession::query()
             ->whereIn('invoice_id', $invoices->pluck('id'))
             ->orderByDesc('created_at')
-            ->get(['invoice_id', 'payment_link_sent_at'])
+            ->get(['id', 'invoice_id', 'status', 'link_status', 'payment_link_sent_at', 'first_email_sent_at', 'reminders_paused_at'])
             ->unique('invoice_id')
             ->keyBy('invoice_id');
 
@@ -868,9 +869,13 @@ class PmsIntegrationController extends Controller
         // our checkout result, so neither is shown from it (see InvoiceListStatus).
         $listStatuses = app(InvoiceListStatus::class)->forInvoices($invoices);
 
-        $invoices = $invoices->map(function ($invoice) use ($latestSessionByInvoice, $listStatuses) {
+        $invoices = $invoices->map(function ($invoice) use ($latestSessionByInvoice, $listStatuses, $client) {
+            $session = $latestSessionByInvoice->get($invoice->id);
             $invoice->recipient_email_list = implode(', ', $invoice->recipient_emails ?? []);
-            $invoice->has_been_sent = (bool) ($latestSessionByInvoice->get($invoice->id)?->payment_link_sent_at);
+            $invoice->has_been_sent = (bool) $session?->payment_link_sent_at;
+            // Pause / Resume reminders — only while there's still something to remind about.
+            $invoice->can_pause_reminders = InvoiceReminderPause::available($client, $invoice, $session);
+            $invoice->reminders_paused    = (bool) $session?->reminders_paused_at;
             // No payment link at all (e.g. a Lawcus invoice with nothing due): nothing to send.
             $invoice->has_payment_link = $latestSessionByInvoice->has($invoice->id);
             $invoice->email_status   = $listStatuses[$invoice->id]['email'];

@@ -33,6 +33,7 @@ class DispatchInvoiceReminders extends Command
             ->where('link_status', 'active')
             ->whereNotNull('next_reminder_at')
             ->where('next_reminder_at', '<=', now())
+            ->whereNull('reminders_paused_at')
             ->whereHas('invoice', fn ($q) => $q->whereIn('pms_client_id', $enabledClientIds))
             ->orderBy('next_reminder_at')
             ->chunkById(200, function ($sessions) use (&$dispatched): void {

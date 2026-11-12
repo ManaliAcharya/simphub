@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 class PaymentSession extends Model
 {
@@ -26,7 +27,22 @@ class PaymentSession extends Model
             'first_email_sent_at'       => 'datetime',
             'last_reminder_sent_at'     => 'datetime',
             'next_reminder_at'          => 'datetime',
+            'reminders_paused_at'       => 'datetime',
+            'reminder_cycle_started_at' => 'datetime',
+            'reminder_cycle_offset'     => 'integer',
         ];
+    }
+
+    /** When the current reminder schedule started: the first email, or the last Resume. */
+    public function reminderCycleStartedAt(): ?Carbon
+    {
+        return $this->reminder_cycle_started_at ?? $this->first_email_sent_at;
+    }
+
+    /** Which step of the reminder schedule comes next. */
+    public function reminderStepIndex(): int
+    {
+        return (int) $this->reminders_sent_count - (int) $this->reminder_cycle_offset;
     }
 
     public function invoice(): BelongsTo
