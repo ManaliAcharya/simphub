@@ -21,6 +21,7 @@ use Modules\Inbound\Models\PmsConnection;
 use Modules\Inbound\Services\QbReadyToSend;
 use Modules\Inbound\Services\SubscriptionService;
 use Modules\Inbound\Services\ZohoRegionResolver;
+use Modules\Payment\Services\InvoiceReminderPause;
 use Modules\Payment\Services\PaymentEmailTemplate;
 use Modules\Payment\Services\QbFeeOverride;
 use Modules\Routing\Models\RoutingRule;
@@ -1272,5 +1273,30 @@ class ClientConfigController extends Controller
 
             return back()->with('error', 'Failed to resend invoice email. Please try again.');
         }
+    }
+
+    /** Pause / Resume reminders for one invoice from the Invoice List tab. */
+    public function updateInvoiceReminders(Request $request, string $pms_client_id, Invoice $invoice, InvoiceReminderPause $pauses): RedirectResponse
+    {
+        abort_unless((string) $invoice->pms_client_id === $pms_client_id, 404);
+
+        $validated = $request->validate(['action' => ['required', Rule::in(['pause', 'resume'])]]);
+        $client    = Client::query()->where('pms_client_id', $pms_client_id)->firstOrFail();
+        $session   = PaymentSession::query()->where('invoice_id', $invoice->id)->latest('created_at')->first();
+        $label     = $invoice->invoice_number ? '#'.$invoice->invoice_number : 'this invoice';
+
+        if (! InvoiceReminderPause::available($client, $invoice, $session)) {
+            return back()->with('error', "Reminders can't be paused or resumed for invoice {$label}.");
+        }
+
+        if ($validated['action'] === 'pause') {
+            $pauses->pause($session);
+
+            return back()->with('success', "Reminders paused for invoice {$label}.");
+        }
+
+        $pauses->resume($session, $client);
+
+        return back()->with('success', "Reminders resumed for invoice {$label}. A reminder is being sent now.");
     }
 }

@@ -26,8 +26,13 @@ class SendInvoiceReminder implements ShouldQueue
 
     public int $backoff = 30;
 
+    /**
+     * @param  bool  $resumed  the immediate reminder sent on Resume — outside the schedule,
+     *                         which InvoiceReminderPause has already restarted
+     */
     public function __construct(
         public readonly string $paymentSessionId,
+        public readonly bool $resumed = false,
     ) {}
 
     public function handle(InvoiceLiveStatusResolver $resolver, PaymentLinkService $paymentLinks): void
@@ -44,6 +49,13 @@ class SendInvoiceReminder implements ShouldQueue
                 'has_invoice'         => (bool) $session?->invoice,
                 'first_email_sent_at' => $session?->first_email_sent_at?->toDateTimeString(),
             ]);
+            return;
+        }
+
+        // Paused from the invoice list after this job was queued.
+        if ($session->reminders_paused_at !== null) {
+            Log::info('SendInvoiceReminder aborted: reminders paused', ['payment_session_id' => $session->id]);
+            $session->forceFill(['next_reminder_at' => null])->save();
             return;
         }
 
@@ -64,9 +76,9 @@ class SendInvoiceReminder implements ShouldQueue
         }
 
         $schedule  = $client->reminderScheduleDays();
-        $stepIndex = $session->reminders_sent_count;
+        $stepIndex = $session->reminderStepIndex();
 
-        if ($stepIndex >= count($schedule)) {
+        if (! $this->resumed && $stepIndex >= count($schedule)) {
             Log::info('SendInvoiceReminder aborted: cadence exhausted', [
                 'payment_session_id' => $session->id,
                 'step_index'         => $stepIndex,
@@ -107,9 +119,16 @@ class SendInvoiceReminder implements ShouldQueue
             return;
         }
 
-        $stepIndex      = $this->resolveCatchUpStep($session, $schedule, $stepIndex);
-        $reminderNumber = $stepIndex + 1;
-        $dayOffset      = $schedule[$stepIndex];
+        // Reminder numbers keep counting across restarts (one row per number); the resume
+        // reminder isn't a schedule step, so it has no day offset.
+        if ($this->resumed) {
+            $reminderNumber = (int) $session->reminders_sent_count + 1;
+            $dayOffset      = 0;
+        } else {
+            $stepIndex      = $this->resolveCatchUpStep($session, $schedule, $stepIndex);
+            $reminderNumber = (int) $session->reminder_cycle_offset + $stepIndex + 1;
+            $dayOffset      = $schedule[$stepIndex];
+        }
         $recipient      = $client->payment_link_override_enabled
             ? ($client->payment_link_recipient ?? 'customer')
             : 'customer';
@@ -132,7 +151,7 @@ class SendInvoiceReminder implements ShouldQueue
 
                 PaymentSessionReminder::updateOrCreate(
                     ['payment_session_id' => $session->id, 'reminder_number' => $reminderNumber],
-                    ['day_offset' => $dayOffset, 'status' => 'skipped', 'reason' => 'no_customer_email', 'recipient' => $recipient],
+                    ['day_offset' => $dayOffset, 'status' => 'skipped', 'reason' => $this->resumed ? 'resumed_no_customer_email' : 'no_customer_email', 'recipient' => $recipient],
                 );
 
                 AuditLogger::log('payment_reminder_skipped', 'payment_session', $session->id, [
@@ -145,13 +164,11 @@ class SendInvoiceReminder implements ShouldQueue
                 return;
             }
 
-            PaymentSessionReminder::create([
-                'payment_session_id' => $session->id,
-                'reminder_number'    => $reminderNumber,
-                'day_offset'         => $dayOffset,
-                'status'             => 'sent',
-                'recipient'          => $recipient,
-            ]);
+            // A retry after a failed attempt finds that attempt's 'failed' row for this number.
+            PaymentSessionReminder::updateOrCreate(
+                ['payment_session_id' => $session->id, 'reminder_number' => $reminderNumber],
+                ['day_offset' => $dayOffset, 'status' => 'sent', 'reason' => $this->resumed ? 'resumed' : null, 'recipient' => $recipient],
+            );
 
             $this->advance($session, $schedule, $reminderNumber);
 
@@ -190,8 +207,21 @@ class SendInvoiceReminder implements ShouldQueue
 
     private function advance(PaymentSession $session, array $schedule, int $newCount): void
     {
-        $nextAt = $newCount < count($schedule)
-            ? $session->first_email_sent_at->copy()->addDays((int) $schedule[$newCount])
+        // The resume reminder sits outside the schedule: the restarted schedule's next
+        // reminder (set on Resume) stays as it is.
+        if ($this->resumed) {
+            $session->forceFill([
+                'reminders_sent_count'  => $newCount,
+                'reminder_cycle_offset' => (int) $session->reminder_cycle_offset + 1,
+                'last_reminder_sent_at' => now(),
+            ])->save();
+
+            return;
+        }
+
+        $nextStep = $newCount - (int) $session->reminder_cycle_offset;
+        $nextAt   = $nextStep < count($schedule)
+            ? $session->reminderCycleStartedAt()->copy()->addDays((int) $schedule[$nextStep])
             : null;
 
         $session->forceFill([
@@ -212,7 +242,7 @@ class SendInvoiceReminder implements ShouldQueue
             return $stepIndex;
         }
 
-        $daysElapsed = (int) $session->first_email_sent_at->diffInDays(now());
+        $daysElapsed = (int) $session->reminderCycleStartedAt()->diffInDays(now());
         $target      = $stepIndex;
 
         for ($i = $stepIndex; $i < count($schedule); $i++) {
@@ -223,7 +253,7 @@ class SendInvoiceReminder implements ShouldQueue
 
         for ($i = $stepIndex; $i < $target; $i++) {
             PaymentSessionReminder::firstOrCreate(
-                ['payment_session_id' => $session->id, 'reminder_number' => $i + 1],
+                ['payment_session_id' => $session->id, 'reminder_number' => (int) $session->reminder_cycle_offset + $i + 1],
                 ['day_offset' => $schedule[$i], 'status' => 'skipped', 'reason' => 'catch_up_collapsed'],
             );
         }

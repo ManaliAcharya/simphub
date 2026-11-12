@@ -28,6 +28,7 @@ class BackfillInvoiceReminders extends Command
         $sessions = PaymentSession::query()
             ->where('link_status', 'active')
             ->whereNotNull('first_email_sent_at')
+            ->whereNull('reminders_paused_at')
             ->whereHas('invoice', fn ($q) => $q->where('pms_client_id', $pmsClientId))
             ->get();
 
@@ -35,8 +36,8 @@ class BackfillInvoiceReminders extends Command
         $cleared = 0;
 
         foreach ($sessions as $session) {
-            $stepIndex   = $session->reminders_sent_count;
-            $daysElapsed = (int) $session->first_email_sent_at->diffInDays(now());
+            $stepIndex   = $session->reminderStepIndex();
+            $daysElapsed = (int) $session->reminderCycleStartedAt()->diffInDays(now());
 
             // Already exhausted, or already past the last cadence step entirely — no
             // retroactive burst for an invoice that's been unpaid since before reminders
@@ -48,7 +49,7 @@ class BackfillInvoiceReminders extends Command
             }
 
             $session->forceFill([
-                'next_reminder_at' => $session->first_email_sent_at->copy()->addDays((int) $schedule[$stepIndex]),
+                'next_reminder_at' => $session->reminderCycleStartedAt()->copy()->addDays((int) $schedule[$stepIndex]),
             ])->save();
             $updated++;
         }
