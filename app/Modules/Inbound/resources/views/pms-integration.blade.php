@@ -2503,15 +2503,23 @@
                         </div>
                     </div>
 
-                    {{-- Per-trigger templates (law firms): the subject/body above is the billable invoice
-                         template; flat fee invoices and Trust Requests (retainer requests) get their own. --}}
+                    {{-- Per-trigger templates (law firms): the subject/body above is the base every
+                         template starts from; billable hours invoices, flat fee invoices and Trust
+                         Requests (retainer requests) each get their own. --}}
                     @if ($client->requiresIoltaMid())
                         @php
                             $emailTemplates = (array) ($emailConfig?->templates ?? []);
                             $templateTabs = [
+                                \Modules\Payment\Services\PaymentEmailTemplate::BILLABLE => [
+                                    'label'   => 'Billable hours invoice',
+                                    'desc'    => 'Clio invoices on an hourly matter, and Lawcus invoices with time entries or expenses. Blank fields use the email settings above.',
+                                    'subject' => $emailConfig?->subject_template ?? 'Invoice #{invoice_number} – Payment Required',
+                                    'updated' => $emailConfig?->subject_template_updated ?? 'Updated: Invoice #{invoice_number} – Payment Required',
+                                    'reminder' => $client->reminder_subject_template ?? 'Reminder: Invoice {invoice_number} is awaiting payment',
+                                ],
                                 \Modules\Payment\Services\PaymentEmailTemplate::FLAT_FEE => [
                                     'label'   => 'Flat fee invoice',
-                                    'desc'    => 'Clio invoices on a flat fee matter, and Lawcus invoices whose lines are all flat fees. Blank fields use the billable invoice settings above.',
+                                    'desc'    => 'Clio invoices on a flat fee matter, and Lawcus invoices whose lines are all flat fees. Blank fields use the email settings above.',
                                     'subject' => $emailConfig?->subject_template ?? 'Invoice #{invoice_number} – Payment Required',
                                     'updated' => $emailConfig?->subject_template_updated ?? 'Updated: Invoice #{invoice_number} – Payment Required',
                                     'reminder' => $client->reminder_subject_template ?? 'Reminder: Invoice {invoice_number} is awaiting payment',
@@ -2529,8 +2537,8 @@
                             <div class="cc-card-title">Templates by Trigger</div>
                             <div class="cc-card-desc">
                                 The email is picked automatically: Trust Requests use the retainer request template,
-                                invoices on a flat fee matter the flat fee template, and every other invoice the billable
-                                invoice settings above. The same variables work here.
+                                flat fee invoices the flat fee template, and every other invoice the billable hours
+                                template. A field left blank uses the email settings above. The same variables work here.
                             </div>
 
                             <div role="tablist" aria-label="Email template" id="email-tpl-tabs"
@@ -2580,8 +2588,8 @@
                                             style="width:100%;padding:8px 12px;border:1px solid var(--cc-border);border-radius:var(--cc-r-sm);font-size:13px;font-family:inherit;resize:vertical;background:#fafafa;">{{ old("templates.$kind.body_footer", $tpl['body_footer'] ?? '') }}</textarea>
                                     </div>
                                     @php
-                                        // Flat fee follows the billable PDF setting until saved; a retainer request has no invoice PDF by default.
-                                        $tplPdf = (bool) ($tpl['attach_pdf'] ?? ($kind === \Modules\Payment\Services\PaymentEmailTemplate::FLAT_FEE ? ($emailConfig ? $emailConfig->attach_pdf : true) : false));
+                                        // Invoice templates follow the base PDF setting until saved; a retainer request has no invoice PDF by default.
+                                        $tplPdf = (bool) ($tpl['attach_pdf'] ?? ($kind !== \Modules\Payment\Services\PaymentEmailTemplate::RETAINER ? ($emailConfig ? $emailConfig->attach_pdf : true) : false));
                                     @endphp
                                     <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin:0;">
                                         <input type="hidden" name="templates[{{ $kind }}][attach_pdf]" value="0">
@@ -2714,7 +2722,7 @@
                             <label style="display:flex;align-items:center;gap:6px;font-size:13px;margin-left:auto;margin-right:12px;">
                                 Template
                                 <select id="previewTemplate" style="font:inherit;font-size:13px;padding:4px 8px;">
-                                    <option value="billable_invoice">Billable invoice</option>
+                                    <option value="{{ \Modules\Payment\Services\PaymentEmailTemplate::BILLABLE }}">Billable hours invoice</option>
                                     <option value="{{ \Modules\Payment\Services\PaymentEmailTemplate::FLAT_FEE }}">Flat fee invoice</option>
                                     <option value="{{ \Modules\Payment\Services\PaymentEmailTemplate::RETAINER }}">Retainer request</option>
                                 </select>
@@ -2971,20 +2979,20 @@
 
                     function loadEmailPreview() {
 
-                        // Same fallbacks as PaymentEmailTemplate: a blank flat fee field uses the
-                        // billable one; a retainer request never falls back to invoice wording.
-                        const kind = previewTemplate ? previewTemplate.value : "billable_invoice";
+                        // Same fallbacks as PaymentEmailTemplate: a blank billable hours or flat fee
+                        // field uses the base email settings; a retainer request never falls back
+                        // to invoice wording. Without per-trigger templates only the base applies.
+                        const kind = previewTemplate ? previewTemplate.value : @json(\Modules\Payment\Services\PaymentEmailTemplate::BILLABLE);
                         const isRetainer = kind === @json(\Modules\Payment\Services\PaymentEmailTemplate::RETAINER);
-                        const billable = function(name) {
+                        const base = function(name) {
                             return document.querySelector('[name="' + name + '"]').value;
                         };
                         const own = function(name) {
                             const el = document.querySelector('[name="templates[' + kind + '][' + name + ']"]');
                             return el ? el.value : "";
                         };
-                        const pick = function(name, billableName, retainerDefault) {
-                            if (kind === "billable_invoice") return billable(billableName);
-                            return own(name) || (isRetainer ? retainerDefault : billable(billableName));
+                        const pick = function(name, baseName, retainerDefault) {
+                            return own(name) || (isRetainer ? retainerDefault : base(baseName));
                         };
 
                         const subject = pick("subject", "subject_template", @json(\Modules\Payment\Services\PaymentEmailTemplate::RETAINER_SUBJECT));

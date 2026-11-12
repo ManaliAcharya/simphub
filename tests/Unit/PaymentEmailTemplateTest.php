@@ -110,7 +110,7 @@ class PaymentEmailTemplateTest extends TestCase
             PaymentEmailTemplate::resolve($this->invoice('quickbooks'), $this->config(), $clientReminder)['reminder_subject']);
     }
 
-    public function test_blank_flat_fee_fields_use_the_billable_template(): void
+    public function test_blank_flat_fee_fields_use_the_base_settings(): void
     {
         $invoice  = $this->invoice('clio', 'OPERATING', ['matter' => ['data' => ['billing_method' => 'flat']]]);
         $template = PaymentEmailTemplate::resolve($invoice, $this->config([
@@ -129,6 +129,48 @@ class PaymentEmailTemplateTest extends TestCase
 
         $this->assertSame('Invoice #{invoice_number}', $template['subject']);
         $this->assertSame('Billable footer', $template['body_footer']);
+        $this->assertTrue($template['attach_pdf']);
+    }
+
+    public function test_law_firms_billable_hours_template_overrides_the_base_settings(): void
+    {
+        $config = $this->config([
+            PaymentEmailTemplate::BILLABLE => [
+                'subject'          => 'Hours billed #{invoice_number}',
+                'reminder_subject' => 'Hours still due {invoice_number}',
+                'body_header'      => 'Thank you for the hours this month.',
+                'body_footer'      => null,
+                'attach_pdf'       => false,
+            ],
+        ]);
+        $hourly = $this->invoice('lawcus', 'OPERATING', ['invoice' => ['data' => ['timeentries' => [['id' => 't1']], 'flatfees' => [], 'expenses' => []]]]);
+
+        $template = PaymentEmailTemplate::resolve($hourly, $config, 'Reminder: Invoice {invoice_number}');
+
+        $this->assertSame(PaymentEmailTemplate::BILLABLE, $template['kind']);
+        $this->assertSame('Hours billed #{invoice_number}', $template['subject']);
+        $this->assertSame('Hours still due {invoice_number}', $template['reminder_subject']);
+        $this->assertSame('Thank you for the hours this month.', $template['body_header']);
+        // Blank fields use the base settings.
+        $this->assertSame('Updated: Invoice #{invoice_number}', $template['subject_updated']);
+        $this->assertSame('Billable footer', $template['body_footer']);
+        $this->assertFalse($template['attach_pdf']);
+
+        // Flat fee invoices never pick up the billable hours wording.
+        $flat = $this->invoice('lawcus', 'OPERATING', ['invoice' => ['data' => ['timeentries' => [], 'flatfees' => [['id' => 'f1']], 'expenses' => []]]]);
+        $this->assertSame('Invoice #{invoice_number}', PaymentEmailTemplate::resolve($flat, $config)['subject']);
+        $this->assertSame('Billable header', PaymentEmailTemplate::resolve($flat, $config)['body_header']);
+
+        // Other PMS have no per-trigger templates.
+        $this->assertSame('Invoice #{invoice_number}', PaymentEmailTemplate::resolve($this->invoice('quickbooks'), $config)['subject']);
+    }
+
+    public function test_law_firms_without_a_saved_billable_hours_template_keep_the_base_settings(): void
+    {
+        $template = PaymentEmailTemplate::resolve($this->invoice('clio'), $this->config());
+
+        $this->assertSame('Invoice #{invoice_number}', $template['subject']);
+        $this->assertSame('Billable header', $template['body_header']);
         $this->assertTrue($template['attach_pdf']);
     }
 }

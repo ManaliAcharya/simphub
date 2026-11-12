@@ -11,8 +11,9 @@ use Modules\Inbound\Models\EmailConfiguration;
  * (Clio, Lawcus) send different emails per trigger: a Trust Request is a retainer deposit
  * request, a regular invoice uses the billable or flat fee template — by its line items on
  * Lawcus, by its matter's billing method on Clio. Every other PMS — and any invoice whose
- * type is unknown — uses the billable template, which is the email configuration's own
- * subject/body.
+ * type is unknown — uses the billable template. The email configuration's own subject/body
+ * is the base every template starts from: a law firm's billable hours and flat fee
+ * templates override only the fields the firm filled in.
  */
 final class PaymentEmailTemplate
 {
@@ -22,8 +23,8 @@ final class PaymentEmailTemplate
 
     public const RETAINER = 'retainer_request';
 
-    /** The templates stored in email_configurations.templates; billable uses the base columns. */
-    public const EXTRA_KINDS = [self::FLAT_FEE, self::RETAINER];
+    /** The law firm templates stored in email_configurations.templates, over the base columns. */
+    public const EXTRA_KINDS = [self::BILLABLE, self::FLAT_FEE, self::RETAINER];
 
     /** Retainer requests never fall back to invoice wording. */
     public const RETAINER_SUBJECT         = 'Retainer Request #{invoice_number} – Deposit Requested';
@@ -35,7 +36,7 @@ final class PaymentEmailTemplate
 
     public static function kindFor(Invoice $invoice): string
     {
-        if (! in_array(strtolower((string) $invoice->pms_source), self::LAW_PMS, true)) {
+        if (! self::isLawFirm($invoice)) {
             return self::BILLABLE;
         }
 
@@ -52,8 +53,9 @@ final class PaymentEmailTemplate
 
     /**
      * The template for this invoice: subject, subject_updated, reminder_subject, body_header,
-     * body_footer, attach_pdf and kind. A flat fee field left blank uses the billable one; the
-     * billable reminder subject is the client's own (Reminders settings), passed in.
+     * body_footer, attach_pdf and kind. A billable hours or flat fee field left blank uses the
+     * base email settings; the base reminder subject is the client's own (Reminders
+     * settings), passed in.
      *
      * @return array{kind: string, subject: ?string, subject_updated: ?string, reminder_subject: ?string, body_header: ?string, body_footer: ?string, attach_pdf: bool}
      */
@@ -61,7 +63,7 @@ final class PaymentEmailTemplate
     {
         $kind = self::kindFor($invoice);
 
-        $billable = [
+        $base = [
             'subject'          => $config?->subject_template,
             'subject_updated'  => $config?->subject_template_updated ?: $config?->subject_template,
             'reminder_subject' => $reminderSubject,
@@ -70,8 +72,9 @@ final class PaymentEmailTemplate
             'attach_pdf'       => $config === null || (bool) $config->attach_pdf,
         ];
 
-        if ($kind === self::BILLABLE) {
-            return ['kind' => $kind] + $billable;
+        // Other PMS have no per-trigger templates.
+        if (! self::isLawFirm($invoice)) {
+            return ['kind' => $kind] + $base;
         }
 
         $own = array_filter(
@@ -84,12 +87,17 @@ final class PaymentEmailTemplate
             ? ['subject' => self::RETAINER_SUBJECT, 'subject_updated' => self::RETAINER_SUBJECT_UPDATED,
                'reminder_subject' => self::RETAINER_REMINDER_SUBJECT,
                'body_header' => null, 'body_footer' => null, 'attach_pdf' => false]
-            : $billable;
+            : $base;
 
         $template = array_merge($fallback, $own);
         $template['attach_pdf'] = (bool) $template['attach_pdf'];
 
         return ['kind' => $kind] + $template;
+    }
+
+    private static function isLawFirm(Invoice $invoice): bool
+    {
+        return in_array(strtolower((string) $invoice->pms_source), self::LAW_PMS, true);
     }
 
     /**
