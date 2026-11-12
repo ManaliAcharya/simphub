@@ -1197,6 +1197,9 @@ class ClientConfigController extends Controller
         Invoice $invoice,
         PmsConnectorRegistry $registry
     ) {
+        // The invoice must belong to the client in the URL — merchant auth only covers the client.
+        abort_unless((string) $invoice->pms_client_id === $pms_client_id, 404);
+
         try {
             $provider = request('provider');
 
