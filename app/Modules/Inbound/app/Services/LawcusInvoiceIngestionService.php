@@ -26,6 +26,7 @@ class LawcusInvoiceIngestionService
         private readonly PaymentSessionService $paymentSessions,
         private readonly PaymentLinkService $paymentLinks,
         private readonly LawcusMatterActivityService $matterActivity,
+        private readonly InvoiceLinkLifecycleService $lifecycle,
     ) {}
 
     public function ingest(string $externalInvoiceId, array $triggerPayload = []): array
@@ -39,6 +40,11 @@ class LawcusInvoiceIngestionService
         $customerName    = $this->extractClientName($invoicePayload, $customerPayload);
         $nothingDue      = self::hasNothingDue((array) Arr::get($invoicePayload, 'data', $invoicePayload))
             || self::hasNothingDue((array) Arr::get($triggerPayload, 'list_row', []));
+        $previousCents   = Invoice::query()
+            ->where('pms_source', 'lawcus')
+            ->where('pms_client_id', $pmsClientId)
+            ->where('external_invoice_id', $normalized['external_invoice_id'])
+            ->value('amount_cents');
 
         $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $customerName, $pmsClientId, $nothingDue) {
             $invoice = Invoice::query()->updateOrCreate(
@@ -129,6 +135,17 @@ class LawcusInvoiceIngestionService
             ]);
 
             $result['emails_sent'] = 0;
+
+            return $result;
+        }
+
+        // An invoice whose link already went out and was then edited and re-saved in Lawcus —
+        // the firm's late fees and partial payments work this way. A changed amount resends
+        // it with the updated subject; the same link charges the invoice's new amount.
+        if ($previousCents !== null && $result['payment_session']?->payment_link_sent_at !== null) {
+            $result['emails_sent'] = (int) $previousCents !== (int) $result['invoice']->amount_cents
+                ? $this->lifecycle->resendOnUpdate($result['invoice'], $result['payment_session'], $recipientEmails, $pmsClientId)
+                : 0;
 
             return $result;
         }

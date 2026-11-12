@@ -10,7 +10,7 @@ use Modules\Payment\Services\PaymentLinkService;
 
 /**
  * Shared invoice-update lifecycle handling for non-QuickBooks PMS integrations
- * (Clio, Zoho, Wave). QuickBooks keeps its own dedicated mechanism
+ * (Clio, Zoho, Wave, Lawcus). QuickBooks keeps its own dedicated mechanism
  * (ProcessQBInvoiceLinkJob) — this service mirrors the same two behaviors
  * (resend on update, disable on delete/void) for the others.
  */
@@ -22,24 +22,25 @@ class InvoiceLinkLifecycleService
 
     /**
      * Re-send the payment link when an already-processed invoice is updated
-     * in the PMS, regardless of whether the amount actually changed.
+     * in the PMS, regardless of whether the amount actually changed. Returns how many
+     * emails went out.
      */
-    public function resendOnUpdate(Invoice $invoice, PaymentSession $session, array $emails, string $pmsClientId): void
+    public function resendOnUpdate(Invoice $invoice, PaymentSession $session, array $emails, string $pmsClientId): int
     {
         if ($session->payment_link_sent_at === null) {
-            return; // first send handles this — nothing to resend yet
+            return 0; // first send handles this — nothing to resend yet
         }
 
         // Paid invoices never get another "please pay" email — recording our own payment
         // in the PMS is itself an invoice update that would otherwise trigger one.
         if ($invoice->status === 'PAID' || $session->status === 'COMPLETED') {
-            return;
+            return 0;
         }
 
         $client = Client::query()->where('pms_client_id', $pmsClientId)->first();
 
         if (! ($client?->auto_resend_on_change)) {
-            return;
+            return 0;
         }
 
         $emailsSent = $this->paymentLinks->resendPaymentLink($invoice, $session, $emails);
@@ -52,6 +53,8 @@ class InvoiceLinkLifecycleService
                 'emails_sent'   => $emailsSent,
             ]);
         }
+
+        return $emailsSent;
     }
 
     /**

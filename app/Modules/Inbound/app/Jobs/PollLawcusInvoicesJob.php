@@ -22,7 +22,9 @@ use Throwable;
  * polling the invoice list (POST /v2/invoices) and handing each one we haven't seen to
  * LawcusInvoiceIngestionService — the same path a webhook would take. Saved (or sent),
  * unpaid invoices get a payment session and the link is emailed once; invoices with
- * nothing due (paid from the matter's trust balance) are only recorded.
+ * nothing due (paid from the matter's trust balance) are only recorded. An invoice
+ * already recorded is fetched again when its amount due changes (the firm edited and
+ * re-saved it), which resends its link — see amountDueChanged().
  * The list is used rather than the AR report because the report leaves out Trust
  * Requests (type TRUST), which route to the firm's IOLTA MID.
  */
@@ -110,25 +112,32 @@ class PollLawcusInvoicesJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        $alreadyIngested = Invoice::query()
+        $ingested = Invoice::query()
             ->where('pms_source', 'lawcus')
             ->where('pms_client_id', $connection->pms_client_id)
             ->whereIn('external_invoice_id', $candidates->pluck('id')->map(fn ($id) => (string) $id)->all())
-            ->pluck('external_invoice_id')
-            ->all();
+            ->get(['external_invoice_id', 'amount_cents', 'status'])
+            ->keyBy('external_invoice_id');
 
-        $new = $candidates->reject(fn (array $invoice) => in_array((string) $invoice['id'], $alreadyIngested, true));
+        // New invoices, plus ones the firm edited and re-saved with a different amount due.
+        $toIngest = $candidates->filter(function (array $invoice) use ($ingested): bool {
+            $stored = $ingested->get((string) $invoice['id']);
 
-        foreach ($new as $invoice) {
+            return $stored === null || self::amountDueChanged($invoice, $stored);
+        });
+
+        foreach ($toIngest as $invoice) {
+            $edited = $ingested->has((string) $invoice['id']);
+
             try {
                 $result = $ingestion->ingest((string) $invoice['id'], [
                     'pms_client_id' => $connection->pms_client_id,
-                    'event_name'    => empty($invoice['sent_at']) ? 'poll.invoice.saved' : 'poll.invoice.sent',
+                    'event_name'    => $edited ? 'poll.invoice.updated' : (empty($invoice['sent_at']) ? 'poll.invoice.saved' : 'poll.invoice.sent'),
                     // The list's own status / amount due, in case the single-invoice fetch omits them.
                     'list_row'      => array_intersect_key($invoice, array_flip(['status', 'amount_due'])),
                 ]);
 
-                Log::info('Lawcus invoice poll ingested invoice', [
+                Log::info($edited ? 'Lawcus invoice poll re-synced edited invoice' : 'Lawcus invoice poll ingested invoice', [
                     'pms_client_id' => $connection->pms_client_id,
                     'invoice_id'    => $invoice['id'],
                     'number'        => $invoice['number'] ?? null,
@@ -173,6 +182,22 @@ class PollLawcusInvoicesJob implements ShouldQueue, ShouldBeUnique
         return $ready
             && ! in_array($status, self::NOT_PAYABLE_STATUSES, true)
             && (float) ($invoice['amount_due'] ?? 0) > 0;
+    }
+
+    /**
+     * Whether an already-recorded invoice was edited in Lawcus to a different amount due —
+     * a late fee added, or the amount lowered after a partial payment. Only while there's
+     * still something to collect, and never for an invoice already paid through us.
+     */
+    public static function amountDueChanged(array $invoice, Invoice $stored): bool
+    {
+        $amountDue = $invoice['amount_due'] ?? null;
+
+        if ($stored->status === 'PAID' || ! is_numeric($amountDue) || (float) $amountDue <= 0) {
+            return false;
+        }
+
+        return (int) round((float) $amountDue * 100) !== (int) $stored->amount_cents;
     }
 
     /**
