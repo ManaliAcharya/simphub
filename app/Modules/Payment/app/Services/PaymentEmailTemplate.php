@@ -9,9 +9,10 @@ use Modules\Inbound\Models\EmailConfiguration;
 /**
  * Which payment email template an invoice gets, and that template's wording. Law firms
  * (Clio, Lawcus) send different emails per trigger: a Trust Request is a retainer deposit
- * request, a regular invoice uses the billable or flat fee template by its matter's billing
- * type. Every other PMS — and any invoice whose matter type is unknown — uses the billable
- * template, which is the email configuration's own subject/body.
+ * request, a regular invoice uses the billable or flat fee template — by its line items on
+ * Lawcus, by its matter's billing method on Clio. Every other PMS — and any invoice whose
+ * type is unknown — uses the billable template, which is the email configuration's own
+ * subject/body.
  */
 final class PaymentEmailTemplate
 {
@@ -42,7 +43,11 @@ final class PaymentEmailTemplate
             return self::RETAINER;
         }
 
-        return self::isFlatFeeMatter($invoice) ? self::FLAT_FEE : self::BILLABLE;
+        $flatFeeOnly = strtolower((string) $invoice->pms_source) === 'lawcus'
+            ? self::hasOnlyLawcusFlatFees($invoice)
+            : null;
+
+        return ($flatFeeOnly ?? self::isFlatFeeMatter($invoice)) ? self::FLAT_FEE : self::BILLABLE;
     }
 
     /**
@@ -85,6 +90,28 @@ final class PaymentEmailTemplate
         $template['attach_pdf'] = (bool) $template['attach_pdf'];
 
         return ['kind' => $kind] + $template;
+    }
+
+    /**
+     * Whether a Lawcus invoice bills only flat fees. GET /invoices/{id} carries the lines as
+     * timeentries, flatfees and expenses; any time entry, any expense or no lines at all means
+     * billable. Non-billable lines aren't charged, so they don't count. The matter's
+     * billing_type can't decide this — Lawcus reports HOURLY on matters billed by flat fee.
+     * Null when the payload has no line items (then the matter's billing type is used).
+     */
+    private static function hasOnlyLawcusFlatFees(Invoice $invoice): ?bool
+    {
+        $data = (array) Arr::get((array) ($invoice->raw_payload ?? []), 'invoice.data', []);
+
+        if (! is_array($data['timeentries'] ?? null) && ! is_array($data['flatfees'] ?? null) && ! is_array($data['expenses'] ?? null)) {
+            return null;
+        }
+
+        $billed = fn (string $key): int => collect((array) ($data[$key] ?? []))
+            ->filter(fn ($line) => is_array($line) && ! filter_var($line['is_non_billable'] ?? false, FILTER_VALIDATE_BOOLEAN))
+            ->count();
+
+        return $billed('flatfees') > 0 && $billed('timeentries') === 0 && $billed('expenses') === 0;
     }
 
     /**

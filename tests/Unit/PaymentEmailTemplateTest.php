@@ -45,6 +45,41 @@ class PaymentEmailTemplateTest extends TestCase
         $this->assertSame(PaymentEmailTemplate::BILLABLE, PaymentEmailTemplate::kindFor($this->invoice('lawcus')));
     }
 
+    /** Line item mixes seen on real Lawcus test invoices (#00030–#00036). */
+    public function test_lawcus_invoices_pick_billable_or_flat_fee_by_their_line_items(): void
+    {
+        $lawcus = fn (array $lines) => $this->invoice('lawcus', 'OPERATING', ['invoice' => ['data' => $lines + [
+            'timeentries' => [],
+            'flatfees'    => [],
+            'expenses'    => [],
+            // Lawcus reports HOURLY even on flat fee matters; line items win.
+            'matter'      => ['billing_type' => 'HOURLY'],
+        ]]]);
+        $time    = ['id' => 't1', 'quantity' => '2.00', 'rate' => '3.00', 'is_non_billable' => null];
+        $flatFee = ['id' => 'f1', 'quantity' => 1, 'rate' => '22.00', 'is_non_billable' => null];
+        $expense = ['id' => 'e1', 'quantity' => '1.00', 'rate' => '5.00', 'is_non_billable' => null];
+
+        $this->assertSame(PaymentEmailTemplate::FLAT_FEE, PaymentEmailTemplate::kindFor($lawcus(['flatfees' => [$flatFee]])));
+        $this->assertSame(PaymentEmailTemplate::BILLABLE, PaymentEmailTemplate::kindFor($lawcus(['timeentries' => [$time]])));
+        $this->assertSame(PaymentEmailTemplate::BILLABLE, PaymentEmailTemplate::kindFor($lawcus(['expenses' => [$expense]])));
+        $this->assertSame(PaymentEmailTemplate::BILLABLE, PaymentEmailTemplate::kindFor($lawcus(['timeentries' => [$time], 'flatfees' => [$flatFee]])));
+        $this->assertSame(PaymentEmailTemplate::BILLABLE, PaymentEmailTemplate::kindFor($lawcus(['flatfees' => [$flatFee], 'expenses' => [$expense]])));
+        $this->assertSame(PaymentEmailTemplate::BILLABLE, PaymentEmailTemplate::kindFor($lawcus(['timeentries' => [$time], 'expenses' => [$expense]])));
+        $this->assertSame(PaymentEmailTemplate::BILLABLE, PaymentEmailTemplate::kindFor($lawcus(['timeentries' => [$time], 'flatfees' => [$flatFee], 'expenses' => [$expense]])));
+        $this->assertSame(PaymentEmailTemplate::BILLABLE, PaymentEmailTemplate::kindFor($lawcus([])));
+
+        // A non-billable time entry isn't charged, so a flat fee invoice stays flat fee.
+        $this->assertSame(PaymentEmailTemplate::FLAT_FEE, PaymentEmailTemplate::kindFor($lawcus([
+            'timeentries' => [['is_non_billable' => true] + $time],
+            'flatfees'    => [$flatFee],
+        ])));
+
+        // Trust Requests stay retainer requests whatever their lines.
+        $this->assertSame(PaymentEmailTemplate::RETAINER, PaymentEmailTemplate::kindFor($this->invoice('lawcus', 'TRUST', [
+            'invoice' => ['data' => ['flatfees' => [$flatFee]]],
+        ])));
+    }
+
     public function test_other_pms_always_use_the_billable_template(): void
     {
         $this->assertSame(PaymentEmailTemplate::BILLABLE, PaymentEmailTemplate::kindFor($this->invoice('quickbooks', 'TRUST')));

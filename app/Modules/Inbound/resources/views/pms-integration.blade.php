@@ -2511,7 +2511,7 @@
                             $templateTabs = [
                                 \Modules\Payment\Services\PaymentEmailTemplate::FLAT_FEE => [
                                     'label'   => 'Flat fee invoice',
-                                    'desc'    => 'Regular invoices on a flat fee matter. Blank fields use the billable invoice settings above.',
+                                    'desc'    => 'Clio invoices on a flat fee matter, and Lawcus invoices whose lines are all flat fees. Blank fields use the billable invoice settings above.',
                                     'subject' => $emailConfig?->subject_template ?? 'Invoice #{invoice_number} – Payment Required',
                                     'updated' => $emailConfig?->subject_template_updated ?? 'Updated: Invoice #{invoice_number} – Payment Required',
                                     'reminder' => $client->reminder_subject_template ?? 'Reminder: Invoice {invoice_number} is awaiting payment',
