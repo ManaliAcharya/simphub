@@ -1113,7 +1113,7 @@ class ClientConfigController extends Controller
             'templates.*.attach_pdf'      => ['nullable', 'in:0,1'],
         ]);
 
-        // Law firms pick a template per trigger (flat fee invoice, retainer request); blank
+        // Law firms pick a template per trigger (billable hours, flat fee, retainer request); blank
         // fields fall back as described in PaymentEmailTemplate.
         $templates = null;
         if ($client->requiresIoltaMid()) {
