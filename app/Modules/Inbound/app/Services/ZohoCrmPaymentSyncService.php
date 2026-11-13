@@ -295,6 +295,7 @@ class ZohoCrmPaymentSyncService
         }
 
         $contacts = $this->api->searchContactsByEmail($connection, $subscription->customer_email);
+        $queryError = null;
 
         // A Contact created moments before the payment may not be in the search index yet.
         if ($contacts === []) {
@@ -302,7 +303,7 @@ class ZohoCrmPaymentSyncService
                 $contacts = $this->api->queryContactsByEmail($connection, $subscription->customer_email);
             } catch (Throwable $e) {
                 // Connections made before the COQL scope was added cannot query; keep the search result.
-                Log::info('Zoho CRM COQL contact lookup failed', ['error' => $e->getMessage()]);
+                $queryError = $e->getMessage();
             }
         }
 
@@ -316,12 +317,32 @@ class ZohoCrmPaymentSyncService
 
         return match (count($contacts)) {
             1 => (string) $contacts[0]['id'],
-            0 => throw new RuntimeException("No Zoho CRM contact found for {$subscription->customer_email}."),
+            0 => throw new RuntimeException($this->notFoundMessage($connection, $subscription->customer_email, $queryError)),
             default => throw new RuntimeException(
                 "More than one Zoho CRM contact matches {$subscription->customer_email}. "
                 .'Send the Zoho Contact ID as customer_unique_id when subscribing.'
             ),
         };
+    }
+
+    /** Names the org that was searched and why the COQL lookup failed, so the audit log shows the cause. */
+    private function notFoundMessage(PmsConnection $connection, string $email, ?string $queryError): string
+    {
+        try {
+            $org = $this->api->fetchOrganization($connection);
+            $orgLabel = sprintf('"%s" (org %s)', $org['company_name'] ?? '?', $org['domain_name'] ?? $org['zgid'] ?? '?');
+        } catch (Throwable) {
+            $orgLabel = '(org could not be read)';
+        }
+
+        $message = "No Zoho CRM contact found for {$email} in Zoho CRM {$orgLabel}.";
+
+        if ($queryError !== null) {
+            $message .= ' COQL lookup failed: '.mb_substr($queryError, 0, 300)
+                .' Reconnect Zoho CRM if the error is about scope.';
+        }
+
+        return $message;
     }
 
     /** @return array<string, string> field key => API name, for the fields that exist */

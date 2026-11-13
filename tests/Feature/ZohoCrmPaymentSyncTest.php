@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Modules\Audit\Models\AuditLog;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\Transaction;
 use Modules\Inbound\Models\Client;
@@ -167,12 +168,17 @@ class ZohoCrmPaymentSyncTest extends TestCase
 
         Http::fake([
             self::API.'/Contacts/search*' => Http::response(null, 204),
-            self::API.'/coql' => Http::response(null, 204),
+            self::API.'/coql' => Http::response(['code' => 'OAUTH_SCOPE_MISMATCH', 'status' => 'error'], 401),
+            self::API.'/org' => Http::response(['org' => [['company_name' => 'Acme', 'domain_name' => 'org123']]]),
         ]);
 
         $this->assertFalse(app(ZohoCrmPaymentSyncService::class)->sync($this->transaction(), $invoice));
         $this->assertSame('FAILED', $invoice->fresh()->pms_sync_status);
         Http::assertNotSent(fn (Request $r) => $r->method() === 'PUT');
+
+        $error = AuditLog::query()->where('event_type', 'PMS_PAYMENT_RECORD_FAILED')->first()?->payload['error'] ?? '';
+        $this->assertStringContainsString('"Acme" (org org123)', $error);
+        $this->assertStringContainsString('OAUTH_SCOPE_MISMATCH', $error);
     }
 
     public function test_finds_a_new_contact_through_coql_when_search_has_not_indexed_it(): void
