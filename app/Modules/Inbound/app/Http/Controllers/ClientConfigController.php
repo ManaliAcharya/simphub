@@ -538,6 +538,7 @@ class ClientConfigController extends Controller
             'cd_phone'               => [$isCd ? 'required' : 'nullable', 'string', 'max:30'],
             'cd_email'               => [$isCd ? 'required' : 'nullable', 'email', 'max:255'],
             'cd_instructions'        => ['nullable', 'string', 'max:500'],
+            'cd_trust_instructions'  => ['nullable', 'string', 'max:500'],
             'cd_disclosure'          => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -568,6 +569,8 @@ class ClientConfigController extends Controller
                 'phone'         => $validated['cd_phone'] ?? null,
                 'email'         => $validated['cd_email'] ?? null,
                 'instructions'  => $validated['cd_instructions'] ?? null,
+                // Lawcus/Clio: the IOLTA account's own instructions (e.g. its own Zelle).
+                'trust_instructions' => $hasIoltaTab ? ($validated['cd_trust_instructions'] ?? null) : null,
                 'disclosure'    => $validated['cd_disclosure'] ?? null,
             ], fn($v) => $v !== null && $v !== '');
         }

@@ -140,9 +140,27 @@ class PaymentPageController extends Controller
             'fee_disclosure'         => $tabHasNoFee ? null : $client->fee_disclosure,
             // Per-tab rates can leave one payment method fee-free; don't disclose a fee on it.
             'disclose_only_with_fee' => $client->requiresIoltaMid(),
-            'cash_discount_details'  => (array) ($client->cash_discount_details ?? []),
+            'cash_discount_details'  => $this->cashDetailsFor($client, $invoice),
             'qb_route_type'          => $routeType,         // 'fees_on' | 'fees_off' | null
         ];
+    }
+
+    /**
+     * Cash/check details for this invoice's payment page. Lawcus/Clio keep separate
+     * "Additional instructions" per account (e.g. separate Zelle IDs), so a trust page shows
+     * only the IOLTA account's and an operating page only the operating one's.
+     */
+    private function cashDetailsFor(Client $client, Invoice $invoice): array
+    {
+        $details = (array) ($client->cash_discount_details ?? []);
+
+        if ($client->requiresIoltaMid() && strtoupper((string) $invoice->fund_type) === 'TRUST') {
+            $details['instructions'] = $details['trust_instructions'] ?? null;
+        }
+
+        unset($details['trust_instructions']);
+
+        return array_filter($details, fn ($value) => $value !== null && $value !== '');
     }
 
     /** Gateway Credentials in their stored shape, with each gateway's IOLTA set for trust money. */
