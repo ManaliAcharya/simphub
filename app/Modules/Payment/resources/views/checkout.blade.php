@@ -23,6 +23,20 @@
         </section>
 
         <section class="panel checkout">
+            {{-- Lawcus "show outstanding invoices": pay this invoice or everything the client owes (filled by JS). --}}
+            <fieldset id="pay-scope" class="hidden" style="border:1px solid #e5e7eb;border-radius:14px;padding:10px 16px 12px;margin:0 0 20px;">
+                <legend style="padding:0 6px;font-size:14px;font-weight:600;color:#10213a;">What would you like to pay?</legend>
+                <label style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;cursor:pointer;font-size:14px;">
+                    <span><input type="radio" name="pay_scope" value="invoice" checked> This invoice</span>
+                    <strong id="pay-scope-invoice-amount">--</strong>
+                </label>
+                <label style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;cursor:pointer;font-size:14px;border-top:1px solid #f3f4f6;">
+                    <span><input type="radio" name="pay_scope" value="outstanding"> All outstanding invoices <span id="pay-scope-count" style="color:#60708a;"></span></span>
+                    <strong id="pay-scope-outstanding-amount">--</strong>
+                </label>
+                <ul id="pay-scope-list" style="margin:2px 0 0;padding-left:26px;font-size:13px;color:#60708a;line-height:1.6;"></ul>
+            </fieldset>
+
             <h2 style="margin:0 0 16px;">How would you like to pay?</h2>
 
             {{-- Payment option tiles (rendered by JS) --}}
@@ -258,6 +272,8 @@
             fluidpayTokenizer: null,
             currentScript: null,
             autoSelecting: false,
+            // 'invoice', or 'outstanding' when paying all the client's outstanding invoices.
+            payScope: 'invoice',
             lastStep: 'page_opened',
             finished: false,
             closeReported: false,
@@ -404,6 +420,79 @@
             track('bank_account_secured', { gateway: 'paya', mode: 'paya_iframe' });
         });
 
+        // ── Paying this invoice, or all the client's outstanding invoices ──────────
+        // Every amount on the page goes through these, so the chosen scope is shown
+        // everywhere. The server computed both fees; nothing is recomputed here.
+        function payingOutstanding() {
+            return state.payScope === 'outstanding' && !!(state.details && state.details.outstanding);
+        }
+
+        function baseAmountCents() {
+            return payingOutstanding() ? state.details.outstanding.total_cents : state.details.invoice.amount_cents;
+        }
+
+        function optionFeeCents(option) {
+            return (payingOutstanding() ? option.outstanding_fee_cents : option.fee_cents) ?? 0;
+        }
+
+        function optionTotalCents(option) {
+            const total = payingOutstanding() ? option.outstanding_total_cents : option.total_cents;
+            return total ?? (baseAmountCents() + optionFeeCents(option));
+        }
+
+        function escapeHtml(value) {
+            const div = document.createElement('div');
+            div.textContent = value == null ? '' : String(value);
+            return div.innerHTML;
+        }
+
+        function renderPayScope() {
+            const outstanding = state.details.outstanding;
+            const fieldset = document.getElementById('pay-scope');
+            if (!outstanding || !fieldset) return;
+
+            const fmt = (cents) => '$' + (cents / 100).toFixed(2);
+            const others = outstanding.invoices || [];
+            document.getElementById('pay-scope-invoice-amount').textContent = fmt(state.details.invoice.amount_cents);
+            document.getElementById('pay-scope-outstanding-amount').textContent = fmt(outstanding.total_cents);
+            document.getElementById('pay-scope-count').textContent = '(' + (others.length + 1) + ' invoices)';
+
+            const list = document.getElementById('pay-scope-list');
+            list.innerHTML = '';
+            others.forEach((other) => {
+                const item = document.createElement('li');
+                item.textContent = 'Invoice #' + (other.invoice_number || other.external_invoice_id)
+                    + ' · ' + fmt(other.amount_cents)
+                    + (other.due_date ? ' · due ' + other.due_date : '');
+                list.appendChild(item);
+            });
+
+            fieldset.querySelectorAll('input[name="pay_scope"]').forEach((radio) => {
+                radio.addEventListener('change', () => {
+                    if (!radio.checked) return;
+                    state.payScope = radio.value;
+                    track('pay_scope_changed', { scope: radio.value, base_cents: baseAmountCents() });
+                    refreshAmounts();
+                });
+            });
+
+            fieldset.classList.remove('hidden');
+        }
+
+        // Updates the shown amounts in place, so card details already entered are kept.
+        function refreshAmounts() {
+            const fmt = (cents) => '$' + (cents / 100).toFixed(2);
+            els.amount.textContent = `${(baseAmountCents() / 100).toFixed(2)} ${state.details.invoice.currency}`;
+
+            document.querySelectorAll('.pay-tile').forEach((tile) => {
+                const amountEl = tile.querySelector('.pay-tile-amount');
+                if (!amountEl) return;
+                amountEl.textContent = tile.payOption ? fmt(optionTotalCents(tile.payOption)) : fmt(baseAmountCents());
+            });
+
+            if (state.selectedOption && !state.cashSelected) updateDisclosure();
+        }
+
         function showConfirmation(payload) {
             // Hide hero + checkout panels, show confirmation
             document.querySelectorAll('.shell > section.panel, .shell > section.panel.hero, .shell > section.panel.checkout')
@@ -454,8 +543,12 @@
             const invoiceRef = invoice.invoice_number
                 ? '#' + invoice.invoice_number
                 : (invoice.external_invoice_id || '--');
+            const alsoPaid = (payload.covered_invoices || [])
+                .map(function(c) { return '#' + c.invoice_number; })
+                .join(', ');
             const rows = [
-                ['Invoice',        invoiceRef],
+                ['Invoice',        escapeHtml(invoiceRef)],
+                alsoPaid ? ['Also paid', escapeHtml(alsoPaid)] : null,
                 config.client_name ? ['Paid to', config.client_name] : null,
                 ['Payment via',    (option.display_name || option.gateway || '--').toString().toUpperCase() + ' · ' + (isAch ? 'ACH' : 'Card')],
                 ['Transaction ID', payload.gateway_txn_id || '--'],
@@ -477,7 +570,7 @@
                 breakdown.style.display = 'block';
                 breakdown.innerHTML = [
                     '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">',
-                    '<span style="color:#60708a;">Invoice amount</span><span>' + fmt(baseCents) + '</span></div>',
+                    '<span style="color:#60708a;">' + (alsoPaid ? 'Invoices amount' : 'Invoice amount') + '</span><span>' + fmt(baseCents) + '</span></div>',
                     '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">',
                     '<span style="color:#60708a;">Processing fee (' + feePercent + '%)</span><span>+' + fmt(feeCents) + '</span></div>',
                     '<div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:6px;',
@@ -547,10 +640,15 @@
             const cd      = (config.cash_discount_details) || {};
             const options = state.details ? (state.details.payment_options || []) : [];
             const fmt     = function(cents) { return '$' + (cents / 100).toFixed(2); };
-            const baseCents = invoice.amount_cents || 0;
-            const invoiceRef = invoice.invoice_number
+            const baseCents = baseAmountCents() || 0;
+            let invoiceRef = invoice.invoice_number
                 ? '#' + invoice.invoice_number
                 : (invoice.external_invoice_id || '--');
+            if (payingOutstanding()) {
+                invoiceRef += ', ' + state.details.outstanding.invoices
+                    .map(function(o) { return '#' + (o.invoice_number || o.external_invoice_id); })
+                    .join(', ');
+            }
 
             // Invoice amount
             document.getElementById('ci-amount').textContent = fmt(baseCents);
@@ -570,7 +668,7 @@
                             ? (config.gateway_rates[gw] || 0)
                             : (pm === 'ACH' ? (config.ach_fee_percent || 0) : (config.cc_fee_percent || 0))
                     );
-                    const saving = o.fee_cents || 0;
+                    const saving = optionFeeCents(o) || 0;
                     if (saving > 0) {
                         rows.push('<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">'
                             + '<span>' + (o.display_name || o.gateway.toUpperCase()) + ' (' + pct + '%)</span>'
@@ -642,6 +740,7 @@
             els.copy.textContent = 'Review the invoice details below and continue to the secure card form.';
             els.amount.textContent = `${amount} ${details.invoice.currency}`;
             els.status.textContent = details.session.status;
+            renderPayScope();
             renderOptions(details.payment_options || []);
         }
 
@@ -661,7 +760,7 @@
             els.gatewayOptions.innerHTML = '';
             const config = window.feeConfig || {};
             const feeEnabled = config.fee_surcharge_enabled;
-            const baseCents = state.details.invoice.amount_cents;
+            const baseCents = baseAmountCents();
             const currency  = state.details.invoice.currency || 'USD';
             const fmt = (cents) => '$' + (cents / 100).toFixed(2);
 
@@ -679,8 +778,7 @@
                 const gwLower = option.gateway.toLowerCase();
                 // Dollar amounts come straight from the server (details() computed the real
                 // fee, incl. any per-client exact-cent rounding) — never recomputed here.
-                const feeCents   = option.fee_cents ?? 0;
-                const totalCents = option.total_cents ?? (baseCents + feeCents);
+                const totalCents = optionTotalCents(option);
                 // feePercent is cosmetic only — the "(x%)" label text below, not used for money.
                 let feePercent = 0;
                 if (feeEnabled) {
@@ -694,6 +792,7 @@
                 const tile = document.createElement('div');
                 tile.className = 'pay-tile' + (available ? '' : ' pay-tile-disabled');
                 tile.dataset.routingRuleId = option.routing_rule_id;
+                tile.payOption = option;
                 tile.style.cssText = [
                     'display:flex;justify-content:space-between;align-items:center',
                     'padding:14px 16px;border:1px solid #e5e7eb;border-radius:14px',
@@ -713,7 +812,7 @@
                         : `  <p style="margin:3px 0 0;font-size:12px;color:#e24b4a;">${option.unavailable_reason || 'Unavailable'}</p>`,
                     '</div>',
                     `<div style="text-align:right;">`,
-                    `  <p style="margin:0;font-size:17px;font-weight:600;color:#10213a;">${fmt(totalCents)}</p>`,
+                    `  <p class="pay-tile-amount" style="margin:0;font-size:17px;font-weight:600;color:#10213a;">${fmt(totalCents)}</p>`,
                     `</div>`,
                 ].join('');
 
@@ -738,7 +837,7 @@
                     '  <p style="margin:0;font-size:14px;font-weight:600;color:#10213a;">Pay by Cash / Check</p>',
                     '  <p style="margin:3px 0 0;font-size:12px;color:#60708a;">No processing fee</p>',
                     '</div>',
-                    `<div><p style="margin:0;font-size:17px;font-weight:600;color:#10213a;">${fmt(baseCents)}</p></div>`,
+                    `<div><p class="pay-tile-amount" style="margin:0;font-size:17px;font-weight:600;color:#10213a;">${fmt(baseCents)}</p></div>`,
                 ].join('');
                 cashTile.addEventListener('click', () => selectCashOption(cashTile));
                 cashTile.addEventListener('mouseenter', () => { if (!cashTile.classList.contains('pay-tile-selected')) { cashTile.style.borderColor = 'rgba(239,131,84,0.5)'; cashTile.style.transform = 'translateY(-1px)'; } });
@@ -838,26 +937,26 @@
                 tile.style.background = 'rgba(255,245,239,0.96)';
             }
 
-            // Show matching disclosure text
-            const disclosureEl = document.getElementById('fee-disclosure-text');
-            if (disclosureEl) {
-                const config = window.feeConfig || {};
-                const gwKey2 = state.selectedOption && state.selectedOption.gateway
-                    ? state.selectedOption.gateway.toLowerCase() : '';
-                const noFee = config.disclose_only_with_fee
-                    && !((state.selectedOption && state.selectedOption.fee_cents) > 0);
-                const text = noFee ? '' : config.fee_disclosure;
-                disclosureEl.textContent = text || '';
-                disclosureEl.style.display = text ? 'block' : 'none';
-            }
-
             state.cashSelected = false;
+            updateDisclosure();
             els.submitButton.textContent = 'Submit payment';
 
             // Hide cash panel, show card entry
             if (els.cashDetailsPanel) els.cashDetailsPanel.classList.add('hidden');
             resetToken('');
             setupCardEntry();
+        }
+
+        // Show the selected option's disclosure text.
+        function updateDisclosure() {
+            const disclosureEl = document.getElementById('fee-disclosure-text');
+            if (!disclosureEl) return;
+            const config = window.feeConfig || {};
+            const noFee = config.disclose_only_with_fee
+                && !((state.selectedOption && optionFeeCents(state.selectedOption)) > 0);
+            const text = noFee ? '' : config.fee_disclosure;
+            disclosureEl.textContent = text || '';
+            disclosureEl.style.display = text ? 'block' : 'none';
         }
 
         function loadScript(src) {
@@ -1095,6 +1194,8 @@
                         payment_method: state.selectedOption.payment_method || state.selectedOption.hosted_fields.metadata.payment_method || 'CARD',
                         ...(state.payaBankToken ? { paya_bank_token: state.payaBankToken } : {}),
                         ...(state.cardholder ? state.cardholder : {}),
+                        // The server re-checks this total against Lawcus before charging.
+                        ...(payingOutstanding() ? { pay_scope: 'outstanding', expected_amount_cents: baseAmountCents() } : {}),
                     }),
                 });
             } catch (e) {

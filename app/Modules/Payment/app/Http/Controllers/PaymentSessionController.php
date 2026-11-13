@@ -189,6 +189,9 @@ class PaymentSessionController extends Controller
                 'billing_address.city'     => ['required', 'string', 'max:100'],
                 'billing_address.state'    => ['required', 'string', 'max:2'],
                 'billing_address.zip'      => ['required', 'string', 'max:10'],
+                // "All outstanding" on a Lawcus invoice, with the amount the payer saw.
+                'pay_scope'              => ['nullable', 'in:invoice,'.PaymentCheckoutService::SCOPE_OUTSTANDING],
+                'expected_amount_cents'  => ['nullable', 'integer', 'min:0'],
             ], [
                 'billing_address.state.max' => 'Please enter a valid US state, e.g. FL or Florida.',
             ]);
@@ -222,6 +225,8 @@ class PaymentSessionController extends Controller
                 paymentMethod: (string) ($request->input('payment_method') ?: 'CARD'),
                 routingRuleId: (string) $request->string('routing_rule_id'),
                 extraBilling: $extraBilling,
+                payScope: $request->input('pay_scope'),
+                expectedBaseCents: $request->filled('expected_amount_cents') ? (int) $request->input('expected_amount_cents') : null,
             );
         } catch (RuntimeException $exception) {
             // The exact message the payer was shown.
@@ -264,6 +269,10 @@ class PaymentSessionController extends Controller
             // happens server-side and can diverge from a naive percent×amount guess.
             'amount_cents'   => $transaction->amount_cents,
             'fee_cents'      => $transaction->fee_cents,
+            'covered_invoices' => array_map(
+                fn (array $covered) => ['invoice_number' => $covered['invoice_number'] ?? null, 'amount_cents' => $covered['amount_cents'] ?? 0],
+                (array) $transaction->covered_invoices,
+            ),
         ]);
     }
 

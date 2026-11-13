@@ -597,9 +597,11 @@ class SyncInvoicePaidListener
     public static function feeCents(Transaction $transaction, mixed $invoice): int
     {
         $feeCents = (int) ($transaction->fee_cents ?? 0);
+        // A Lawcus "all outstanding" charge also paid other invoices; that's not a fee.
+        $charged  = (int) $transaction->amount_cents - $transaction->coveredInvoicesCents();
 
-        if ($feeCents === 0 && (int) $transaction->amount_cents > (int) $invoice->amount_cents) {
-            $feeCents = (int) $transaction->amount_cents - (int) $invoice->amount_cents;
+        if ($feeCents === 0 && $charged > (int) $invoice->amount_cents) {
+            $feeCents = $charged - (int) $invoice->amount_cents;
         }
 
         return $feeCents;

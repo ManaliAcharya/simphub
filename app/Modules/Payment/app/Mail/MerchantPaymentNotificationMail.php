@@ -48,6 +48,7 @@ class MerchantPaymentNotificationMail extends Mailable
         $pmsSource     = $this->pmsLabel((string) $invoice->pms_source);
 
         $invoiceAmount   = number_format($invoice->amount_cents / 100, 2);
+        $coveredInvoices = PaymentConfirmationMail::coveredInvoiceRows($transaction);
         $feeCents        = (int) $transaction->fee_cents;
         $feeAmount       = $feeCents > 0 ? number_format($feeCents / 100, 2) : null;
         $totalAmount     = number_format($transaction->amount_cents / 100, 2);
@@ -65,6 +66,7 @@ class MerchantPaymentNotificationMail extends Mailable
                 'invoiceRef', 'currency', 'pmsSource',
                 'invoiceAmount', 'feeAmount', 'feeCents', 'totalAmount',
                 'paymentMethod', 'authorizationId', 'paidDate', 'lawcusMatterUrl',
+                'coveredInvoices',
             ),
         );
     }
