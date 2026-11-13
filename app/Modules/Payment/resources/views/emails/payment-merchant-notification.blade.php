@@ -55,6 +55,12 @@
                 <td style="padding:9px 0;color:#6b7280;border-bottom:1px solid #f3f4f6;">Invoice amount</td>
                 <td style="padding:9px 0;text-align:right;color:#111827;border-bottom:1px solid #f3f4f6;">{{ $currency }} {{ $invoiceAmount }}</td>
             </tr>
+            @foreach($coveredInvoices as $covered)
+            <tr>
+                <td style="padding:9px 0;color:#6b7280;border-bottom:1px solid #f3f4f6;">Also paid: invoice {{ $covered['ref'] }}</td>
+                <td style="padding:9px 0;text-align:right;color:#111827;border-bottom:1px solid #f3f4f6;">{{ $currency }} {{ $covered['amount'] }}</td>
+            </tr>
+            @endforeach
             @if($feeCents > 0)
             <tr>
                 <td style="padding:9px 0;color:#6b7280;border-bottom:1px solid #f3f4f6;">Processing fee</td>

@@ -15,6 +15,7 @@ use Modules\Outbound\Factory\GatewayAdapterFactory;
 use Modules\Payment\Events\PaymentApproved;
 use Modules\Inbound\Services\ClioCustomerRefreshService;
 use Modules\Inbound\Services\LawcusCustomerRefreshService;
+use Modules\Inbound\Services\LawcusOutstandingInvoices;
 use Modules\Inbound\Services\QuickBooksCustomerRefreshService;
 use Modules\Inbound\Services\ZohoCustomerRefreshService;
 use Modules\Inbound\Jobs\DispatchCustomWebhookJob;
@@ -31,6 +32,9 @@ class PaymentCheckoutService
      */
     public const UNAVAILABLE_MESSAGE = 'Online payment is not available for this invoice right now. Please contact the firm.';
 
+    /** The payer chose to pay this invoice plus the client's other outstanding invoices. */
+    public const SCOPE_OUTSTANDING = 'outstanding';
+
     public function __construct(
         private readonly IdempotencyService $idempotency,
         private readonly GatewayAdapterFactory $gateways,
@@ -41,6 +45,7 @@ class PaymentCheckoutService
         private readonly QuickBooksCustomerRefreshService $quickBooksCustomerRefresh,
         private readonly LawcusCustomerRefreshService $lawcusCustomerRefresh,
         private readonly PayaTokenizerService $payaTokenizer,
+        private readonly LawcusOutstandingInvoices $lawcusOutstanding,
     ) {}
 
     public function details(PaymentSession $session): array
@@ -83,7 +88,12 @@ class PaymentCheckoutService
                 : self::UNAVAILABLE_MESSAGE);
         }
 
+        // Lawcus "show outstanding invoices": the payer may also pay the client's other
+        // unpaid invoices. Each payment option then carries its fee for that total too.
+        $outstanding = $this->lawcusOutstanding->for($invoice);
+
         return [
+            'outstanding' => $outstanding,
             'session' => [
                 'id' => $session->id,
                 'token' => $session->hosted_url_token,
@@ -103,7 +113,7 @@ class PaymentCheckoutService
                 'cancel_redirect_url'  => $invoice->cancel_redirect_url ?: null,
                 'billing_address'      => $this->resolveBillingAddressPrefill($invoice),
             ],
-            'payment_options' => $options->map(function ($decision) use ($invoice, $feeClient) {
+            'payment_options' => $options->map(function ($decision) use ($invoice, $feeClient, $outstanding) {
                 $availability = strtolower((string) $decision->gateway) === 'paya'
                     ? $this->payaAvailability($invoice)
                     : ['available' => true, 'reason' => null];
@@ -142,6 +152,9 @@ class PaymentCheckoutService
 
                 $paymentMethod = $decision->ruleMatches['payment_method'] ?? 'CARD';
                 $feeCents      = $this->previewFeeCents($invoice, $feeClient, $qbMidRoute, $paymentMethod, (int) $invoice->amount_cents);
+                $outstandingFeeCents = $outstanding
+                    ? $this->previewFeeCents($invoice, $feeClient, $qbMidRoute, $paymentMethod, $outstanding['total_cents'])
+                    : null;
 
                 return [
                     'routing_rule_id' => $decision->routingRuleId,
@@ -164,6 +177,9 @@ class PaymentCheckoutService
                     // percentage (that recompute is what caused the display mismatch bug).
                     'fee_cents'   => $feeCents,
                     'total_cents' => (int) $invoice->amount_cents + $feeCents,
+                    // The same, when paying all outstanding invoices.
+                    'outstanding_fee_cents'   => $outstandingFeeCents,
+                    'outstanding_total_cents' => $outstanding ? $outstanding['total_cents'] + $outstandingFeeCents : null,
                 ];
             })->values()->all(),
         ];
@@ -297,10 +313,33 @@ class PaymentCheckoutService
         ?string $routingRuleId = null,
         string $transactionType = 'debit',
         array $extraBilling = [],
+        ?string $payScope = null,
+        ?int $expectedBaseCents = null,
     ): Transaction {
         $this->assertLinkActive($session);
 
         $invoice = $session->invoice()->firstOrFail();
+
+        // ── What's being paid: this invoice, or all the client's outstanding ones ──
+        // Recomputed here, never taken from the page: the payer must be charged for what
+        // Lawcus shows as owed now, and only if that's still what they agreed to pay.
+        $baseCents = (int) $invoice->amount_cents;
+        $covered   = [];
+
+        if ($payScope === self::SCOPE_OUTSTANDING) {
+            $outstanding = $this->lawcusOutstanding->for($invoice);
+
+            if (! $outstanding) {
+                throw new RuntimeException('Paying all outstanding invoices is no longer available. Please reload the page.');
+            }
+
+            if ($expectedBaseCents !== null && $expectedBaseCents !== $outstanding['total_cents']) {
+                throw new RuntimeException('The outstanding balance has changed. Please reload the page to see the current amount.');
+            }
+
+            $baseCents = $outstanding['total_cents'];
+            $covered   = $outstanding['invoices'];
+        }
 
         // ── Fee surcharge ──────────────────────────────────────────────────
         $feeCents  = 0;
@@ -332,11 +371,11 @@ class PaymentCheckoutService
             $feePercent = $feeClient->feePercentFor($paymentMethod, $invoice->fund_type) ?? '0';
             if ((float) $feePercent > 0) {
                 $feeCents = $feeClient->exact_cent_fee_rounding_enabled
-                    ? $this->calculateExactFeeCents((int) $invoice->amount_cents, $feePercent)
-                    : $this->calculateRoundedFeeCents((int) $invoice->amount_cents, $feePercent);
+                    ? $this->calculateExactFeeCents($baseCents, $feePercent)
+                    : $this->calculateRoundedFeeCents($baseCents, $feePercent);
             }
         }
-        $totalAmountCents = (int) $invoice->amount_cents + $feeCents;
+        $totalAmountCents = $baseCents + $feeCents;
         // ──────────────────────────────────────────────────────────────────
 
         if ($token === '') {
@@ -543,11 +582,11 @@ class PaymentCheckoutService
                 && $qbMidRoute->rate_percent !== null
                 && (float) $qbMidRoute->rate_percent > 0) {
                 $overridePercent  = (float) $qbMidRoute->rate_percent;
-                $feeCents         = (int) round($invoice->amount_cents * $overridePercent / 100);
-                $totalAmountCents = (int) $invoice->amount_cents + $feeCents;
+                $feeCents         = (int) round($baseCents * $overridePercent / 100);
+                $totalAmountCents = $baseCents + $feeCents;
             } else {
                 $feeCents         = 0;
-                $totalAmountCents = (int) $invoice->amount_cents;
+                $totalAmountCents = $baseCents;
             }
         }
         // ──────────────────────────────────────────────────────────────────
@@ -588,10 +627,11 @@ class PaymentCheckoutService
             'environment'     => $decision->midCredentials['environment'] ?? 'sandbox',
             'routing_rule_id' => $decision->routingRuleId,
             'payment_method'  => $paymentMethod,
-            'amount_cents'    => (int) $invoice->amount_cents,
+            'amount_cents'    => $baseCents,
             'fee_cents'       => $feeCents,
             'total_cents'     => $totalAmountCents,
             'qb_mid_route_id' => $qbMidRoute?->id,
+            'covered_invoices' => array_column($covered, 'invoice_number'),
         ]);
 
         try {
@@ -672,7 +712,7 @@ class PaymentCheckoutService
 
         $transaction = DB::transaction(function () use (
             $session, $invoice, $decision, $response, $feeCents, $totalAmountCents,
-            $cardholderFirstName, $cardholderLastName, $billingAddress, $feeClient,
+            $cardholderFirstName, $cardholderLastName, $billingAddress, $feeClient, $covered,
         ) {
             $transaction = Transaction::query()->create([
                 'payment_session_id'    => $session->id,
@@ -696,7 +736,10 @@ class PaymentCheckoutService
                 'cardholder_first_name' => $cardholderFirstName,
                 'cardholder_last_name'  => $cardholderLastName,
                 'billing_address'       => $billingAddress,
+                'covered_invoices'      => $covered ?: null,
             ]);
+
+            $this->markCoveredInvoicesPaid($invoice, $transaction);
 
             $this->stateMachine->transition($session, 'COMPLETED');
             $session->forceFill([
@@ -1133,6 +1176,40 @@ class PaymentCheckoutService
             'environment'     => $decision->midCredentials['environment'] ?? 'sandbox',
             'credential_keys' => array_keys($decision->midCredentials),
         ], $extra));
+    }
+
+    /**
+     * Other invoices paid by an "all outstanding" charge that we hold too: marked paid, and
+     * their own payment links closed and reminders stopped, so the client can't pay twice.
+     * Recording them in Lawcus happens with this invoice's payment (LawcusPaymentSyncService).
+     */
+    private function markCoveredInvoicesPaid(Invoice $invoice, Transaction $transaction): void
+    {
+        $externalIds = array_column((array) $transaction->covered_invoices, 'external_invoice_id');
+
+        if ($externalIds === []) {
+            return;
+        }
+
+        $paid = Invoice::query()
+            ->where('pms_source', $invoice->pms_source)
+            ->where('pms_client_id', $invoice->pms_client_id)
+            ->whereIn('external_invoice_id', $externalIds)
+            ->get();
+
+        foreach ($paid as $other) {
+            $other->forceFill(['status' => 'PAID'])->save();
+
+            PaymentSession::query()
+                ->where('invoice_id', $other->id)
+                ->where('link_status', 'active')
+                ->update(['link_status' => 'paid', 'next_reminder_at' => null, 'updated_at' => now()]);
+
+            AuditLogger::log('INVOICE_PAID_WITH_OUTSTANDING', 'invoice', $other->id, [
+                'transaction_id' => $transaction->id,
+                'paid_from'      => $invoice->id,
+            ]);
+        }
     }
 
     private function assertLinkActive(PaymentSession $session): void

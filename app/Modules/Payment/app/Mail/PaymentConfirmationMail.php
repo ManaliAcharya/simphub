@@ -62,6 +62,9 @@ class PaymentConfirmationMail extends Mailable
         $customerName = (string) ($invoice->customer['name'] ?? '');
 
         $invoiceAmount = number_format($invoice->amount_cents / 100, 2);
+        // Other invoices paid with this one ("all outstanding" on a Lawcus invoice).
+        $coveredInvoices = self::coveredInvoiceRows($transaction);
+        $paidAmount    = number_format(($invoice->amount_cents + $transaction->coveredInvoicesCents()) / 100, 2);
         $feeCents      = (int) $transaction->fee_cents;
         $feeAmount     = $feeCents > 0 ? number_format($feeCents / 100, 2) : null;
         $totalAmount   = number_format($transaction->amount_cents / 100, 2);
@@ -85,8 +88,18 @@ class PaymentConfirmationMail extends Mailable
                 'customerName', 'invoiceRef', 'currency',
                 'invoiceAmount', 'feeAmount', 'feeCents', 'totalAmount',
                 'paymentMethod', 'authorizationId', 'paidDate', 'clioBillUrl',
+                'coveredInvoices', 'paidAmount',
             ),
         );
+    }
+
+    /** @return list<array{ref: string, amount: string}> */
+    public static function coveredInvoiceRows(Transaction $transaction): array
+    {
+        return array_map(fn (array $covered) => [
+            'ref'    => (string) ($covered['invoice_number'] ?? $covered['external_invoice_id'] ?? ''),
+            'amount' => number_format((int) ($covered['amount_cents'] ?? 0) / 100, 2),
+        ], array_values((array) $transaction->covered_invoices));
     }
 
     private function gatewayLabel(string $gateway): string

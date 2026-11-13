@@ -32,7 +32,14 @@ class Transaction extends Model
         return [
             'gateway_response' => 'array',
             'billing_address'  => 'array',
+            'covered_invoices' => 'array',
         ];
+    }
+
+    /** What this charge paid toward other invoices than its own ("all outstanding"). */
+    public function coveredInvoicesCents(): int
+    {
+        return (int) collect((array) $this->covered_invoices)->sum(fn ($covered) => (int) ($covered['amount_cents'] ?? 0));
     }
 
     public function invoice(): BelongsTo
