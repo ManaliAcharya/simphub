@@ -15,6 +15,7 @@ use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\EmailConfiguration;
+use Modules\Inbound\Services\LawcusTrustBalance;
 use Modules\Payment\Services\PaymentEmailTemplate;
 
 class PaymentLinkMail extends Mailable
@@ -102,9 +103,12 @@ class PaymentLinkMail extends Mailable
         // A Trust Request reads as a retainer deposit request, never as an invoice.
         $isRetainer = $emailTemplate['kind'] === PaymentEmailTemplate::RETAINER;
 
+        // Lawcus "Show Trust Balance": the matter's trust balance, for information only.
+        $trustBalance = app(LawcusTrustBalance::class)->formatted($this->invoice);
+
         return new Content(
             view: 'payment::emails.payment-link',
-            with: compact('logoUrl', 'merchantName', 'primaryColor', 'bodyHeader', 'bodyFooter', 'customerName', 'dueDate', 'isRetainer'),
+            with: compact('logoUrl', 'merchantName', 'primaryColor', 'bodyHeader', 'bodyFooter', 'customerName', 'dueDate', 'isRetainer', 'trustBalance'),
         );
     }
 

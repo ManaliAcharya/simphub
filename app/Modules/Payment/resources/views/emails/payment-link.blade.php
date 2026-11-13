@@ -35,6 +35,12 @@
                     <td style="padding: 10px 14px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: bold; color: #374151;">{{ !empty($isRetainer) ? 'Deposit Amount' : 'Amount Due' }}</td>
                     <td style="padding: 10px 14px; border: 1px solid #e5e7eb;"><strong>{{ $invoice->currency }} {{ number_format($invoice->amount_cents / 100, 2) }}</strong></td>
                 </tr>
+                @if(!empty($trustBalance))
+                <tr>
+                    <td style="padding: 10px 14px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: bold; color: #374151;">Available Trust Balance</td>
+                    <td style="padding: 10px 14px; border: 1px solid #e5e7eb;">{{ $invoice->currency }} {{ $trustBalance }}</td>
+                </tr>
+                @endif
                 @if(!empty($dueDate))
                 <tr>
                     <td style="padding: 10px 14px; background: #f9fafb; border: 1px solid #e5e7eb; font-weight: bold; color: #374151;">Due Date</td>

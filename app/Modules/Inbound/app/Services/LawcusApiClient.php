@@ -166,6 +166,19 @@ class LawcusApiClient
             ->withHeaders(['LAWCUS-X-API-KEY' => trim((string) $connection->access_token)]);
     }
 
+    /**
+     * A client's trust balances (Client Trust report): [{key: client_id, accounts: [{name,
+     * id, matter_name, matter_display_number, total}]}]. Zero balances are left out.
+     */
+    public function fetchClientTrust(LawcusConnection $connection, int $clientId): array
+    {
+        return (array) $this->apiTokenRequest($connection)
+            ->timeout(20)
+            ->get('/reports/client-trust', ['client_id' => $clientId, 'display_zero' => 'false'])
+            ->throw()
+            ->json();
+    }
+
     public function fetchBankAccounts(LawcusConnection $connection): array
     {
         $response = $this->apiTokenRequest($connection)
