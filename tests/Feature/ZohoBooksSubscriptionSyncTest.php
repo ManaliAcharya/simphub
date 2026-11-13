@@ -302,6 +302,37 @@ class ZohoBooksSubscriptionSyncTest extends TestCase
         $this->assertNull($moved['item_id']);
     }
 
+    public function test_reconnecting_to_another_zoho_account_drops_the_old_organization(): void
+    {
+        $connection = $this->connection();
+        [$invoice, $subscription] = $this->paidPeriod();
+        $subscription->forceFill(['zoho_books_customer_id' => 'C-OLD'])->save();
+        $invoice->forceFill(['metadata' => [...$invoice->metadata, 'zoho_books' => [
+            'status' => 'failed', 'customer_id' => 'C-OLD', 'invoice_id' => 'I-OLD', 'attempts' => 2,
+        ]]])->save();
+
+        // The new login only sees its own organization; the saved 777 belongs to the old account.
+        $this->routes = [
+            'GET /organizations' => ['code' => 0, 'organizations' => [['organization_id' => '555', 'name' => 'ITL India']]],
+        ];
+
+        $options = $this->service()->options($connection->fresh());
+        $this->assertSame(['555'], array_column($options['organizations'], 'organization_id'));
+        $this->assertSame([], $options['accounts']);
+
+        $this->service()->checkAccess($connection->fresh());
+
+        $settings = $this->service()->settings($connection->fresh());
+        $this->assertSame(['555', 'ITL India'], [$settings['organization_id'], $settings['organization_name']]);
+        $this->assertNull($settings['account_id']);
+        $this->assertNull($subscription->fresh()->zoho_books_customer_id);
+
+        $state = $invoice->fresh()->metadata['zoho_books'];
+        $this->assertSame('failed', $state['status']);
+        $this->assertArrayNotHasKey('customer_id', $state);
+        $this->assertArrayNotHasKey('invoice_id', $state);
+    }
+
     private function service(): ZohoBooksSubscriptionSyncService
     {
         return app(ZohoBooksSubscriptionSyncService::class);

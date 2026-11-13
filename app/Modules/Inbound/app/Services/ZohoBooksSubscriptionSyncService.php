@@ -38,6 +38,12 @@ class ZohoBooksSubscriptionSyncService
     /** Chart of accounts types a payment can be deposited to. */
     private const DEPOSIT_ACCOUNT_TYPES = ['bank', 'cash', 'payment_clearing', 'other_current_asset'];
 
+    private const NO_ORGANIZATION = [
+        'organization_id' => null, 'organization_name' => null,
+        'account_id' => null, 'account_name' => null,
+        'item_id' => null, 'item_name' => null,
+    ];
+
     public function __construct(
         private readonly ZohoCrmOAuthService $oauth,
         private readonly ZohoApiClient $books,
@@ -221,6 +227,13 @@ class ZohoBooksSubscriptionSyncService
             $organizations = $this->organizations($connection);
             $books = (array) data_get($connection->meta, 'books', []);
 
+            // Reconnected with a Zoho login (or data center) that cannot open the saved organization.
+            if (! empty($books['organization_id'])
+                && ! collect($organizations)->contains('organization_id', (string) $books['organization_id'])) {
+                $books = [...$books, ...self::NO_ORGANIZATION];
+                $this->forgetOrganizationIds((string) $connection->pms_client_id);
+            }
+
             if (empty($books['organization_id']) && count($organizations) === 1) {
                 $books['organization_id'] = $organizations[0]['organization_id'];
                 $books['organization_name'] = $organizations[0]['name'];
@@ -251,11 +264,13 @@ class ZohoBooksSubscriptionSyncService
     {
         $connection = $this->oauth->ensureValidAccessToken($connection);
         $orgId = $this->settings($connection)['organization_id'];
+        $organizations = $this->organizations($connection);
 
         $accounts = [];
         $items = [];
 
-        if ($orgId) {
+        // A saved organization this login cannot open must not block choosing another one.
+        if ($orgId && collect($organizations)->contains('organization_id', (string) $orgId)) {
             $all = $this->books->fetchPaymentAccounts($connection, $orgId);
             $accounts = array_values(array_filter(
                 $all,
@@ -265,7 +280,7 @@ class ZohoBooksSubscriptionSyncService
         }
 
         return [
-            'organizations' => $this->organizations($connection),
+            'organizations' => $organizations,
             'accounts'      => $accounts,
             'items'         => $items,
         ];
@@ -298,6 +313,10 @@ class ZohoBooksSubscriptionSyncService
 
         if ($books['organization_id'] !== $current['organization_id']) {
             $books = [...$books, 'account_id' => null, 'account_name' => null, 'item_id' => null, 'item_name' => null];
+
+            if ($current['organization_id']) {
+                $this->forgetOrganizationIds((string) $connection->pms_client_id);
+            }
         } else {
             $accountId = trim((string) ($input['account_id'] ?? ''));
             $itemId = trim((string) ($input['item_id'] ?? ''));
@@ -477,6 +496,31 @@ class ZohoBooksSubscriptionSyncService
             ])
             ->values()
             ->all();
+    }
+
+    /**
+     * Books contact and invoice IDs only exist in the organization they were made in. After an
+     * organization change, unsynced invoices and every subscription look them up again.
+     */
+    private function forgetOrganizationIds(string $pmsClientId): void
+    {
+        Subscription::query()
+            ->where('pms_client_id', $pmsClientId)
+            ->whereNotNull('zoho_books_customer_id')
+            ->update(['zoho_books_customer_id' => null]);
+
+        Invoice::query()
+            ->where('pms_client_id', $pmsClientId)
+            ->where('pms_source', SubscriptionService::PMS_SOURCE)
+            ->whereNotNull('metadata->zoho_books->status')
+            ->where('metadata->zoho_books->status', '!=', self::STATUS_SYNCED)
+            ->chunkById(200, function ($invoices): void {
+                foreach ($invoices as $invoice) {
+                    $metadata = (array) $invoice->metadata;
+                    unset($metadata['zoho_books']['customer_id'], $metadata['zoho_books']['invoice_id']);
+                    $invoice->forceFill(['metadata' => $metadata])->save();
+                }
+            });
     }
 
     private function saveState(Invoice $invoice, array $values): void
