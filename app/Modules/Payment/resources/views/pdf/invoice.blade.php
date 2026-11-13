@@ -159,6 +159,13 @@
             <td class="lbl">Total Due</td>
             <td class="val">{{ $currency }} {{ $totalAmount }}</td>
         </tr>
+        @if(!empty($trustBalance))
+        {{-- Informational only: not deducted from the total due. --}}
+        <tr>
+            <td class="lbl">Available Trust Balance</td>
+            <td class="val">{{ $currency }} {{ $trustBalance }}</td>
+        </tr>
+        @endif
     </table>
 
     <div class="payblock">

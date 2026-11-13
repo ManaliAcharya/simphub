@@ -14,6 +14,7 @@ use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Models\WaveConnection;
 use Modules\Inbound\Services\ClioApiClient;
 use Modules\Inbound\Services\ClioOAuthService;
+use Modules\Inbound\Services\LawcusTrustBalance;
 use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksOAuthService;
 use Modules\Inbound\Services\WaveApiClient;
@@ -86,6 +87,8 @@ class InvoicePdfService
                 'taxAmount'        => $taxAmount !== null ? number_format($taxAmount, 2) : null,
                 'totalAmount'      => number_format($totalAmount, 2),
                 'paymentUrl'       => $paymentUrl,
+                // Lawcus "Show Trust Balance": the matter's trust balance, for information only.
+                'trustBalance'     => app(LawcusTrustBalance::class)->formatted($invoice),
             ])->render();
 
             return Pdf::loadHTML($html)->output();

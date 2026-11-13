@@ -32,6 +32,10 @@
             <p style="margin: 0 0 16px;">Due date: {{ $dueDate }}</p>
             @endif
 
+            @if(!empty($trustBalance))
+            <p style="margin: 0 0 16px;">Available trust balance: {{ $invoice->currency }} {{ $trustBalance }}</p>
+            @endif
+
             <p style="margin: 0 0 16px;">
                 <a href="{{ $paymentUrl }}"
                    style="display: inline-block; padding: 14px 28px; background: {{ $primaryColor ?? '#2196F3' }}; color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px;">

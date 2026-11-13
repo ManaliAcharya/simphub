@@ -15,6 +15,7 @@ use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\EmailConfiguration;
+use Modules\Inbound\Services\LawcusTrustBalance;
 use Modules\Payment\Services\PaymentEmailTemplate;
 
 class PaymentReminderMail extends Mailable
@@ -81,6 +82,7 @@ class PaymentReminderMail extends Mailable
                 'dueDate'      => $dueDate,
                 // A Trust Request's reminder asks for the retainer deposit, not an invoice.
                 'isRetainer'   => $this->template()['kind'] === PaymentEmailTemplate::RETAINER,
+                'trustBalance' => app(LawcusTrustBalance::class)->formatted($this->invoice),
             ],
         );
     }
