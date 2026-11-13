@@ -79,6 +79,7 @@ return [
             'ZohoCRM.modules.contacts.UPDATE',
             'ZohoCRM.settings.fields.ALL',
             'ZohoCRM.org.READ',
+            'ZohoCRM.coql.READ',
             'ZohoBooks.settings.READ',
             'ZohoBooks.accountants.READ',
             'ZohoBooks.contacts.CREATE',

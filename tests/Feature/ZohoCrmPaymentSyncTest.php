@@ -165,11 +165,31 @@ class ZohoCrmPaymentSyncTest extends TestCase
         $this->connection(withFields: true);
         [$invoice] = $this->subscriptionInvoice(null);
 
-        Http::fake([self::API.'/Contacts/search*' => Http::response(null, 204)]);
+        Http::fake([
+            self::API.'/Contacts/search*' => Http::response(null, 204),
+            self::API.'/coql' => Http::response(null, 204),
+        ]);
 
         $this->assertFalse(app(ZohoCrmPaymentSyncService::class)->sync($this->transaction(), $invoice));
         $this->assertSame('FAILED', $invoice->fresh()->pms_sync_status);
         Http::assertNotSent(fn (Request $r) => $r->method() === 'PUT');
+    }
+
+    public function test_finds_a_new_contact_through_coql_when_search_has_not_indexed_it(): void
+    {
+        $this->connection(withFields: true);
+        [$invoice] = $this->subscriptionInvoice(null);
+
+        Http::fake([
+            self::API.'/Contacts/search*' => Http::response(null, 204),
+            self::API.'/coql' => Http::response(['data' => [['id' => '333', 'Full_Name' => 'Jane Doe']]]),
+            self::API.'/Contacts/333' => Http::response(['data' => [['code' => 'SUCCESS', 'status' => 'success']]]),
+        ]);
+
+        $this->assertTrue(app(ZohoCrmPaymentSyncService::class)->sync($this->transaction(), $invoice));
+        Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/coql')
+            && str_contains($r['select_query'], "Email = 'jane@example.com'"));
+        Http::assertSent(fn (Request $r) => $r->method() === 'PUT' && str_ends_with($r->url(), '/Contacts/333'));
     }
 
     public function test_does_nothing_when_zoho_crm_is_not_connected(): void

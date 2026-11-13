@@ -296,6 +296,16 @@ class ZohoCrmPaymentSyncService
 
         $contacts = $this->api->searchContactsByEmail($connection, $subscription->customer_email);
 
+        // A Contact created moments before the payment may not be in the search index yet.
+        if ($contacts === []) {
+            try {
+                $contacts = $this->api->queryContactsByEmail($connection, $subscription->customer_email);
+            } catch (Throwable $e) {
+                // Connections made before the COQL scope was added cannot query; keep the search result.
+                Log::info('Zoho CRM COQL contact lookup failed', ['error' => $e->getMessage()]);
+            }
+        }
+
         if (count($contacts) > 1 && $subscription->customer_name) {
             $name = mb_strtolower(trim($subscription->customer_name));
             $contacts = array_values(array_filter(
