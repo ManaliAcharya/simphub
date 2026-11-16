@@ -61,8 +61,8 @@ class LawcusEditedInvoiceResendTest extends TestCase
             && str_starts_with($mail->envelope()->subject, 'Updated: ')
             && str_contains($mail->envelope()->subject, '#00042'));
 
-        // Re-saved without an amount change: no email.
-        $this->assertSame(0, $this->ingest($client)['emails_sent']);
+        // Re-saved without an amount change (e.g. a note or line edited): resent too.
+        $this->assertSame(1, $this->ingest($client)['emails_sent']);
 
         // Partial payment recorded in Lawcus lowers what's due.
         $this->amountDue = '60.00';
@@ -70,7 +70,61 @@ class LawcusEditedInvoiceResendTest extends TestCase
 
         $this->assertSame(1, $partial['emails_sent']);
         $this->assertSame(6000, $partial['invoice']->amount_cents);
-        Mail::assertSent(PaymentLinkMail::class, 3);
+        Mail::assertSent(PaymentLinkMail::class, 4);
+    }
+
+    public function test_any_save_after_the_last_read_is_picked_up_again_but_a_send_from_lawcus_is_not(): void
+    {
+        $stored = new Invoice(['amount_cents' => 10000, 'status' => 'SENT']);
+        $stored->raw_payload = ['invoice' => ['data' => ['updated_at' => '2026-11-16 10:00:00']]];
+
+        $row = fn (array $overrides) => $overrides + ['amount_due' => '100.00', 'sent_at' => '2026-11-16 09:59:00'];
+
+        $this->assertTrue(PollLawcusInvoicesJob::savedAgain($row(['updated_at' => '2026-11-16 10:05:00']), $stored));
+        $this->assertFalse(PollLawcusInvoicesJob::savedAgain($row(['updated_at' => '2026-11-16 10:00:00']), $stored), 'not changed');
+        $this->assertFalse(PollLawcusInvoicesJob::savedAgain($row(['updated_at' => '2026-11-16T10:00:00.400Z']), $stored), 'same second');
+        $this->assertFalse(PollLawcusInvoicesJob::savedAgain($row(['updated_at' => '2026-11-16 10:05:00', 'sent_at' => '2026-11-16 10:05:00']), $stored), 'sent from Lawcus');
+        $this->assertFalse(PollLawcusInvoicesJob::savedAgain($row(['updated_at' => '2026-11-16 10:05:00', 'amount_due' => '0.00']), $stored), 'nothing due');
+        $this->assertFalse(PollLawcusInvoicesJob::savedAgain($row([]), $stored), 'no updated_at on the row');
+
+        $paid = new Invoice(['amount_cents' => 10000, 'status' => 'PAID']);
+        $paid->raw_payload = $stored->raw_payload;
+        $this->assertFalse(PollLawcusInvoicesJob::savedAgain($row(['updated_at' => '2026-11-16 10:05:00']), $paid), 'paid through us');
+
+        $readBefore = new Invoice(['amount_cents' => 10000, 'status' => 'SENT']);
+        $readBefore->raw_payload = ['invoice' => ['data' => []]];
+        $this->assertFalse(PollLawcusInvoicesJob::savedAgain($row(['updated_at' => '2026-11-16 10:05:00']), $readBefore), 'no stored updated_at');
+    }
+
+    public function test_a_resave_resends_a_paused_invoice_and_restarts_its_reminders(): void
+    {
+        $client = $this->lawcusClient();
+        $client->forceFill(['reminders_enabled' => true])->save();
+
+        $session = $this->ingest($client)['payment_session'];
+        $this->travel(5)->days();
+        $session->forceFill([
+            'reminders_paused_at'  => now(),
+            'next_reminder_at'     => null,
+            'reminders_sent_count' => 1,
+        ])->save();
+
+        // Check in the mail, so paused — then the firm adds a 10% late fee.
+        $this->travel(10)->days();
+        $this->amountDue = '110.00';
+        $edited = $this->ingest($client);
+
+        $this->assertSame(1, $edited['emails_sent']);
+
+        $session->refresh();
+        $this->assertNull($session->reminders_paused_at);
+        $this->assertSame(now()->toDateTimeString(), $session->reminder_cycle_started_at->toDateTimeString());
+        $this->assertSame(1, (int) $session->reminder_cycle_offset);
+        $this->assertSame(
+            now()->addDays((int) $client->fresh()->reminderScheduleDays()[0])->toDateTimeString(),
+            $session->next_reminder_at->toDateTimeString(),
+        );
+        $this->assertDatabaseHas('audit_logs', ['event_type' => 'payment_reminders_restarted_on_resend']);
     }
 
     public function test_no_resend_when_auto_resend_is_off_but_the_amount_still_updates(): void

@@ -14,6 +14,7 @@ use Modules\Inbound\Jobs\SendTrustRequestLinkJob;
 use Modules\Inbound\Mail\LawcusConnectionBrokenMail;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\LawcusConnection;
+use Modules\Payment\Services\InvoiceReminderPause;
 use Modules\Payment\Services\PaymentLinkService;
 use RuntimeException;
 use Throwable;
@@ -27,6 +28,7 @@ class LawcusInvoiceIngestionService
         private readonly PaymentLinkService $paymentLinks,
         private readonly LawcusMatterActivityService $matterActivity,
         private readonly InvoiceLinkLifecycleService $lifecycle,
+        private readonly InvoiceReminderPause $reminders,
     ) {}
 
     public function ingest(string $externalInvoiceId, array $triggerPayload = []): array
@@ -140,12 +142,21 @@ class LawcusInvoiceIngestionService
         }
 
         // An invoice whose link already went out and was then edited and re-saved in Lawcus —
-        // the firm's late fees and partial payments work this way. A changed amount resends
-        // it with the updated subject; the same link charges the invoice's new amount.
+        // the firm's late fees and partial payments work this way. Every re-save resends it
+        // with the updated subject (the same link charges the invoice's new amount), even if
+        // its reminders were paused: the client needs the new version, so reminders restart
+        // from this email.
         if ($previousCents !== null && $result['payment_session']?->payment_link_sent_at !== null) {
-            $result['emails_sent'] = (int) $previousCents !== (int) $result['invoice']->amount_cents
+            $resaved = ($triggerPayload['event_name'] ?? null) === 'poll.invoice.updated'
+                || (int) $previousCents !== (int) $result['invoice']->amount_cents;
+
+            $result['emails_sent'] = $resaved
                 ? $this->lifecycle->resendOnUpdate($result['invoice'], $result['payment_session'], $recipientEmails, $pmsClientId)
                 : 0;
+
+            if ($result['emails_sent'] > 0) {
+                $this->reminders->restartAfterResend($result['payment_session']);
+            }
 
             return $result;
         }
