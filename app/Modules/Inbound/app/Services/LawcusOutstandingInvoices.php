@@ -14,8 +14,9 @@ use Throwable;
  * or everything the same Lawcus client still owes — this invoice plus their other unpaid
  * invoices across all matters, read live from the accounts-receivable report.
  *
- * Trust Requests never count (they go to the IOLTA account, and the report leaves them
- * out), nor do invoices already paid through us but not yet recorded in Lawcus.
+ * Trust Requests never count — not as the invoice being paid, nor among the others (they
+ * go to the IOLTA MID and trust account; one charge must never mix trust and operating
+ * money) — nor do invoices already paid through us but not yet recorded in Lawcus.
  */
 class LawcusOutstandingInvoices
 {
@@ -78,17 +79,19 @@ class LawcusOutstandingInvoices
                 && is_numeric($row['amount_due'] ?? null)
                 && (float) $row['amount_due'] > 0);
 
-        // Paid through us already; Lawcus may not show it yet if recording it failed.
-        $paidHere = Invoice::query()
+        // Left out: invoices paid through us already (Lawcus may not show it yet if recording
+        // it failed), and any we know as a Trust Request even when the report row doesn't say
+        // so — one charge goes through one MID, so trust and operating money never mix.
+        $excluded = Invoice::query()
             ->where('pms_source', 'lawcus')
             ->where('pms_client_id', $invoice->pms_client_id)
             ->whereIn('external_invoice_id', $others->pluck('id')->map(fn ($id) => (string) $id)->all())
-            ->where('status', 'PAID')
+            ->where(fn ($query) => $query->where('status', 'PAID')->orWhere('fund_type', 'TRUST'))
             ->pluck('external_invoice_id')
             ->all();
 
         $invoices = $others
-            ->reject(fn (array $row) => in_array((string) $row['id'], $paidHere, true))
+            ->reject(fn (array $row) => in_array((string) $row['id'], $excluded, true))
             ->map(fn (array $row) => [
                 'external_invoice_id' => (string) $row['id'],
                 'invoice_number'      => isset($row['number']) ? (string) $row['number'] : null,
