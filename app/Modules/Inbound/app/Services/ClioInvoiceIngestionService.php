@@ -10,6 +10,7 @@ use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Billing\Services\PaymentSessionService;
+use Modules\Inbound\Jobs\MarkClioBillSentJob;
 use Modules\Inbound\Jobs\SendTrustRequestLinkJob;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\ClioConnection;
@@ -24,6 +25,7 @@ class ClioInvoiceIngestionService
         private readonly PaymentSessionService $paymentSessions,
         private readonly PaymentLinkService $paymentLinks,
         private readonly InvoiceLinkLifecycleService $lifecycle,
+        private readonly MissingRecipientAlertService $missingRecipientAlert,
     ) {}
 
     public function ingest(string $externalInvoiceId, array $triggerPayload = []): array
@@ -31,18 +33,26 @@ class ClioInvoiceIngestionService
         $pmsClientId = $this->resolvePmsClientId($triggerPayload);
         $connection = $this->oauth->ensureValidAccessToken($this->resolveConnection($pmsClientId));
         $invoicePayload = $this->client->fetchBill($connection, $externalInvoiceId);
-        $isTrust = self::isTrustKind((array) Arr::get($invoicePayload, 'data', $invoicePayload))
+        $billData = (array) Arr::get($invoicePayload, 'data', $invoicePayload);
+        $isTrust = self::isTrustKind($billData)
             ?? $this->client->isTrustBill($connection, $externalInvoiceId);
         $normalized = $this->normalizeInvoice($invoicePayload, $triggerPayload, $isTrust);
         $customerPayload = $this->fetchCustomerPayload($connection, (string) $normalized['external_client_id']);
         $recipientEmails = $this->extractClientEmails($invoicePayload);
         $matterPayload = $this->fetchMatterPayload($connection, $normalized, $pmsClientId);
+        $ledesReason = $this->ledesSkipReason($connection, $billData, $matterPayload, $pmsClientId);
 
-        $existedBefore = Invoice::query()
+        $existing = Invoice::query()
             ->where('pms_source', 'clio')
             ->where('pms_client_id', $pmsClientId)
             ->where('external_invoice_id', $normalized['external_invoice_id'])
-            ->exists();
+            ->first();
+        $existedBefore = $existing !== null;
+
+        // Once paid through SimpHub the amount is history — Clio's balance then reads 0.
+        if ($existing && PaymentSession::query()->where('invoice_id', $existing->id)->where('status', 'COMPLETED')->exists()) {
+            $normalized['amount_cents'] = (int) $existing->amount_cents;
+        }
 
         // No backlog: a bill created before the firm connected is never picked up, even
         // when an edit in Clio sends us an "updated" event for it after go-live.
@@ -55,7 +65,7 @@ class ClioInvoiceIngestionService
             return ['invoice' => null, 'payment_session' => null, 'emails_sent' => 0, 'skipped' => 'created_before_connection'];
         }
 
-        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $matterPayload, $triggerPayload, $recipientEmails, $pmsClientId) {
+        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $matterPayload, $triggerPayload, $recipientEmails, $pmsClientId, $ledesReason) {
             $invoice = Invoice::query()->updateOrCreate(
                 [
                     'pms_source' => 'clio',
@@ -77,6 +87,9 @@ class ClioInvoiceIngestionService
                         'invoice'  => $invoicePayload,
                         'customer' => $customerPayload,
                         'matter'   => $matterPayload,
+                        // Insurer-billed (LEDES) matter: no payment email — shown as Skipped.
+                        'email_skipped'     => $ledesReason ? ClioBillRules::SKIP_LEDES : null,
+                        'email_skip_reason' => $ledesReason,
                     ],
                     'recipient_emails' => $recipientEmails,
                     'synced_at'        => now(),
@@ -130,15 +143,43 @@ class ClioInvoiceIngestionService
         }
 
         $isTrust = $result['invoice']->fund_type === 'TRUST';
+        $session = $result['payment_session'];
+
+        // Insurer-billed (LEDES) matter: the firm bills the insurer through its portal, so
+        // SimpHub does nothing on approval — for Bills and Trust Requests alike.
+        if ($ledesReason !== null && $session->payment_link_sent_at === null
+            && $this->isApprovedState($result['invoice']->status) && ! $this->skipAlreadyLogged($session->id)) {
+            AuditLogger::log('PAYMENT_LINK_SKIPPED', 'payment_session', $session->id, [
+                'invoice_id'    => $result['invoice']->id,
+                'pms_client_id' => $pmsClientId,
+                'reason'        => 'ledes_matter',
+                'detail'        => $ledesReason,
+            ]);
+        }
+
+        // Paid (e.g. covered by trust funds), voided or deleted in Clio: the link closes now,
+        // not only when someone next opens it. Clio sends a void as an "updated" event.
+        $closedReason = ClioBillRules::closedReason($billData);
+
+        if ($closedReason !== null && $session->status !== 'COMPLETED') {
+            $this->lifecycle->disableOnRemoval('clio', $normalized['external_invoice_id'], $pmsClientId, $closedReason);
+        }
+
+        $sendable = $ledesReason === null && $closedReason === null && ! $trustLinkHeld
+            && $this->isApprovedState($result['invoice']->status);
+
+        // Ready to go but nobody to send it to: tell the merchant instead of failing silently.
+        if ($sendable && $recipientEmails === [] && $session->payment_link_sent_at === null) {
+            $this->missingRecipientAlert->alertOnce($result['invoice']);
+        }
 
         // A Trust Request's link waits a moment and goes out only if it's still unpaid — the
         // firm may be recording a check or wire it has already received (SendTrustRequestLinkJob).
-        if ($isTrust && ! $trustLinkHeld && $this->isApprovedState($result['invoice']->status)
-            && $result['payment_session']->payment_link_sent_at === null) {
+        if ($isTrust && $sendable && $recipientEmails !== [] && $session->payment_link_sent_at === null) {
             SendTrustRequestLinkJob::dispatchDelayed($result['invoice']);
         }
 
-        if (! $isTrust && ! $trustLinkHeld && $this->isApprovedState($result['invoice']->status)) {
+        if (! $isTrust && $sendable) {
             // No PDF passed here - PaymentLinkService generates one itself from our
             // own invoice data (same generator used for every PMS), since Clio's own
             // bill-preview API isn't reliably available for this app/account.
@@ -156,15 +197,61 @@ class ClioInvoiceIngestionService
                 'emails_sent' => $emailsSent,
                 'recipient_emails' => $recipientEmails,
             ]);
+
+            MarkClioBillSentJob::dispatchFor($result['invoice']);
         }
 
-        if ($existedBefore) {
+        if ($existedBefore && $ledesReason === null && $closedReason === null) {
             $this->lifecycle->resendOnUpdate($result['invoice'], $result['payment_session'], $recipientEmails, $pmsClientId);
         }
 
         $result['emails_sent'] = $emailsSent;
 
         return $result;
+    }
+
+    private function skipAlreadyLogged(string $sessionId): bool
+    {
+        return \Modules\Audit\Models\AuditLog::query()
+            ->where('event_type', 'PAYMENT_LINK_SKIPPED')
+            ->where('entity_type', 'payment_session')
+            ->where('entity_id', $sessionId)
+            ->exists();
+    }
+
+    /**
+     * Why this bill gets no payment email because its matter is billed to an insurer (LEDES):
+     * Clio's LEDES setting or the firm's "LEDES" checkbox on any of the bill's matters. The
+     * single matter was already fetched; a bill for several matters fetches the others.
+     * Best-effort: a matter that can't be read counts as not LEDES, and is logged.
+     */
+    private function ledesSkipReason(ClioConnection $connection, array $billData, array $matterPayload, string $pmsClientId): ?string
+    {
+        $matters = [];
+
+        if ($matterPayload !== []) {
+            $matters[] = (array) Arr::get($matterPayload, 'data', $matterPayload);
+        }
+
+        $fetchedId = (string) Arr::get($matterPayload, 'data.id', '');
+
+        foreach (ClioBillRules::matterIds($billData) as $matterId) {
+            if ($matterId === $fetchedId) {
+                continue;
+            }
+
+            try {
+                $matters[] = (array) Arr::get($this->client->fetchMatter($connection, $matterId), 'data', []);
+            } catch (\Throwable $e) {
+                Log::warning('Clio matter fetch for the LEDES check failed', [
+                    'pms_client_id' => $pmsClientId,
+                    'matter_id'     => $matterId,
+                    'error'         => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return ClioBillRules::ledesSkipReason($matters);
     }
 
     /**
@@ -291,7 +378,10 @@ class ClioInvoiceIngestionService
             throw new RuntimeException('Clio invoice response did not include an invoice id.');
         }
 
-        $total = Arr::get($data, 'total', Arr::get($data, 'balance', 0));
+        // Charge what's still owed (Clio's balance: total less payments and applied trust
+        // funds); a bill with nothing owing keeps its total for the record.
+        $due   = ClioBillRules::amountDue((array) $data);
+        $total = $due > 0 ? $due : Arr::get($data, 'total', Arr::get($data, 'balance', 0));
 
         return [
             'external_invoice_id' => (string) $id,

@@ -46,9 +46,17 @@ return [
         'api_version' => env('CLIO_API_VERSION', '4'),
         'webhook_model' => env('CLIO_WEBHOOK_MODEL', 'bill'),
         'webhook_events' => array_values(array_filter(array_map('trim', explode(',', env('CLIO_WEBHOOK_EVENTS', 'created,updated,deleted'))))),
-        'webhook_fields' => array_values(array_filter(array_map('trim', explode(',', env('CLIO_WEBHOOK_FIELDS', 'id,number,total,balance,state,issued_at,created_at,updated_at'))))),
+        // Clio's webhook subscription rejects state/number/total with InvalidFields. updated_at
+        // changes on every edit (approval included), and ingestion re-fetches the bill's state.
+        'webhook_fields' => array_values(array_filter(array_map('trim', explode(',', env('CLIO_WEBHOOK_FIELDS', 'id,created_at,updated_at'))))),
         'webhook_expiry_days' => (int) env('CLIO_WEBHOOK_EXPIRY_DAYS', 30),
-        'approved_bill_states' => array_values(array_filter(array_map('trim', array_map('strtoupper', explode(',', env('CLIO_APPROVED_BILL_STATES', 'approved')))))),
+        // Clio bill states: draft, awaiting_approval, awaiting_payment, paid, void, deleted.
+        // Approving a bill moves it to awaiting_payment, which releases the payment-link email.
+        'approved_bill_states' => array_values(array_filter(array_map('trim', array_map('strtoupper', explode(',', env('CLIO_APPROVED_BILL_STATES', 'awaiting_payment')))))),
+        // After SimpHub emails the client, record the send on the Clio bill (mark_as_sent).
+        'mark_bills_sent' => (bool) env('CLIO_MARK_BILLS_SENT', true),
+        // Emailed when a firm's Clio webhook is suspended, missing, or can't be renewed.
+        'ops_alert_email' => env('CLIO_OPS_ALERT_EMAIL'),
     ],
 
     'zoho' => [

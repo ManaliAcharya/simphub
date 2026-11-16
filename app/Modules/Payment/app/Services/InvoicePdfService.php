@@ -64,7 +64,7 @@ class InvoicePdfService
             $taxAmount   = $tax['amount'];
             $subtotal    = $taxAmount !== null ? $totalAmount - $taxAmount : $totalAmount;
 
-            $html = view('payment::pdf.invoice', [
+            $html = view('payment::pdf.invoice', array_merge([
                 'logoUrl'          => $logoUrl,
                 'faviconUri'       => $this->dataUri(file_get_contents(public_path('images/logo/simphub-favicon.jpeg')), 'image/jpeg'),
                 'primaryColor'     => $emailConfig?->primary_color,
@@ -89,7 +89,7 @@ class InvoicePdfService
                 'paymentUrl'       => $paymentUrl,
                 // Lawcus "Show Trust Balance": the matter's trust balance, for information only.
                 'trustBalance'     => app(LawcusTrustBalance::class)->formatted($invoice),
-            ])->render();
+            ], $this->clioView($invoice)))->render();
 
             return Pdf::loadHTML($html)->output();
         } catch (Throwable $e) {
@@ -214,7 +214,9 @@ class InvoicePdfService
         $pmsSource = strtolower((string) $invoice->pms_source);
 
         if ($pmsSource === 'clio' && $invoice->external_invoice_id) {
-            $items = $this->fetchClioLineItems($invoice);
+            $items = strtoupper((string) $invoice->fund_type) === 'TRUST'
+                ? $this->fetchClioTrustLines($invoice)
+                : $this->fetchClioLineItems($invoice);
             if ($items !== []) {
                 return $items;
             }
@@ -256,15 +258,22 @@ class InvoicePdfService
             $items = [];
             foreach ($lineItems as $line) {
                 $total = (float) ($line['total'] ?? 0);
-                if ($total <= 0) {
+                // No-charge lines are left off; discount lines (negative) stay so the lines
+                // add up to Clio's subtotal.
+                if ($total == 0.0) {
                     continue;
                 }
+                $quantity = $line['quantity'] ?? null;
+                $price    = $line['price'] ?? null;
+
                 $items[] = [
-                    'description'    => (string) ($line['description'] ?: $this->clioLineItemTypeLabel((string) ($line['type'] ?? ''))),
-                    'subDescription' => null,
-                    'qty'            => 1.0,
-                    'rate'           => $total,
-                    'amount'         => $total,
+                    'productOrService' => $this->formatDate($line['date'] ?? null, 'M j, Y'),
+                    'description'      => (string) (($line['description'] ?? null) ?: ($line['note'] ?? null) ?: $this->clioLineItemTypeLabel((string) ($line['type'] ?? ''))),
+                    'subDescription'   => null,
+                    // Time entries: quantity is hours and price the hourly rate.
+                    'qty'              => is_numeric($quantity) ? (float) $quantity : 1.0,
+                    'rate'             => is_numeric($price) ? (float) $price : $total,
+                    'amount'           => $total,
                 ];
             }
 
@@ -293,6 +302,149 @@ class InvoicePdfService
             'ExpenseLineItem'  => 'Expense',
             default            => 'Line item',
         };
+    }
+
+    /** A Clio Trust Request's lines: each matter's requested amount, with the firm's note. */
+    private function fetchClioTrustLines(Invoice $invoice): array
+    {
+        try {
+            $connection = ClioConnection::query()
+                ->where('provider', 'clio')
+                ->where('pms_client_id', $invoice->pms_client_id)
+                ->first();
+
+            if (! $connection) {
+                return [];
+            }
+
+            $lines = $this->clioApi->fetchTrustLineItemsForPdf(
+                $this->clioOAuth->ensureValidAccessToken($connection),
+                (string) $invoice->external_invoice_id,
+            );
+
+            $items = [];
+            foreach ($lines as $line) {
+                $total = (float) ($line['total'] ?? 0);
+                if ($total == 0.0) {
+                    continue;
+                }
+
+                $matter = trim(implode(' - ', array_filter([
+                    (string) Arr::get($line, 'matter.display_number', ''),
+                    (string) Arr::get($line, 'matter.description', ''),
+                ])));
+
+                $items[] = [
+                    'productOrService' => $this->formatDate($line['date'] ?? null, 'M j, Y'),
+                    'description'      => $matter !== '' ? 'Trust deposit: '.$matter : 'Trust deposit',
+                    'subDescription'   => trim((string) ($line['note'] ?? '')) ?: null,
+                    'qty'              => 1.0,
+                    'rate'             => $total,
+                    'amount'           => $total,
+                ];
+            }
+
+            return $items;
+        } catch (Throwable $e) {
+            Log::warning('Clio trust line fetch for PDF failed, falling back to a single line.', [
+                'invoice_id' => $invoice->id,
+                'error'      => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+    }
+
+    /**
+     * Clio's own figures for the PDF, so it matches what the firm sees in Clio: the bill's
+     * subtotal, tax, discounts/interest (whatever reconciles Clio's subtotal + tax to its
+     * total), total, what's been paid or applied from trust, and the balance due — which is
+     * what the payment link charges. Empty for other PMSs.
+     */
+    private function clioView(Invoice $invoice): array
+    {
+        if (strtolower((string) $invoice->pms_source) !== 'clio') {
+            return [];
+        }
+
+        $bill    = (array) Arr::get($invoice->raw_payload ?? [], 'invoice.data', []);
+        $isTrust = strtoupper((string) $invoice->fund_type) === 'TRUST';
+        $due     = $invoice->amount_cents / 100;
+        $total   = is_numeric($bill['total'] ?? null) ? (float) $bill['total'] : $due;
+        // Paid/applied follows the live balance the link charges, so the rows always add up.
+        $paid    = max(0.0, round($total - $due, 2));
+        $memo    = trim((string) ($bill['memo'] ?? ''));
+
+        $view = [
+            'documentLabel'    => $isTrust ? 'Trust Request' : 'Invoice',
+            'subject'          => trim((string) ($bill['subject'] ?? '')) ?: null,
+            'matterLabel'      => $this->clioMatterLabel($invoice, $bill),
+            'firstColumnLabel' => 'Date',
+            'qtyLabel'         => $isTrust ? 'Qty' : 'Hours / Qty',
+            'customerMemo'     => $memo !== '' ? $memo : null,
+            'subtotal'         => number_format($total, 2),
+            'taxAmount'        => null,
+            'taxLabel'         => null,
+            'invoiceTotal'     => number_format($total, 2),
+            'paidAmount'       => $paid > 0 ? number_format($paid, 2) : null,
+            'totalAmount'      => number_format($due, 2),
+        ];
+
+        if ($isTrust || ! is_numeric($bill['sub_total'] ?? null)) {
+            return $view;
+        }
+
+        $subTotal = (float) $bill['sub_total'];
+        $tax      = (float) (is_numeric($bill['tax_sum'] ?? null) ? $bill['tax_sum'] : 0)
+            + (float) (is_numeric($bill['secondary_tax_sum'] ?? null) ? $bill['secondary_tax_sum'] : 0);
+        $adjust   = round($total - $subTotal - $tax, 2);
+
+        $view['subtotal']  = number_format($subTotal, 2);
+        $view['taxAmount'] = $tax > 0 ? number_format($tax, 2) : null;
+        $view['taxLabel']  = $tax > 0 ? 'Tax' : null;
+
+        if (abs($adjust) >= 0.01) {
+            $view['adjustmentLabel']  = $adjust < 0 ? 'Discount' : 'Interest & Adjustments';
+            $view['adjustmentAmount'] = ($adjust < 0 ? '-' : '').number_format(abs($adjust), 2);
+        }
+
+        return $view;
+    }
+
+    private function clioMatterLabel(Invoice $invoice, array $bill): ?string
+    {
+        $matter = (array) Arr::get($invoice->raw_payload ?? [], 'matter.data', []);
+
+        if ($matter === []) {
+            $matters = (array) ($bill['matters'] ?? []);
+            $matter  = count($matters) === 1 && is_array($matters[0] ?? null) ? $matters[0] : [];
+
+            if ($matter === [] && count($matters) > 1) {
+                $numbers = array_filter(array_map(fn ($m) => is_array($m) ? (string) ($m['display_number'] ?? '') : '', $matters));
+
+                return $numbers !== [] ? implode(', ', $numbers) : null;
+            }
+        }
+
+        $label = trim(implode(' - ', array_filter([
+            (string) ($matter['display_number'] ?? ''),
+            (string) ($matter['description'] ?? ''),
+        ])));
+
+        return $label !== '' ? $label : null;
+    }
+
+    private function formatDate(mixed $date, string $format): ?string
+    {
+        if (! is_string($date) || trim($date) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($date)->format($format);
+        } catch (Throwable) {
+            return $date;
+        }
     }
 
     private function fetchWaveLineItems(Invoice $invoice): array

@@ -68,6 +68,11 @@ class SendTrustRequestLinkJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
+        // The matter turned out to be insurer-billed (LEDES) since this was queued.
+        if (data_get($invoice->raw_payload, 'email_skipped')) {
+            return;
+        }
+
         $status = $resolver->resolve($invoice);
 
         if ($status === 'paid' || $status === 'gone') {
@@ -115,6 +120,8 @@ class SendTrustRequestLinkJob implements ShouldQueue, ShouldBeUnique
             if ($invoice->pms_source === 'lawcus') {
                 $lawcusMatterActivity->logInvoiceSent($invoice, $recipientEmails);
             }
+
+            MarkClioBillSentJob::dispatchFor($invoice);
         }
     }
 }

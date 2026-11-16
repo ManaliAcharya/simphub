@@ -1194,8 +1194,10 @@
                         payment_method: state.selectedOption.payment_method || state.selectedOption.hosted_fields.metadata.payment_method || 'CARD',
                         ...(state.payaBankToken ? { paya_bank_token: state.payaBankToken } : {}),
                         ...(state.cardholder ? state.cardholder : {}),
-                        // The server re-checks this total against Lawcus before charging.
-                        ...(payingOutstanding() ? { pay_scope: 'outstanding', expected_amount_cents: baseAmountCents() } : {}),
+                        // The server re-checks the amount the payer saw against the PMS (Lawcus
+                        // outstanding total, Clio live balance) before charging.
+                        ...(payingOutstanding() ? { pay_scope: 'outstanding' } : {}),
+                        expected_amount_cents: baseAmountCents(),
                     }),
                 });
             } catch (e) {

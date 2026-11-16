@@ -46,10 +46,39 @@ class PaymentCheckoutService
         private readonly LawcusCustomerRefreshService $lawcusCustomerRefresh,
         private readonly PayaTokenizerService $payaTokenizer,
         private readonly LawcusOutstandingInvoices $lawcusOutstanding,
+        private readonly \Modules\Inbound\Services\ClioLiveBalanceService $clioLiveBalance,
     ) {}
+
+    public const BALANCE_CHANGED_MESSAGE = 'The balance on this invoice has changed. Please reload the page to see the current amount.';
+
+    /**
+     * Clio bills are read live on every page load and at submit: the amount follows Clio's
+     * balance (trust funds applied, other payments) and a paid, covered, voided or deleted
+     * bill closes its link. On page load an unreachable Clio falls back to the stored amount
+     * (kept current by Clio's webhooks); at submit it refuses rather than guess.
+     */
+    private function syncLiveBalance(PaymentSession $session, bool $atSubmit): void
+    {
+        $invoice = $session->invoice()->first();
+
+        if (! $invoice || (string) $invoice->pms_source !== 'clio') {
+            return;
+        }
+
+        $result = $this->clioLiveBalance->sync($invoice, $session);
+
+        if ($result === \Modules\Inbound\Services\ClioLiveBalanceService::CLOSED) {
+            $session->refresh();
+        }
+
+        if ($atSubmit && $result === \Modules\Inbound\Services\ClioLiveBalanceService::UNKNOWN) {
+            throw new RuntimeException('We could not confirm the current balance on this invoice. Please try again in a moment.');
+        }
+    }
 
     public function details(PaymentSession $session): array
     {
+        $this->syncLiveBalance($session, false);
         $this->assertLinkActive($session);
 
         $invoice = $session->invoice()->firstOrFail();
@@ -316,9 +345,22 @@ class PaymentCheckoutService
         ?string $payScope = null,
         ?int $expectedBaseCents = null,
     ): Transaction {
+        // A retry of a payment that already went through returns it (below), never re-checks.
+        if ($session->status !== 'COMPLETED') {
+            $this->syncLiveBalance($session, true);
+        }
+
         $this->assertLinkActive($session);
 
         $invoice = $session->invoice()->firstOrFail();
+
+        // The payer agreed to the amount on the page; if Clio's balance moved since, show the
+        // new amount instead of charging a different one.
+        if ($payScope !== self::SCOPE_OUTSTANDING && $expectedBaseCents !== null
+            && (string) $invoice->pms_source === 'clio' && $session->status !== 'COMPLETED'
+            && $expectedBaseCents !== (int) $invoice->amount_cents) {
+            throw new RuntimeException(self::BALANCE_CHANGED_MESSAGE);
+        }
 
         // ── What's being paid: this invoice, or all the client's outstanding ones ──
         // Recomputed here, never taken from the page: the payer must be charged for what
