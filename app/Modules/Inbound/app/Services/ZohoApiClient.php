@@ -3,8 +3,10 @@
 namespace Modules\Inbound\Services;
 
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Modules\Inbound\Models\PmsConnection;
+use RuntimeException;
 
 class ZohoApiClient
 {
@@ -142,6 +144,96 @@ class ZohoApiClient
             ->json();
     }
 
+    /** @return array<int, array> Books contacts whose email matches exactly (case-insensitive). */
+    public function searchContactsByEmail(PmsConnection $connection, string $organizationId, string $email): array
+    {
+        $contacts = (array) ($this->booksRequest($connection, $organizationId)
+            ->get('/contacts', ['email' => $email])
+            ->throw()
+            ->json('contacts') ?? []);
+
+        return array_values(array_filter(
+            $contacts,
+            fn ($c) => is_array($c) && strcasecmp(trim((string) ($c['email'] ?? '')), $email) === 0
+        ));
+    }
+
+    public function createContact(PmsConnection $connection, string $organizationId, array $payload): array
+    {
+        return $this->booksResult(
+            $this->booksRequest($connection, $organizationId)->post('/contacts', $payload),
+            'contact',
+            'Zoho Books contact could not be created'
+        );
+    }
+
+    public function findInvoiceByNumber(PmsConnection $connection, string $organizationId, string $invoiceNumber): ?array
+    {
+        $invoices = (array) ($this->booksRequest($connection, $organizationId)
+            ->get('/invoices', ['invoice_number' => $invoiceNumber])
+            ->throw()
+            ->json('invoices') ?? []);
+
+        foreach ($invoices as $invoice) {
+            if (is_array($invoice) && (string) ($invoice['invoice_number'] ?? '') === $invoiceNumber) {
+                return $invoice;
+            }
+        }
+
+        return null;
+    }
+
+    /** Creates the invoice with our own invoice number instead of the org's auto-numbering. */
+    public function createInvoice(PmsConnection $connection, string $organizationId, array $payload): array
+    {
+        return $this->booksResult(
+            $this->booksRequest($connection, $organizationId)
+                ->withQueryParameters(['ignore_auto_number_generation' => 'true'])
+                ->post('/invoices', $payload),
+            'invoice',
+            'Zoho Books invoice could not be created'
+        );
+    }
+
+    public function fetchInvoice(PmsConnection $connection, string $organizationId, string $invoiceId): array
+    {
+        return $this->booksResult(
+            $this->booksRequest($connection, $organizationId)->get('/invoices/'.rawurlencode($invoiceId)),
+            'invoice',
+            'Zoho Books invoice could not be loaded'
+        );
+    }
+
+    /** A draft invoice can't take a payment. Marking it sent sends no email. */
+    public function markInvoiceSent(PmsConnection $connection, string $organizationId, string $invoiceId): void
+    {
+        $this->booksResult(
+            $this->booksRequest($connection, $organizationId)->post('/invoices/'.rawurlencode($invoiceId).'/status/sent'),
+            null,
+            'Zoho Books invoice could not be marked as sent'
+        );
+    }
+
+    /** @return array<int, array{item_id: string, name: string, rate: float}> active items, by name */
+    public function fetchItems(PmsConnection $connection, string $organizationId): array
+    {
+        $items = (array) ($this->booksRequest($connection, $organizationId)
+            ->get('/items', ['filter_by' => 'Status.Active'])
+            ->throw()
+            ->json('items') ?? []);
+
+        return collect($items)
+            ->filter(fn ($item) => is_array($item) && ! empty($item['item_id']))
+            ->map(fn (array $item): array => [
+                'item_id' => (string) $item['item_id'],
+                'name' => (string) ($item['name'] ?? $item['item_name'] ?? 'Unnamed item'),
+                'rate' => (float) ($item['rate'] ?? 0),
+            ])
+            ->sortBy(fn (array $item) => strtolower($item['name']))
+            ->values()
+            ->all();
+    }
+
     public function fetchPaymentAccounts(PmsConnection $connection, string $organizationId): array
     {
         $response = $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
@@ -167,5 +259,30 @@ class ZohoApiClient
             ->sortBy(fn (array $account) => strtolower($account['account_name']))
             ->values()
             ->all();
+    }
+
+    /** Books expects organization_id on the query string for every call. */
+    private function booksRequest(PmsConnection $connection, string $organizationId): PendingRequest
+    {
+        return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))
+            ->timeout(20)
+            ->withQueryParameters(['organization_id' => $organizationId]);
+    }
+
+    /** Zoho Books answers {"code": 0, ...} on success and a non-zero code with a message otherwise. */
+    private function booksResult(Response $response, ?string $key, string $message): array
+    {
+        $code = $response->json('code');
+
+        if ($response->successful() && (int) $code === 0) {
+            return $key === null ? (array) $response->json() : (array) ($response->json($key) ?? []);
+        }
+
+        $detail = trim(implode(' ', array_filter([
+            $code !== null ? "code {$code}" : null,
+            $response->json('message'),
+        ]))) ?: 'HTTP '.$response->status();
+
+        throw new RuntimeException("{$message}: {$detail}");
     }
 }

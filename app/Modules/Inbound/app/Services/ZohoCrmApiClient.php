@@ -50,6 +50,27 @@ class ZohoCrmApiClient
         return (array) ($response->throw()->json('data') ?? []);
     }
 
+    /**
+     * Same lookup through COQL, which reads the records directly. The search API reads an index
+     * that can lag a few minutes behind newly created or edited Contacts.
+     *
+     * @return array<int, array>
+     */
+    public function queryContactsByEmail(PmsConnection $connection, string $email): array
+    {
+        $value = str_replace(['\\', "'"], ['\\\\', "\\'"], $email);
+
+        $response = $this->request($connection)->post('/coql', [
+            'select_query' => "select id, Email, Full_Name from Contacts where Email = '{$value}' limit 10",
+        ]);
+
+        if ($response->status() === 204) {
+            return [];
+        }
+
+        return (array) ($response->throw()->json('data') ?? []);
+    }
+
     public function updateContact(PmsConnection $connection, string $contactId, array $fields): void
     {
         $response = $this->request($connection)->put('/Contacts/'.rawurlencode($contactId), [

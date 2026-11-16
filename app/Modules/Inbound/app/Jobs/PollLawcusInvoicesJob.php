@@ -23,8 +23,8 @@ use Throwable;
  * LawcusInvoiceIngestionService — the same path a webhook would take. Saved (or sent),
  * unpaid invoices get a payment session and the link is emailed once; invoices with
  * nothing due (paid from the matter's trust balance) are only recorded. An invoice
- * already recorded is fetched again when its amount due changes (the firm edited and
- * re-saved it), which resends its link — see amountDueChanged().
+ * already recorded is fetched again whenever the firm edits and re-saves it, which
+ * resends its link — see savedAgain() and amountDueChanged().
  * The list is used rather than the AR report because the report leaves out Trust
  * Requests (type TRUST), which route to the firm's IOLTA MID.
  */
@@ -88,7 +88,7 @@ class PollLawcusInvoicesJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        $since = $this->pollingBaseline($connection);
+        $since = self::pollingBaseline($connection);
 
         try {
             $outstanding = $api->fetchInvoicesCreatedSince($connection, $since);
@@ -116,14 +116,14 @@ class PollLawcusInvoicesJob implements ShouldQueue, ShouldBeUnique
             ->where('pms_source', 'lawcus')
             ->where('pms_client_id', $connection->pms_client_id)
             ->whereIn('external_invoice_id', $candidates->pluck('id')->map(fn ($id) => (string) $id)->all())
-            ->get(['external_invoice_id', 'amount_cents', 'status'])
+            ->get(['external_invoice_id', 'amount_cents', 'status', 'raw_payload'])
             ->keyBy('external_invoice_id');
 
-        // New invoices, plus ones the firm edited and re-saved with a different amount due.
+        // New invoices, plus ones the firm edited and re-saved since we last read them.
         $toIngest = $candidates->filter(function (array $invoice) use ($ingested): bool {
             $stored = $ingested->get((string) $invoice['id']);
 
-            return $stored === null || self::amountDueChanged($invoice, $stored);
+            return $stored === null || self::amountDueChanged($invoice, $stored) || self::savedAgain($invoice, $stored);
         });
 
         foreach ($toIngest as $invoice) {
@@ -166,10 +166,12 @@ class PollLawcusInvoicesJob implements ShouldQueue, ShouldBeUnique
      */
     public static function shouldIngest(array $invoice, CarbonImmutable $since): bool
     {
-        $issued = self::parseDate($invoice['issue_date'] ?? null);
-        $status = strtoupper((string) ($invoice['status'] ?? ''));
+        // When it was created in Lawcus (UTC); the issue date is only a fallback — firms
+        // pick it themselves and can backdate it.
+        $created = self::parseDate($invoice['created_at'] ?? null) ?? self::parseDate($invoice['issue_date'] ?? null);
+        $status  = strtoupper((string) ($invoice['status'] ?? ''));
 
-        if ($issued === null || $issued->lessThan($since) || in_array($status, self::NOT_RECORDED_STATUSES, true)) {
+        if ($created === null || $created->lessThan($since) || in_array($status, self::NOT_RECORDED_STATUSES, true)) {
             return false;
         }
 
@@ -201,12 +203,44 @@ class PollLawcusInvoicesJob implements ShouldQueue, ShouldBeUnique
     }
 
     /**
-     * Start of the day the firm connected. Compared at day granularity because Lawcus
-     * issue dates carry no timezone.
+     * Whether the firm saved an already-recorded invoice again, whatever it changed: Lawcus'
+     * updated_at moved past the one we last read. Sending it from Lawcus also moves updated_at
+     * (to sent_at); that alone isn't an edit — Lawcus just emailed the client itself. Only
+     * while there's still something to collect, and never once paid through us. An invoice
+     * we read before updated_at was kept counts only on an amount change (amountDueChanged).
      */
-    private function pollingBaseline(LawcusConnection $connection): CarbonImmutable
+    public static function savedAgain(array $invoice, Invoice $stored): bool
     {
-        return CarbonImmutable::parse($connection->created_at)->startOfDay();
+        $amountDue = $invoice['amount_due'] ?? null;
+
+        if ($stored->status === 'PAID' || ! is_numeric($amountDue) || (float) $amountDue <= 0) {
+            return false;
+        }
+
+        $updated = self::parseDate($invoice['updated_at'] ?? null);
+        $known   = self::parseDate(data_get($stored->raw_payload, 'invoice.data.updated_at'));
+
+        if ($updated === null || $known === null || ! $updated->greaterThan($known)) {
+            return false;
+        }
+
+        $sent = self::parseDate($invoice['sent_at'] ?? null);
+
+        return ! ($sent !== null && $sent->equalTo($updated));
+    }
+
+    /**
+     * The moment the current token was pasted (UTC, like Lawcus' created_at), so after a
+     * reconnect nothing created before it is picked up. Connections made before that was
+     * recorded keep the old start: the beginning of the day they were created.
+     */
+    public static function pollingBaseline(LawcusConnection $connection): CarbonImmutable
+    {
+        $since = ((array) ($connection->meta ?? []))['invoices_since'] ?? null;
+
+        return is_string($since) && $since !== ''
+            ? CarbonImmutable::parse($since, 'UTC')
+            : CarbonImmutable::parse($connection->created_at)->utc()->startOfDay();
     }
 
     private static function parseDate(mixed $value): ?CarbonImmutable
@@ -215,8 +249,10 @@ class PollLawcusInvoicesJob implements ShouldQueue, ShouldBeUnique
             return null;
         }
 
+        // To the second: the list and the single-invoice fetch could format the same
+        // timestamp differently, and a sub-second mismatch must not look like an edit.
         try {
-            return CarbonImmutable::parse($value);
+            return CarbonImmutable::parse($value, 'UTC')->startOfSecond();
         } catch (Throwable) {
             return null;
         }

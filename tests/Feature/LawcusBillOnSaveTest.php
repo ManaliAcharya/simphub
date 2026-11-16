@@ -53,6 +53,18 @@ class LawcusBillOnSaveTest extends TestCase
         $this->assertFalse(PollLawcusInvoicesJob::shouldIngest($this->row(['status' => 'VOID']), $this->since()));
     }
 
+    public function test_only_invoices_created_after_the_exact_connect_time_are_picked_up(): void
+    {
+        $since = CarbonImmutable::parse('2026-11-16 15:30:00', 'UTC');
+
+        // Today's billing run, before reconnecting: never picked up, whatever its issue date.
+        $this->assertFalse(PollLawcusInvoicesJob::shouldIngest($this->row(['created_at' => '2026-11-16 09:12:00', 'issue_date' => '2026-11-16 00:00:00']), $since));
+        $this->assertFalse(PollLawcusInvoicesJob::shouldIngest($this->row(['created_at' => '2026-11-16 15:29:59', 'issue_date' => '2026-11-17 00:00:00']), $since));
+
+        // Created after reconnecting, even if backdated.
+        $this->assertTrue(PollLawcusInvoicesJob::shouldIngest($this->row(['created_at' => '2026-11-16 15:31:00', 'issue_date' => '2026-11-10 00:00:00']), $since));
+    }
+
     public function test_saved_invoice_with_nothing_due_is_recorded(): void
     {
         $this->assertTrue(PollLawcusInvoicesJob::shouldIngest($this->row(['status' => 'PAID', 'amount_due' => '0.00']), $this->since()));

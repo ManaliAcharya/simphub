@@ -69,4 +69,32 @@ class InvoiceReminderPause
 
         SendInvoiceReminder::dispatch($session->id, true);
     }
+
+    /**
+     * The updated invoice was just emailed (the firm edited and re-saved it): a pause no
+     * longer holds — e.g. a late fee added after the client said the check is in the mail —
+     * and the reminder schedule starts over from that email, like a resume without the
+     * extra immediate reminder.
+     */
+    public function restartAfterResend(PaymentSession $session): void
+    {
+        $session = $session->fresh() ?? $session;
+        $client  = Client::query()->where('pms_client_id', $session->invoice?->pms_client_id)->first();
+        $paused  = $session->reminders_paused_at !== null;
+
+        $session->forceFill([
+            'reminders_paused_at'       => null,
+            'reminder_cycle_started_at' => now(),
+            'reminder_cycle_offset'     => (int) $session->reminders_sent_count,
+            'next_reminder_at'          => $client?->reminders_enabled
+                ? now()->addDays((int) $client->reminderScheduleDays()[0])
+                : null,
+        ])->save();
+
+        AuditLogger::log('payment_reminders_restarted_on_resend', 'payment_session', $session->id, [
+            'invoice_id'       => $session->invoice_id,
+            'was_paused'       => $paused,
+            'next_reminder_at' => $session->next_reminder_at?->toDateTimeString(),
+        ]);
+    }
 }

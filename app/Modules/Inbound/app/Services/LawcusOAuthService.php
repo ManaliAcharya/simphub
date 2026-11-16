@@ -75,7 +75,22 @@ class LawcusOAuthService
             throw new RuntimeException('Access token is required.');
         }
 
+        $previousToken = LawcusConnection::query()
+            ->where('provider', 'lawcus')
+            ->where('pms_client_id', $pmsClientId)
+            ->first()?->access_token;
+
         $connection = $this->persistTokens(['access_token' => $token], pmsClientId: $pmsClientId);
+
+        // A different token is a (re)connection: only invoices created from this moment on
+        // are picked up, so e.g. the billing run done before connecting the live account is
+        // never emailed. Re-pasting the same token (re-confirming it after a failure) keeps
+        // the old start, so invoices created while it was failing are still picked up.
+        $meta = (array) ($connection->meta ?? []);
+
+        if ($previousToken !== $token || empty($meta['invoices_since'])) {
+            $meta['invoices_since'] = now()->utc()->toDateTimeString();
+        }
 
         // A fresh paste always replaces whatever was there — including resetting the
         // failure counter, since this is the firm re-confirming a working token.
@@ -83,6 +98,7 @@ class LawcusOAuthService
             'refresh_token'        => null,
             'token_expires_at'     => null,
             'consecutive_failures' => 0,
+            'meta'                 => $meta,
         ])->save();
 
         return $connection->fresh();

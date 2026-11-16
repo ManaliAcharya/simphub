@@ -176,6 +176,12 @@ class LawcusPaymentSyncService
             ->first();
 
         if ($local) {
+            // Checkout never lets a Trust Request into an operating charge; if one got here
+            // anyway, don't record operating money into trust — leave it FAILED for review.
+            if ($local->fund_type === 'TRUST') {
+                throw new RuntimeException("Trust Request {$local->invoice_number} was covered by an operating charge; not recorded in Lawcus.");
+            }
+
             return $local;
         }
 

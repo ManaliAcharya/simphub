@@ -47,6 +47,9 @@ class LawcusPayAllOutstandingTest extends TestCase
 
     private ?int $chargedCents = null;
 
+    /** Extra rows for client 9 on the accounts-receivable report. */
+    private array $arExtra = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -97,6 +100,32 @@ class LawcusPayAllOutstandingTest extends TestCase
 
         $this->assertNull(app(LawcusOutstandingInvoices::class)->for($off));
         $this->assertNull(app(LawcusOutstandingInvoices::class)->for($trust));
+    }
+
+    public function test_trust_requests_are_never_included_with_operating_invoices(): void
+    {
+        // One marked as trust on the report, one we only know as a Trust Request ourselves.
+        $this->arExtra = [
+            ['id' => 'inv-trust-ar', 'number' => '00060', 'client_id' => 9, 'amount_due' => '300.00', 'type' => 'TRUST'],
+            ['id' => 'inv-trust-local', 'number' => '00061', 'client_id' => 9, 'amount_due' => '400.00'],
+        ];
+        $this->lawcusInvoice('inv-trust-local', '00061', 40000, [], 'TRUST');
+
+        $outstanding = app(LawcusOutstandingInvoices::class)->for($this->invoice);
+
+        $this->assertSame(['00041', '00042'], array_column($outstanding['invoices'], 'invoice_number'));
+        $this->assertSame(17500, $outstanding['total_cents']);
+    }
+
+    public function test_a_trust_request_covered_by_an_operating_charge_is_not_recorded(): void
+    {
+        $this->lawcusInvoice('inv-3', '00042', 2500, [], 'TRUST');
+        $transaction = $this->outstandingTransaction();
+
+        $this->assertFalse(app(LawcusPaymentSyncService::class)->sync($transaction, $this->invoice));
+
+        $this->assertNotContains('inv-3', array_column($this->recorded, 'invoice_id'));
+        $this->assertSame('FAILED', $this->invoice->fresh()->pms_sync_status);
     }
 
     public function test_invoices_already_paid_through_us_are_left_out(): void
@@ -242,6 +271,7 @@ class LawcusPayAllOutstandingTest extends TestCase
                         ['id' => 'inv-3', 'number' => '00042', 'client_id' => 9, 'amount_due' => '25.00', 'due_date' => '2026-12-01 00:00:00'],
                         ['id' => 'inv-2', 'number' => '00041', 'client_id' => 9, 'amount_due' => '50.00', 'due_date' => '2026-11-25 00:00:00'],
                         ['id' => 'inv-zero', 'number' => '00039', 'client_id' => 9, 'amount_due' => '0.00'],
+                        ...$this->arExtra,
                     ],
                     '10' => [['id' => 'inv-other-client', 'number' => '00099', 'client_id' => 10, 'amount_due' => '80.00']],
                 ]);

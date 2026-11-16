@@ -6,7 +6,10 @@ use Modules\Inbound\Contracts\PmsConnectorInterface;
 use Modules\Inbound\DTOs\PmsCallbackResult;
 use Modules\Inbound\Models\Client;
 use Modules\Inbound\Models\PmsConnection;
+use Modules\Billing\Models\Invoice;
 use Modules\Inbound\Services\SubscriptionHistoryService;
+use Modules\Inbound\Services\SubscriptionService;
+use Modules\Inbound\Services\ZohoBooksSubscriptionSyncService;
 use Modules\Inbound\Services\ZohoCrmApiClient;
 use Modules\Inbound\Services\ZohoCrmOAuthService;
 use Modules\Inbound\Services\ZohoCrmPaymentSyncService;
@@ -26,6 +29,7 @@ class ZohoCrmConnector implements PmsConnectorInterface
         private readonly ZohoCrmOAuthService $oauth,
         private readonly ZohoCrmApiClient $api,
         private readonly ZohoCrmPaymentSyncService $paymentSync,
+        private readonly ZohoBooksSubscriptionSyncService $booksSync,
     ) {}
 
     public function key(): string
@@ -75,6 +79,9 @@ class ZohoCrmConnector implements PmsConnectorInterface
             $message = 'Zoho CRM connected, but the payment fields could not be added to Contacts automatically. See the instructions below.';
         }
 
+        // Never fails the connect: a missing Books grant is shown on the config page.
+        $this->booksSync->checkAccess($connection->fresh());
+
         return new PmsCallbackResult(
             connection: $connection->fresh(),
             successMessage: $message,
@@ -121,7 +128,34 @@ class ZohoCrmConnector implements PmsConnectorInterface
             }
         }
 
+        // Zoho Books lists, read live. A failure here usually means the connection was made
+        // before the Books scopes were added, so the page asks for a reconnect.
+        $booksOptions = ['organizations' => [], 'accounts' => [], 'items' => []];
+        $booksLoadError = null;
+
+        if ($connection) {
+            try {
+                $booksOptions = $this->booksSync->options($connection);
+            } catch (Throwable $e) {
+                $booksLoadError = $e->getMessage();
+                logger()->warning('Zoho CRM: could not load Zoho Books settings', [
+                    'pms_client_id' => $client->pms_client_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        $booksFailedCount = Invoice::query()
+            ->where('pms_source', SubscriptionService::PMS_SOURCE)
+            ->where('pms_client_id', $client->pms_client_id)
+            ->where('metadata->zoho_books->status', ZohoBooksSubscriptionSyncService::STATUS_FAILED)
+            ->count();
+
         return [
+            'booksSettings'        => $this->booksSync->settings($connection),
+            'booksOptions'         => $booksOptions,
+            'booksLoadError'       => $booksLoadError,
+            'booksFailedCount'     => $booksFailedCount,
             'organization_name'    => data_get($connection?->meta, 'organization_name'),
             'organization_id'      => data_get($connection?->meta, 'organization_id'),
             'crmFieldsSetup'       => data_get($connection?->meta, 'contact_fields_setup'),

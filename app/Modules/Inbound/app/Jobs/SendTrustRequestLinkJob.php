@@ -28,7 +28,8 @@ class SendTrustRequestLinkJob implements ShouldQueue, ShouldBeUnique
     use Queueable;
     use SerializesModels;
 
-    public const DELAY_SECONDS = 30;
+    /** Long enough for a firm to create a Trust Request and record the check it already has. */
+    public const DELAY_SECONDS = 120;
 
     public int $tries = 3;
 
