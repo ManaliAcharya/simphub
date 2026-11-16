@@ -78,6 +78,12 @@ class InvoiceListStatus
      */
     public function emailStatus(Invoice $invoice, ?PaymentSession $session, ?array $lastFailure, bool $held = false): array
     {
+        // Deliberately not sent (insurer-billed LEDES matter) — never to be read as a failure.
+        if ((! $session || ! $session->payment_link_sent_at)
+            && data_get($invoice->raw_payload, 'email_skipped') === \Modules\Inbound\Services\ClioBillRules::SKIP_LEDES) {
+            return $this->status('Skipped', 'neutral', null, 'Insurer-billed (LEDES) matter: no payment email is sent. Resend still sends one if needed.');
+        }
+
         if (! $session || ! $session->payment_link_sent_at) {
             return $this->status('Not sent', 'neutral', null, match (true) {
                 $held                              => 'Held: trust payment links are turned off for this client',

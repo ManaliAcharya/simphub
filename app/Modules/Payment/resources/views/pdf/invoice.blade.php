@@ -69,10 +69,12 @@
     <div style="text-align:center;margin-bottom:18px;"><img src="{{ $logoUrl }}" alt="{{ $merchantName }}" style="max-height:56px;max-width:220px;"></div>
     @endif
 
-    <div class="title">INVOICE</div>
+    <div class="title">{{ strtoupper($documentLabel ?? 'Invoice') }}</div>
     <div class="title-rule"></div>
     <div class="doc-meta">
-        <div><strong>Invoice #{{ $invoiceNumber }}</strong></div>
+        <div><strong>{{ $documentLabel ?? 'Invoice' }} #{{ $invoiceNumber }}</strong></div>
+        @if(!empty($subject))<div>{{ $subject }}</div>@endif
+        @if(!empty($matterLabel))<div>Matter: {{ $matterLabel }}</div>@endif
         @if(!empty($terms))<div>Terms: {{ $terms }}</div>@endif
         @if(!empty($issueDate))<div>Invoice Date: {{ $issueDate }}</div>@endif
         @if(!empty($dueDate))<div>Due Date: {{ $dueDate }}</div>@endif
@@ -122,9 +124,9 @@
 
     <table class="items">
         <tr>
-            <th>Product or Service</th>
+            <th>{{ $firstColumnLabel ?? 'Product or Service' }}</th>
             <th>Description</th>
-            <th class="num">Qty</th>
+            <th class="num">{{ $qtyLabel ?? 'Qty' }}</th>
             <th class="num">Rate</th>
             <th class="num">Amount</th>
         </tr>
@@ -155,10 +157,34 @@
             <td class="val">{{ $currency }} {{ $taxAmount }}</td>
         </tr>
         @endif
+        @if(!empty($adjustmentAmount))
+        <tr>
+            <td class="lbl">{{ $adjustmentLabel }}</td>
+            <td class="val">{{ $currency }} {{ $adjustmentAmount }}</td>
+        </tr>
+        @endif
+        @if(isset($invoiceTotal))
+        {{-- Clio: the bill's own total, what's been paid or applied, and what's still owed. --}}
+        <tr>
+            <td class="lbl">Total</td>
+            <td class="val">{{ $currency }} {{ $invoiceTotal }}</td>
+        </tr>
+        @if(!empty($paidAmount))
+        <tr>
+            <td class="lbl">Payments &amp; Trust Applied</td>
+            <td class="val">- {{ $currency }} {{ $paidAmount }}</td>
+        </tr>
+        @endif
+        <tr class="grand">
+            <td class="lbl">Balance Due</td>
+            <td class="val">{{ $currency }} {{ $totalAmount }}</td>
+        </tr>
+        @else
         <tr class="grand">
             <td class="lbl">Total Due</td>
             <td class="val">{{ $currency }} {{ $totalAmount }}</td>
         </tr>
+        @endif
         @if(!empty($trustBalance))
         {{-- Informational only: not deducted from the total due. --}}
         <tr>
@@ -169,8 +195,8 @@
     </table>
 
     <div class="payblock">
-        <p>This invoice can be paid securely online.</p>
-        <a href="{{ $paymentUrl }}" class="pay-button">Pay This Invoice</a>
+        <p>This {{ strtolower($documentLabel ?? 'Invoice') }} can be paid securely online.</p>
+        <a href="{{ $paymentUrl }}" class="pay-button">Pay This {{ $documentLabel ?? 'Invoice' }}</a>
         <span class="pay-link">{{ $paymentUrl }}</span>
     </div>
 

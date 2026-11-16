@@ -51,6 +51,73 @@ class ClioWebhookService
         return $data;
     }
 
+    public const WEBHOOK_OK = 'ok';
+    public const WEBHOOK_RENEWED = 'renewed';
+    public const WEBHOOK_REGISTERED = 'registered';   // there was none on record
+    public const WEBHOOK_MISSING = 'missing';         // Clio no longer had it (expired/deleted)
+    public const WEBHOOK_SUSPENDED = 'suspended';     // Clio suspended it after failed deliveries
+
+    /**
+     * Daily health check that keeps bills — invoices and Trust Requests alike — arriving.
+     * Asks Clio for the webhook's status: a suspended or missing webhook is replaced with a
+     * new one (Clio documents no way to re-enable a suspended one), and a healthy one is
+     * renewed once it expires before $renewBefore.
+     *
+     * @return array{action: string, webhook: array}
+     */
+    public function maintainWebhook(ClioConnection $connection, CarbonImmutable $renewBefore): array
+    {
+        $webhookId = trim((string) $connection->webhook_id);
+
+        if ($webhookId === '') {
+            return ['action' => self::WEBHOOK_REGISTERED, 'webhook' => $this->registerInvoiceCreatedWebhook($connection)];
+        }
+
+        $response = $this->client->fetchWebhook($connection, $webhookId);
+
+        if ($response->status() === 404) {
+            return ['action' => self::WEBHOOK_MISSING, 'webhook' => $this->registerInvoiceCreatedWebhook($connection)];
+        }
+
+        $response->throw();
+
+        $current = (array) $response->json('data', []);
+
+        if (strtolower((string) ($current['status'] ?? '')) === 'suspended') {
+            // Best-effort: a leftover suspended webhook delivers nothing either way.
+            $this->client->deleteWebhook($connection, $webhookId);
+
+            return ['action' => self::WEBHOOK_SUSPENDED, 'webhook' => $this->registerInvoiceCreatedWebhook($connection)];
+        }
+
+        $expiresAt = $current['expires_at'] ?? $connection->webhook_expires_at;
+
+        if (self::expiresBefore($expiresAt, $renewBefore)) {
+            return ['action' => self::WEBHOOK_RENEWED, 'webhook' => $this->renewWebhook($connection)];
+        }
+
+        $connection->forceFill([
+            'webhook_expires_at' => $expiresAt,
+            'last_error' => null,
+        ])->save();
+
+        return ['action' => self::WEBHOOK_OK, 'webhook' => $current];
+    }
+
+    /** A webhook with no readable expiry counts as expiring — we can't tell it's still alive. */
+    public static function expiresBefore(mixed $expiresAt, CarbonImmutable $renewBefore): bool
+    {
+        if ($expiresAt === null || $expiresAt === '') {
+            return true;
+        }
+
+        try {
+            return CarbonImmutable::parse($expiresAt)->lessThanOrEqualTo($renewBefore);
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
     /**
      * Pushes the webhook's expiry out again so invoices (and Trust Requests, which are bills)
      * keep arriving. If Clio no longer has the webhook — e.g. it already expired — a new one

@@ -4,6 +4,7 @@ namespace Modules\Inbound\Http\Controllers;
 
 
 use Illuminate\Http\JsonResponse;
+use Modules\Inbound\Jobs\MarkClioBillSentJob;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -1225,6 +1226,10 @@ class ClientConfigController extends Controller
                 );
             }
 
+            // Clio: use the client's current primary email, e.g. one just added after a
+            // "no client email" alert.
+            $invoice = app(\Modules\Inbound\Services\ClioRecipientRefreshService::class)->refresh($invoice);
+
             // This session may have never actually sent yet — e.g. a "Ready to Send?"
             // client whose initial auto-send was suppressed. Route through
             // sendInvoiceLinkOnce() for a genuine first send so first_email_sent_at /
@@ -1253,6 +1258,11 @@ class ClientConfigController extends Controller
                     'emails_sent'      => $emailsSent,
                     'recipient_emails' => $invoice->recipient_emails,
                 ]);
+
+                // A held Clio Trust Request (or "Ready to Send?" bill) is first sent from here.
+                if ($isFirstSend) {
+                    MarkClioBillSentJob::dispatchFor($invoice);
+                }
 
                 return back()->with('success', $isFirstSend
                     ? 'Invoice email sent successfully.'

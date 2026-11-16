@@ -80,6 +80,8 @@ class ClioApiClient
      * them we fall back to the fields that have always worked, and only then to no filter.
      */
     private const BILL_FIELD_SETS = [
+        // The full set also feeds the invoice PDF (subject, memo, dates, Clio's own totals).
+        'id,number,subject,memo,issued_at,due_at,sub_total,tax_sum,secondary_tax_sum,total,paid,balance,state,kind,created_at,matters{id,display_number,description},client{id,name,primary_email_address}',
         'id,number,total,balance,state,kind,created_at,matters{id},client{id,name,primary_email_address}',
         'id,number,total,balance,state,created_at,client{id,name,primary_email_address}',
     ];
@@ -163,6 +165,24 @@ class ClioApiClient
             ->json();
     }
 
+    /** The webhook's status (pending | enabled | suspended) and expiry as Clio has them. */
+    public function fetchWebhook(ClioConnection $connection, string $webhookId): Response
+    {
+        return $this->authenticatedRequest($connection)
+            ->get("/api/v4/webhooks/{$webhookId}.json", ['fields' => 'id,status,expires_at']);
+    }
+
+    /**
+     * Records on the Clio bill that it was sent, so the firm never has to click Send.
+     * sent_method is a query parameter; the endpoint takes no body. Each call adds a
+     * sent event in Clio rather than replacing the last one.
+     */
+    public function markBillSent(ClioConnection $connection, string $billId, string $sentMethod = 'manual_email'): Response
+    {
+        return $this->authenticatedRequest($connection)
+            ->post("/api/v4/bills/{$billId}/mark_as_sent.json?".http_build_query(['sent_method' => $sentMethod]));
+    }
+
     public function updateWebhookExpiry(ClioConnection $connection, string $webhookId, string $expiresAt): Response
     {
         return $this->authenticatedRequest($connection)
@@ -197,22 +217,42 @@ class ClioApiClient
      */
     public function fetchMatter(ClioConnection $connection, string $matterId): array
     {
-        $response = $this->authenticatedRequest($connection)
-            ->get("/api/v4/matters/{$matterId}.json", [
-                // billing_method (hourly / flat / contingency) picks the payment email template.
-                'fields' => 'id,display_number,billing_method,custom_field_values{id,field_name,field_type,value,picklist_option{id,option}}',
-            ]);
+        return $this->getWithFieldFallback($connection, "/api/v4/matters/{$matterId}.json", self::MATTER_FIELD_SETS, ['matter_id' => $matterId]);
+    }
 
-        if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
-            Log::warning('Clio matter fetch rejected requested fields, retrying with plain custom field values.', [
-                'matter_id' => $matterId,
-                'error' => $response->json(),
-            ]);
+    /**
+     * billing_method (hourly / flat / contingency) picks the payment email template;
+     * require_utbms_codes is Clio's LEDES billing setting (an insurer-billed matter gets no
+     * payment email); description names the matter on the PDF. Each later set drops what
+     * Clio may reject, ending with the fields that have always worked.
+     */
+    private const MATTER_FIELD_SETS = [
+        'id,display_number,description,billing_method,require_utbms_codes,custom_field_values{id,field_name,field_type,value,picklist_option{id,option}}',
+        'id,display_number,billing_method,custom_field_values{id,field_name,field_type,value,picklist_option{id,option}}',
+        'id,display_number,billing_method,custom_field_values{id,field_name,field_type,value}',
+    ];
 
+    /**
+     * GETs $path asking for each field set in turn until Clio stops rejecting the fields
+     * (InvalidFields), so one unsupported field never loses the rest.
+     */
+    private function getWithFieldFallback(ClioConnection $connection, string $path, array $fieldSets, array $logContext, array $query = []): array
+    {
+        $response = null;
+
+        foreach ($fieldSets as $fields) {
             $response = $this->authenticatedRequest($connection)
-                ->get("/api/v4/matters/{$matterId}.json", [
-                    'fields' => 'id,display_number,billing_method,custom_field_values{id,field_name,field_type,value}',
-                ]);
+                ->get($path, $query + ['fields' => $fields]);
+
+            if (! ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields')) {
+                break;
+            }
+
+            Log::warning('Clio rejected requested fields, retrying with fewer.', $logContext + [
+                'path'   => $path,
+                'fields' => $fields,
+                'error'  => $response->json(),
+            ]);
         }
 
         return $response->throw()->json();
@@ -288,13 +328,25 @@ class ClioApiClient
         return $response->throw()->json();
     }
 
+    /**
+     * A bill's line items. The full set gives the PDF each line's date, hours (quantity) and
+     * rate (price); if Clio rejects any of those, the fields that have always worked are used.
+     */
     public function fetchLineItems(ClioConnection $connection, string $billId): array
     {
         $response = $this->authenticatedRequest($connection)
             ->get('/api/v4/line_items.json', [
                 'bill_id' => $billId,
-                'fields'  => 'id,total,description,type',
+                'fields'  => 'id,date,description,note,price,quantity,total,kind,type',
             ]);
+
+        if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
+            $response = $this->authenticatedRequest($connection)
+                ->get('/api/v4/line_items.json', [
+                    'bill_id' => $billId,
+                    'fields'  => 'id,total,description,type',
+                ]);
+        }
 
         if ($response->failed() && Arr::get($response->json(), 'error.type') === 'InvalidFields') {
             $response = $this->authenticatedRequest($connection)
@@ -302,6 +354,27 @@ class ClioApiClient
         }
 
         return $response->throw()->json()['data'] ?? [];
+    }
+
+    /** A Trust Request's lines for the PDF: each matter's amount with its note. */
+    public function fetchTrustLineItemsForPdf(ClioConnection $connection, string $billId): array
+    {
+        $json = $this->getWithFieldFallback($connection, '/api/v4/trust_line_items.json', [
+            'id,date,note,total,matter{id,display_number,description}',
+            'id,total,matter{id}',
+        ], ['bill_id' => $billId], ['bill_id' => $billId, 'limit' => 200]);
+
+        return (array) ($json['data'] ?? []);
+    }
+
+    /**
+     * The bill's live state and amounts, for the payment page — read on every page load and
+     * again at submit, so the payer is charged what Clio shows as owed right now.
+     */
+    public function fetchBillBalance(ClioConnection $connection, string $billId): Response
+    {
+        return $this->authenticatedRequest($connection)
+            ->get("/api/v4/bills/{$billId}.json", ['fields' => 'id,state,total,paid,balance']);
     }
 
     public function recordLineItemPayment(ClioConnection $connection, array $payload): array
