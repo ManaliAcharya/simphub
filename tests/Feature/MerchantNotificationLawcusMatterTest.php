@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\Transaction;
+use Modules\Inbound\Models\Client;
 use Modules\Payment\Mail\MerchantPaymentNotificationMail;
 use Tests\TestCase;
 
@@ -11,10 +12,12 @@ class MerchantNotificationLawcusMatterTest extends TestCase
 {
     private const MATTER_UUID = '34b58a90-b8be-11f1-9433-6583f0484da9';
 
-    private function render(string $pmsSource, array $invoiceData): string
+    private function render(string $pmsSource, array $invoiceData, string $fundType = 'OPERATING', ?Client $client = null, ?string $syncStatus = 'SYNCED'): string
     {
         $invoice = (new Invoice)->forceFill([
-            'pms_source'     => $pmsSource,
+            'pms_source'      => $pmsSource,
+            'fund_type'       => $fundType,
+            'pms_sync_status' => $syncStatus,
             'invoice_number' => '123',
             'amount_cents'   => 90000,
             'currency'       => 'USD',
@@ -28,7 +31,7 @@ class MerchantNotificationLawcusMatterTest extends TestCase
             'fee_cents'    => 0,
         ]);
 
-        return (new MerchantPaymentNotificationMail($transaction, $invoice))->render();
+        return (new MerchantPaymentNotificationMail($transaction, $invoice, $client))->render();
     }
 
     public function test_lawcus_invoice_links_to_its_matter_by_uuid(): void
@@ -49,6 +52,41 @@ class MerchantNotificationLawcusMatterTest extends TestCase
     public function test_no_button_when_the_invoice_has_no_matter(): void
     {
         $this->assertStringNotContainsString('Open matter in Lawcus', $this->render('lawcus', []));
+    }
+
+    public function test_lawcus_shows_the_account_the_payment_went_to(): void
+    {
+        $client = (new Client)->forceFill([
+            'client_name'                      => 'RR Law',
+            'lawcus_default_bank_account_name' => 'Chase Operating',
+            'lawcus_trust_bank_account_name'   => 'IOLTA Trust',
+        ]);
+
+        $operating = $this->render('lawcus', [], client: $client);
+        $this->assertStringContainsString('Deposited to', $operating);
+        $this->assertStringContainsString('Operating: Chase Operating', $operating);
+
+        $trust = $this->render('lawcus', [], 'TRUST', client: $client);
+        $this->assertStringContainsString('Trust (IOLTA): IOLTA Trust', $trust);
+
+        $this->assertStringContainsString('Trust (IOLTA)', $this->render('lawcus', [], 'TRUST'));
+    }
+
+    public function test_lawcus_says_marked_paid_only_when_the_recording_was_confirmed(): void
+    {
+        $this->assertStringContainsString('automatically marked as paid in Lawcus', $this->render('lawcus', [], syncStatus: 'SYNCED'));
+
+        $failed = $this->render('lawcus', [], syncStatus: 'FAILED');
+        $this->assertStringNotContainsString('automatically marked as paid', $failed);
+        $this->assertStringContainsString("hasn't been recorded in Lawcus automatically", $failed);
+    }
+
+    public function test_other_pms_emails_have_no_account_row_and_keep_the_paid_banner(): void
+    {
+        $html = $this->render('quickbooks', [], syncStatus: null);
+
+        $this->assertStringNotContainsString('Deposited to', $html);
+        $this->assertStringContainsString('automatically marked as paid', $html);
     }
 
     public function test_other_pms_emails_are_unchanged(): void

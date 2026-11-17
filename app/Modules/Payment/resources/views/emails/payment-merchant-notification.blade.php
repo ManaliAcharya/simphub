@@ -71,6 +71,12 @@
                 <td style="padding:9px 0;font-weight:600;color:#111827;border-bottom:1px solid #f3f4f6;">Total charged</td>
                 <td style="padding:9px 0;text-align:right;font-weight:700;color:#111827;border-bottom:1px solid #f3f4f6;">{{ $currency }} {{ $totalAmount }}</td>
             </tr>
+            @if($depositAccount)
+            <tr>
+                <td style="padding:9px 0;color:#6b7280;border-bottom:1px solid #f3f4f6;">Deposited to</td>
+                <td style="padding:9px 0;text-align:right;font-weight:600;color:{{ $isTrust ? '#b91c1c' : '#111827' }};border-bottom:1px solid #f3f4f6;">{{ $depositAccount }}</td>
+            </tr>
+            @endif
             <tr>
                 <td style="padding:9px 0;color:#6b7280;border-bottom:1px solid #f3f4f6;">Payment method</td>
                 <td style="padding:9px 0;text-align:right;color:#111827;border-bottom:1px solid #f3f4f6;">{{ $paymentMethod }}</td>
@@ -87,9 +93,15 @@
             </tr>
         </table>
 
+        @if($markedPaid)
         <div style="margin-top:24px;padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:13px;color:#166534;">
             &#10003;&nbsp; The invoice has been automatically marked as paid in {{ $pmsSource }}.
         </div>
+        @else
+        <div style="margin-top:24px;padding:14px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:13px;color:#92400e;">
+            This payment hasn't been recorded in {{ $pmsSource }} automatically. Please check the invoice in {{ $pmsSource }}, and follow any "Action needed" email we sent for it.
+        </div>
+        @endif
 
         @if($lawcusMatterUrl)
         <div style="margin-top:14px;text-align:center;">

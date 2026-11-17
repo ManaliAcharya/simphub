@@ -99,6 +99,41 @@ class LawcusApiClient
     }
 
     /**
+     * An invoice's amount due from the published Invoice History report
+     * (GET /reports/invoice-history?client_id=&start=&end=), or null when the report
+     * doesn't list it. start/end filter on the issue date. The report answers
+     * {list: {"<client_id>": [{id, number, amount_due, amount_paid, ...}]}, ...} and leaves
+     * out Trust Requests, so those always come back null.
+     */
+    public function fetchInvoiceHistoryAmountDue(LawcusConnection $connection, int $clientId, string $invoiceUuid, ?string $issueDate = null): ?float
+    {
+        $start = $issueDate && strtotime($issueDate) !== false
+            ? date('Y-m-d', strtotime($issueDate.' -1 day'))
+            : '2000-01-01';
+
+        $payload = $this->apiTokenRequest($connection)
+            ->timeout(20)
+            ->get('/reports/invoice-history', [
+                'client_id' => $clientId,
+                'start'     => $start,
+                'end'       => now()->addDay()->toDateString(),
+            ])
+            ->throw()
+            ->json();
+
+        if (! is_array($payload) || ! is_array($payload['list'] ?? null)) {
+            throw new RuntimeException('Lawcus returned an unexpected invoice-history response.');
+        }
+
+        $row = collect($payload['list'])
+            ->filter(fn ($group) => is_array($group))
+            ->flatten(1)
+            ->first(fn ($invoice) => is_array($invoice) && (string) ($invoice['id'] ?? '') === $invoiceUuid);
+
+        return $row !== null && is_numeric($row['amount_due'] ?? null) ? (float) $row['amount_due'] : null;
+    }
+
+    /**
      * Invoices created on/after $since, newest first, from POST /v2/invoices — the list
      * the Lawcus web app's Invoices page uses. Unlike the AR / invoice-history reports it
      * includes Trust Requests (type TRUST; regular invoices are type DEFAULT). Lawcus
