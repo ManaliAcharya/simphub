@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Storage;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\Transaction;
 use Modules\Inbound\Models\Client;
+use Modules\Inbound\Services\LawcusLinks;
 
 class MerchantPaymentNotificationMail extends Mailable
 {
@@ -59,6 +60,13 @@ class MerchantPaymentNotificationMail extends Mailable
             ? $transaction->created_at->format('m/d/Y g:i A') . ' UTC'
             : now()->format('m/d/Y g:i A') . ' UTC';
 
+        $isLawcus       = strtolower((string) $invoice->pms_source) === 'lawcus';
+        $depositAccount = $isLawcus ? $this->lawcusDepositAccount($invoice) : null;
+        $isTrust        = $isLawcus && $invoice->fund_type === 'TRUST';
+        // The PMS sync runs before this email. A Lawcus payment that wasn't confirmed gets
+        // its own "Action needed" alert, so this email mustn't say it was marked paid.
+        $markedPaid     = ! $isLawcus || $invoice->pms_sync_status === 'SYNCED';
+
         return new Content(
             view: 'payment::emails.payment-merchant-notification',
             with: compact(
@@ -66,9 +74,21 @@ class MerchantPaymentNotificationMail extends Mailable
                 'invoiceRef', 'currency', 'pmsSource',
                 'invoiceAmount', 'feeAmount', 'feeCents', 'totalAmount',
                 'paymentMethod', 'authorizationId', 'paidDate', 'lawcusMatterUrl',
-                'coveredInvoices',
+                'coveredInvoices', 'depositAccount', 'isTrust', 'markedPaid',
             ),
         );
+    }
+
+    /** "Trust (IOLTA)" or "Operating", with the firm's Lawcus account name when one is set. */
+    private function lawcusDepositAccount(Invoice $invoice): string
+    {
+        $isTrust = $invoice->fund_type === 'TRUST';
+        $label   = $isTrust ? 'Trust (IOLTA)' : 'Operating';
+        $name    = trim((string) ($isTrust
+            ? $this->client?->lawcus_trust_bank_account_name
+            : $this->client?->lawcus_default_bank_account_name));
+
+        return $name !== '' && strcasecmp($name, $label) !== 0 ? "{$label}: {$name}" : $label;
     }
 
     /**
@@ -79,20 +99,7 @@ class MerchantPaymentNotificationMail extends Mailable
      */
     public static function lawcusMatterUrl(Invoice $invoice): ?string
     {
-        if (strtolower((string) $invoice->pms_source) !== 'lawcus') {
-            return null;
-        }
-
-        $data       = (array) data_get($invoice->raw_payload, 'invoice.data', []);
-        $matterUuid = trim((string) (
-            $data['matter_uuid'] ?? $data['matteruuid'] ?? data_get($data, 'matter.uuid') ?? ''
-        ));
-
-        if ($matterUuid === '') {
-            return null;
-        }
-
-        return config('services.lawcus.base_url').'/matter/'.rawurlencode($matterUuid);
+        return LawcusLinks::matterUrl($invoice);
     }
 
     private function gatewayLabel(string $gateway): string
