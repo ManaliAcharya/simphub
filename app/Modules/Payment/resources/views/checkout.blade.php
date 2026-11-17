@@ -431,6 +431,12 @@
             return payingOutstanding() ? state.details.outstanding.total_cents : state.details.invoice.amount_cents;
         }
 
+        // Fee rates can carry five decimals (e.g. 3.48753% so IOLTA deposits net to the penny).
+        // Labels show at most two (3.49%); every amount still comes from the full rate server-side.
+        function displayFeePercent(percent) {
+            return Math.round((parseFloat(percent) || 0) * 100) / 100;
+        }
+
         function optionFeeCents(option) {
             return (payingOutstanding() ? option.outstanding_fee_cents : option.fee_cents) ?? 0;
         }
@@ -572,7 +578,7 @@
                     '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">',
                     '<span style="color:#60708a;">' + (alsoPaid ? 'Invoices amount' : 'Invoice amount') + '</span><span>' + fmt(baseCents) + '</span></div>',
                     '<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">',
-                    '<span style="color:#60708a;">Processing fee (' + feePercent + '%)</span><span>+' + fmt(feeCents) + '</span></div>',
+                    '<span style="color:#60708a;">Processing fee (' + displayFeePercent(feePercent) + '%)</span><span>+' + fmt(feeCents) + '</span></div>',
                     '<div style="display:flex;justify-content:space-between;padding:8px 0 0;margin-top:6px;',
                     'border-top:1px solid rgba(16,33,58,.1);font-weight:600;">',
                     '<span>Total charged</span><span>' + fmt(totalCents) + '</span></div>',
@@ -671,7 +677,7 @@
                     const saving = optionFeeCents(o) || 0;
                     if (saving > 0) {
                         rows.push('<div style="display:flex;justify-content:space-between;font-size:13px;padding:3px 0;">'
-                            + '<span>' + (o.display_name || o.gateway.toUpperCase()) + ' (' + pct + '%)</span>'
+                            + '<span>' + (o.display_name || o.gateway.toUpperCase()) + ' (' + displayFeePercent(pct) + '%)</span>'
                             + '<span style="font-weight:600;">' + fmt(saving) + '</span></div>');
                     }
                 });
@@ -807,7 +813,7 @@
                     `  <p style="margin:0;font-size:14px;font-weight:600;color:#10213a;">${(option.display_name || option.gateway.toUpperCase())} <span style="font-size:12px;font-weight:500;color:#60708a;">(${isAch ? 'ACH' : 'CC'})</span></p>`,
                     available
                         ? (feeEnabled && feePercent > 0
-                            ? `  <p style="margin:3px 0 0;font-size:12px;color:#6b7c93;">Includes ${feePercent}% processing fee</p>`
+                            ? `  <p style="margin:3px 0 0;font-size:12px;color:#6b7c93;">Includes ${displayFeePercent(feePercent)}% processing fee</p>`
                             : `  <p style="margin:3px 0 0;font-size:12px;color:#6b7c93;">${describeOption(option)}</p>`)
                         : `  <p style="margin:3px 0 0;font-size:12px;color:#e24b4a;">${option.unavailable_reason || 'Unavailable'}</p>`,
                     '</div>',
