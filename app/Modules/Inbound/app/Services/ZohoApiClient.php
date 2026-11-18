@@ -88,6 +88,31 @@ class ZohoApiClient
             ->json();
     }
 
+    /** Removes a webhook. Returns false when Zoho says it's already gone. */
+    public function deleteWebhook(PmsConnection $connection, string $webhookId, string $organizationId): bool
+    {
+        return $this->deleteSetting($connection, "/settings/webhooks/{$webhookId}", $organizationId, 'Zoho Books webhook delete failed');
+    }
+
+    /** Removes a workflow rule. Returns false when Zoho says it's already gone. */
+    public function deleteWorkflow(PmsConnection $connection, string $workflowId, string $organizationId): bool
+    {
+        return $this->deleteSetting($connection, "/settings/workflows/{$workflowId}", $organizationId, 'Zoho Books workflow delete failed');
+    }
+
+    private function deleteSetting(PmsConnection $connection, string $path, string $organizationId, string $message): bool
+    {
+        $response = $this->booksRequest($connection, $organizationId)->delete($path);
+
+        if ($response->status() === 404) {
+            return false;
+        }
+
+        $this->booksResult($response, null, $message);
+
+        return true;
+    }
+
     public function fetchWorkflows(PmsConnection $connection, string $organizationId): array
     {
         return $this->authenticatedRequest($connection, $this->regions->booksApiBaseUrlForConnection($connection))

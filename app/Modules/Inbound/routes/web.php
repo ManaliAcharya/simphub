@@ -237,6 +237,14 @@ Route::middleware('web')->group(function (): void {
         Route::post('/disconnect', [PmsAuthController::class, 'disconnect'])->name('disconnect');
     });
 
+    // Zoho Books and Zoho CRM disconnect
+    foreach (['zoho', 'zohocrm'] as $zohoProvider) {
+        Route::post("/inbound/{$zohoProvider}/disconnect", [PmsAuthController::class, 'disconnectZoho'])
+            ->defaults('provider', $zohoProvider)
+            ->middleware(['merchant.auth', 'no-cache'])
+            ->name("inbound.{$zohoProvider}.disconnect");
+    }
+
     // Separate Clio routes
     Route::prefix('inbound/clio')->name('inbound.clio.')->middleware(['merchant.auth', 'no-cache'])->group(function (): void {
 

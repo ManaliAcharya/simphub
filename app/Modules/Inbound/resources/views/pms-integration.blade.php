@@ -284,6 +284,21 @@
                                     </form>
                                 @endif
 
+                                @if (in_array($provider, ['zoho', 'zohocrm'], true) && $client)
+                                    <form method="POST" action="{{ route("inbound.{$provider}.disconnect") }}"
+                                        onsubmit="return confirm({{ Js::from($provider === 'zoho'
+                                            ? 'Disconnect Zoho Books? SimpHub will remove its webhooks and workflow rules from Zoho Books, and new invoices will stop coming in until the client reconnects.'
+                                            : 'Disconnect Zoho CRM? Subscription payments will stop updating Zoho CRM and Zoho Books, and the Zoho Books invoice settings will be cleared, until the client reconnects.') }});">
+                                        @csrf
+                                        <input type="hidden" name="pms_client_id"
+                                            value="{{ $client->pms_client_id }}">
+                                        <button type="submit" class="button secondary"
+                                            style="font-size:12px;padding:7px 16px;color:#dc2626;border-color:#dc2626;background:#fef2f2;">
+                                            Disconnect
+                                        </button>
+                                    </form>
+                                @endif
+
                                 @if ($provider === 'clio' && $client)
                                     <form method="POST" action="{{ route('inbound.clio.disconnect') }}"
                                         onsubmit="return confirm('Disconnect Clio? The client will need to reconnect to resume invoice processing.');">
