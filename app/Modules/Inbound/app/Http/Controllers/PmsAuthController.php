@@ -13,6 +13,7 @@ use Modules\Inbound\Services\PmsOAuthStateService;
 use Throwable;
 use Modules\Inbound\Models\WaveConnection;
 use Modules\Inbound\Services\WaveApiClient;
+use Modules\Inbound\Services\ZohoDisconnectService;
 
 class PmsAuthController extends Controller
 {
@@ -91,6 +92,37 @@ class PmsAuthController extends Controller
                 'pms_client_id' => $pmsClientId,
             ]);
         }
+    }
+
+    /**
+     * Disconnects Zoho Books or Zoho CRM: removes the webhooks and workflow rules SimpHub
+     * created in Zoho Books, revokes the token and deletes the connection.
+     */
+    public function disconnectZoho(Request $request, string $provider, ZohoDisconnectService $zoho): RedirectResponse
+    {
+        $pmsClientId = $request->validate([
+            'pms_client_id' => ['required', 'string'],
+        ])['pms_client_id'];
+
+        $label = $provider === 'zohocrm' ? 'Zoho CRM' : 'Zoho Books';
+        $result = $zoho->disconnect($provider, $pmsClientId);
+
+        $params = ['pms_client_id' => $pmsClientId];
+
+        if (! $result['disconnected']) {
+            $params['success'] = "{$label} was not connected.";
+        } elseif ($result['cleanup_error'] !== null) {
+            $params['error'] = "{$label} disconnected, but SimpHub couldn't remove its webhooks from Zoho Books ({$result['cleanup_error']}). "
+                .'In Zoho Books, go to Settings > Automation and delete the "Payment Middleware" workflow rules and webhooks.';
+        } elseif ($result['shared_organization']) {
+            $params['success'] = "{$label} disconnected. Its webhooks were kept because another client uses the same Zoho Books organization.";
+        } elseif ($provider === 'zoho') {
+            $params['success'] = "Zoho Books disconnected, and {$result['workflows_removed']} workflow rule(s) and {$result['webhooks_removed']} webhook(s) were removed from Zoho Books. Click \"Connect\" to reconnect.";
+        } else {
+            $params['success'] = 'Zoho CRM disconnected. Click "Connect" to reconnect.';
+        }
+
+        return redirect()->route("inbound.{$provider}.page", $params);
     }
 
     /** Same rule as the share links: the route's provider must be the client's PMS. */
