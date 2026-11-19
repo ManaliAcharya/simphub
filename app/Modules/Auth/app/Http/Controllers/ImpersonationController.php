@@ -6,14 +6,16 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Gate;
 use Modules\Auth\Models\ClientAccount;
 use Modules\Auth\Models\MerchantSession;
 use Modules\Auth\Services\ImpersonationService;
 
 /**
- * Admin-only, read-only "view as client" flow — see ImpersonationService
- * for the security model. Gated by 'auth' + 'admin.super' middleware in
- * routes/web.php.
+ * "View as client" flow — see ImpersonationService for the security model.
+ * Allowed for super-admins (any client) and agents (their own clients only);
+ * the rule is User::canViewAsClient(), enforced here via the
+ * 'view-as-client' gate so it holds however the route is registered.
  */
 class ImpersonationController extends Controller
 {
@@ -23,6 +25,8 @@ class ImpersonationController extends Controller
 
     public function start(Request $request, ClientAccount $clientAccount): RedirectResponse
     {
+        Gate::authorize('view-as-client', $clientAccount);
+
         $result = $this->impersonationService->start(
             admin: Auth::user(),
             clientAccount: $clientAccount,

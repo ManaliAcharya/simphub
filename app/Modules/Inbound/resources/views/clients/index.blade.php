@@ -414,7 +414,11 @@
     <div class="page-header">
         <div>
             <h1>Clients</h1>
-            <div class="sub">Manage all connected PMS clients and their configurations</div>
+            <div class="sub">
+                {{ auth()->user()?->isAgent()
+                    ? 'Manage your PMS clients and their configurations'
+                    : 'Manage all connected PMS clients and their configurations' }}
+            </div>
         </div>
         <a href="{{ route('inbound.clients.create') }}" class="btn-primary">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
@@ -478,6 +482,10 @@
                                     <div class="client-email">{{ $client->account?->email }}</div>
                                     <div style="font-size:11px;color:#9ca3af;margin-top:2px;">
                                         {{ $displayId }}</div>
+                                    @unless (auth()->user()?->isAgent())
+                                        <div style="font-size:11px;color:#6b7280;margin-top:2px;">
+                                            Agent: {{ $client->agent?->name ?? '—' }}</div>
+                                    @endunless
                                 </td>
                                 <td>
                                     <span
@@ -573,7 +581,7 @@
                                     </button>
                                 </td>
                                 <td style="text-align:right;">
-                                    @if ($client->account && auth()->user()?->is_super_admin)
+                                    @if ($client->account && auth()->user()?->canViewAsClient($client))
                                         <form action="{{ route('admin.impersonate.start', $client->account->id) }}" method="POST" style="display:inline;">
                                             @csrf
                                             <button type="submit" class="action-btn"

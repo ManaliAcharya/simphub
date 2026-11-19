@@ -109,6 +109,7 @@
     </style>
 </head>
 <body>
+@include('auth::partials.admin-bar')
 
 {{-- ── Top bar ── --}}
 <div class="topbar">

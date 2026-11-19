@@ -2,6 +2,7 @@
 
 namespace Modules\Boarding\Models;
 
+use App\Models\Concerns\AssignableToAgent;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,7 @@ use Modules\Auth\Models\ClientAccount;
 
 class BoardingClient extends Model
 {
+    use AssignableToAgent;
     use HasUuids;
 
     protected $table = 'boarding_clients';

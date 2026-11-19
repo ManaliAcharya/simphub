@@ -51,6 +51,7 @@
     </style>
 </head>
 <body>
+@include('auth::partials.admin-bar')
 <div class="shell">
     {{ $slot }}
 </div>
