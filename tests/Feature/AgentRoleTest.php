@@ -118,6 +118,24 @@ class AgentRoleTest extends TestCase
             ->assertSee('2 clients');
     }
 
+    public function test_agent_gets_the_same_list_and_create_pages_as_an_admin(): void
+    {
+        $agent = $this->user(UserRole::Agent);
+        $this->client('My Firm', $agent);
+
+        $this->actingAs($agent)
+            ->get(route('inbound.clients.index'))
+            ->assertOk()
+            ->assertSee('Manage all connected PMS clients and their configurations')
+            ->assertSee('New Client')
+            ->assertSee('Agent: ' . $agent->name);
+
+        $this->actingAs($agent)
+            ->get(route('inbound.clients.create'))
+            ->assertOk()
+            ->assertSee(route('inbound.clients.store'), false);
+    }
+
     public function test_client_created_by_an_agent_belongs_to_them(): void
     {
         $agent = $this->user(UserRole::Agent);
