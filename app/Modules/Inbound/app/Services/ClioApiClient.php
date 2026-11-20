@@ -222,8 +222,9 @@ class ClioApiClient
 
     /**
      * billing_method (hourly / flat / contingency) picks the payment email template;
-     * require_utbms_codes is Clio's LEDES billing setting (an insurer-billed matter gets no
-     * payment email); description names the matter on the PDF. Each later set drops what
+     * custom_field_values carries the firm's "LEDES" field (an insurer-billed matter gets no
+     * payment email); require_utbms_codes (Clio's own LEDES setting) is fetched but not used
+     * for the skip; description names the matter on the PDF. Each later set drops what
      * Clio may reject, ending with the fields that have always worked.
      */
     private const MATTER_FIELD_SETS = [

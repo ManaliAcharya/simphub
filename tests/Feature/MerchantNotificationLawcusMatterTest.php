@@ -12,10 +12,11 @@ class MerchantNotificationLawcusMatterTest extends TestCase
 {
     private const MATTER_UUID = '34b58a90-b8be-11f1-9433-6583f0484da9';
 
-    private function render(string $pmsSource, array $invoiceData, string $fundType = 'OPERATING', ?Client $client = null, ?string $syncStatus = 'SYNCED'): string
+    private function render(string $pmsSource, array $invoiceData, string $fundType = 'OPERATING', ?Client $client = null, ?string $syncStatus = 'SYNCED', ?string $externalInvoiceId = null): string
     {
         $invoice = (new Invoice)->forceFill([
             'pms_source'      => $pmsSource,
+            'external_invoice_id' => $externalInvoiceId,
             'fund_type'       => $fundType,
             'pms_sync_status' => $syncStatus,
             'invoice_number' => '123',
@@ -87,6 +88,18 @@ class MerchantNotificationLawcusMatterTest extends TestCase
 
         $this->assertStringNotContainsString('Deposited to', $html);
         $this->assertStringContainsString('automatically marked as paid', $html);
+    }
+
+    public function test_clio_never_claims_marked_paid_and_links_to_the_bill(): void
+    {
+        foreach (['SYNCED', 'FAILED', null] as $status) {
+            $html = $this->render('clio', [], syncStatus: $status, externalInvoiceId: '1249095803');
+
+            $this->assertStringNotContainsString('automatically marked as paid', $html);
+            $this->assertStringContainsString('this payment has not been recorded in Clio', $html);
+            $this->assertStringContainsString('Open bill in Clio', $html);
+            $this->assertStringContainsString('https://app.clio.com/nc/#/bills/1249095803', $html);
+        }
     }
 
     public function test_other_pms_emails_are_unchanged(): void

@@ -63,9 +63,13 @@ class MerchantPaymentNotificationMail extends Mailable
         $isLawcus       = strtolower((string) $invoice->pms_source) === 'lawcus';
         $depositAccount = $isLawcus ? $this->lawcusDepositAccount($invoice) : null;
         $isTrust        = $isLawcus && $invoice->fund_type === 'TRUST';
+        // Clio's API can't record/approve a bill payment, so the firm always records it by
+        // hand: never claim it was marked paid, point them at the bill instead.
+        $clioBillUrl    = self::clioBillUrl($invoice);
         // The PMS sync runs before this email. A Lawcus payment that wasn't confirmed gets
         // its own "Action needed" alert, so this email mustn't say it was marked paid.
-        $markedPaid     = ! $isLawcus || $invoice->pms_sync_status === 'SYNCED';
+        $isClio         = strtolower((string) $invoice->pms_source) === 'clio';
+        $markedPaid     = ! $isClio && (! $isLawcus || $invoice->pms_sync_status === 'SYNCED');
 
         return new Content(
             view: 'payment::emails.payment-merchant-notification',
@@ -74,9 +78,17 @@ class MerchantPaymentNotificationMail extends Mailable
                 'invoiceRef', 'currency', 'pmsSource',
                 'invoiceAmount', 'feeAmount', 'feeCents', 'totalAmount',
                 'paymentMethod', 'authorizationId', 'paidDate', 'lawcusMatterUrl',
-                'coveredInvoices', 'depositAccount', 'isTrust', 'markedPaid',
+                'coveredInvoices', 'depositAccount', 'isTrust', 'markedPaid', 'isClio', 'clioBillUrl',
             ),
         );
+    }
+
+    /** The bill in Clio's own UI, for the firm to record the payment. Null for other PMSs. */
+    public static function clioBillUrl(Invoice $invoice): ?string
+    {
+        return strtolower((string) $invoice->pms_source) === 'clio' && $invoice->external_invoice_id
+            ? 'https://app.clio.com/nc/#/bills/'.$invoice->external_invoice_id
+            : null;
     }
 
     /** "Trust (IOLTA)" or "Operating", with the firm's Lawcus account name when one is set. */
