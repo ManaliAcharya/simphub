@@ -33,9 +33,10 @@ Route::middleware(['web', 'throttle:global'])->group(function () {
                 ->name('impersonate.stop');
         });
 
-        /* Impersonation ("view as client", read-only) — super-admins only */
+        /* Impersonation ("view as client") — super-admins, and agents for their own
+           clients only. Checked by the 'view-as-client' gate in the controller. */
 
-        Route::middleware(['auth', 'admin.super'])->group(function () {
+        Route::middleware(['auth'])->group(function () {
 
             Route::post('/impersonate/{clientAccount}', [ImpersonationController::class, 'start'])
                 ->name('impersonate.start');

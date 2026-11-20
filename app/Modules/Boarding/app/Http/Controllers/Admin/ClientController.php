@@ -15,9 +15,7 @@ class ClientController extends Controller
 
     public function show(string $clientId)
     {
-        $client = BoardingClient::where('client_id', $clientId)
-            ->with(['merchants', 'masterLinks', 'account'])
-            ->firstOrFail();
+        $client = $this->findVisible($clientId, ['merchants', 'masterLinks', 'account']);
 
         return view('boarding::admin.clients.show', [
             'client' => $client,
@@ -27,7 +25,12 @@ class ClientController extends Controller
 
     public function apiDocs(string $clientId)
     {
-        $client = BoardingClient::where('client_id', $clientId)->firstOrFail();
+        // Also linked from the client's own portal (no admin login), so it
+        // stays reachable without one; a logged-in agent is still limited
+        // to their own clients.
+        $client = auth()->check()
+            ? $this->findVisible($clientId)
+            : BoardingClient::where('client_id', $clientId)->firstOrFail();
 
         return view('boarding::admin.clients.api-docs', [
             'client'  => $client,
@@ -38,7 +41,7 @@ class ClientController extends Controller
 
     public function toggleStatus(string $clientId): RedirectResponse
     {
-        $client = BoardingClient::where('client_id', $clientId)->firstOrFail();
+        $client = $this->findVisible($clientId);
         $client->update(['status' => $client->status === 'active' ? 'inactive' : 'active']);
 
         return back()->with('success', 'Client status updated.');
@@ -46,7 +49,7 @@ class ClientController extends Controller
 
     public function resendInvitation(string $clientId): RedirectResponse
     {
-        $client = BoardingClient::where('client_id', $clientId)->firstOrFail();
+        $client = $this->findVisible($clientId);
 
         $account = $client->account;
 
@@ -67,5 +70,15 @@ class ClientController extends Controller
         ]);
 
         return back()->with('success', 'Invitation email resent.');
+    }
+
+    /** Admins can open any boarding client; agents only their own (404 otherwise). */
+    private function findVisible(string $clientId, array $with = []): BoardingClient
+    {
+        return BoardingClient::query()
+            ->visibleTo(auth()->user())
+            ->where('client_id', $clientId)
+            ->with($with)
+            ->firstOrFail();
     }
 }

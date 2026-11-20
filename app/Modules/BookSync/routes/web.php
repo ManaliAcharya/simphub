@@ -24,29 +24,35 @@ Route::middleware('web')->group(function (): void {
         Route::get('/', [ClientPortalController::class, 'dashboard'])->name('dashboard');
     });
 
-    // ── Admin — API audit logs ────────────────────────────────────────────────
-    Route::get('/booksync/admin/logs', [ApiLogController::class, 'index'])->name('booksync.admin.logs.index');
+    // ── Admin (internal staff only) ───────────────────────────────────────────
+    // Requires an admin login. Agents are kept out: BookSync clients can't be
+    // assigned to an agent, so an agent here would see every client's data.
+    Route::middleware(['auth', 'admin.only', 'no-cache'])->group(function (): void {
 
-    // ── Admin — Client management ─────────────────────────────────────────────
-    Route::prefix('booksync/admin/clients')->name('booksync.admin.clients.')->group(function (): void {
-        Route::get('/', [ClientController::class, 'index'])->name('index');
-        Route::get('/create', [ClientController::class, 'create'])->name('create');
-        Route::post('/', [ClientController::class, 'store'])->name('store');
-        Route::get('/{clientId}', [ClientController::class, 'show'])->name('show');
-        Route::get('/{clientId}/api-docs', [ApiDocsController::class, 'show'])->name('api-docs');
-        Route::post('/{clientId}/toggle-status', [ClientController::class, 'toggleStatus'])->name('toggle-status');
-        Route::post('/{clientId}/set-portal-password', [ClientController::class, 'setPortalPassword'])->name('set-portal-password');
-    });
+        // ── Admin — API audit logs ────────────────────────────────────────────
+        Route::get('/booksync/admin/logs', [ApiLogController::class, 'index'])->name('booksync.admin.logs.index');
 
-    // ── Admin — Merchant management ───────────────────────────────────────────
-    Route::prefix('booksync/admin/clients/{clientId}/merchants')->name('booksync.admin.merchants.')->group(function (): void {
-        Route::get('/create', [MerchantController::class, 'create'])->name('create');
-        Route::post('/', [MerchantController::class, 'store'])->name('store');
-    });
+        // ── Admin — Client management ─────────────────────────────────────────
+        Route::prefix('booksync/admin/clients')->name('booksync.admin.clients.')->group(function (): void {
+            Route::get('/', [ClientController::class, 'index'])->name('index');
+            Route::get('/create', [ClientController::class, 'create'])->name('create');
+            Route::post('/', [ClientController::class, 'store'])->name('store');
+            Route::get('/{clientId}', [ClientController::class, 'show'])->name('show');
+            Route::get('/{clientId}/api-docs', [ApiDocsController::class, 'show'])->name('api-docs');
+            Route::post('/{clientId}/toggle-status', [ClientController::class, 'toggleStatus'])->name('toggle-status');
+            Route::post('/{clientId}/set-portal-password', [ClientController::class, 'setPortalPassword'])->name('set-portal-password');
+        });
 
-    Route::prefix('booksync/admin/merchants')->name('booksync.admin.merchants.')->group(function (): void {
-        Route::get('/{merchantId}', [MerchantController::class, 'show'])->name('show');
-        Route::post('/{merchantId}/toggle-status', [MerchantController::class, 'toggleStatus'])->name('toggle-status');
+        // ── Admin — Merchant management ───────────────────────────────────────
+        Route::prefix('booksync/admin/clients/{clientId}/merchants')->name('booksync.admin.merchants.')->group(function (): void {
+            Route::get('/create', [MerchantController::class, 'create'])->name('create');
+            Route::post('/', [MerchantController::class, 'store'])->name('store');
+        });
+
+        Route::prefix('booksync/admin/merchants')->name('booksync.admin.merchants.')->group(function (): void {
+            Route::get('/{merchantId}', [MerchantController::class, 'show'])->name('show');
+            Route::post('/{merchantId}/toggle-status', [MerchantController::class, 'toggleStatus'])->name('toggle-status');
+        });
     });
 
     // ── Merchant setup flow ───────────────────────────────────────────────────

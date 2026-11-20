@@ -3,7 +3,7 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Modules\Auth\Http\Middleware\EnsureSuperAdmin;
+use Modules\Auth\Http\Middleware\EnsureNotAgent;
 use Modules\Auth\Http\Middleware\MerchantSessionMiddleware;
 use Modules\Auth\Http\Middleware\PreventBackHistory;
 use Modules\Auth\Http\Middleware\RedirectIfMerchantAuthenticated;
@@ -34,7 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'merchant.guest'  => RedirectIfMerchantAuthenticated::class,
             'merchant.auth'   => MerchantSessionMiddleware::class,
             'reauth.required' => RequireReauthentication::class,
-            'admin.super'     => EnsureSuperAdmin::class,
+            'admin.only'      => EnsureNotAgent::class,
         ]);
 
         // Internal admin auth (Laravel's built-in guard) redirects unauthenticated

@@ -478,6 +478,8 @@
                                     <div class="client-email">{{ $client->account?->email }}</div>
                                     <div style="font-size:11px;color:#9ca3af;margin-top:2px;">
                                         {{ $displayId }}</div>
+                                    <div style="font-size:11px;color:#6b7280;margin-top:2px;">
+                                        Agent: {{ $client->agent?->name ?? '—' }}</div>
                                 </td>
                                 <td>
                                     <span
@@ -573,7 +575,7 @@
                                     </button>
                                 </td>
                                 <td style="text-align:right;">
-                                    @if ($client->account && auth()->user()?->is_super_admin)
+                                    @if ($client->account && auth()->user()?->canViewAsClient($client))
                                         <form action="{{ route('admin.impersonate.start', $client->account->id) }}" method="POST" style="display:inline;">
                                             @csrf
                                             <button type="submit" class="action-btn"

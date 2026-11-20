@@ -50,12 +50,24 @@ class ClientConfigController extends Controller
 
     public function index(): View
     {
-        $clients = Client::with('account')->get()
-            ->concat(BoardingClient::with('account')->get())
+        // Admins see every client; agents only the ones assigned to them.
+        $clients = Client::with(['account', 'agent'])->visibleTo(auth()->user())->get()
+            ->concat(BoardingClient::with(['account', 'agent'])->visibleTo(auth()->user())->get())
             ->sortBy(fn($client) => $client->client_name ?? $client->name)
             ->values();
 
         return view('inbound::clients.index', compact('clients'));
+    }
+
+    /**
+     * A client created by an agent belongs to that agent. Clients created by
+     * an admin start unassigned (assign later with `client:assign-agent`).
+     */
+    private function creatingAgentId(): ?int
+    {
+        $user = auth()->user();
+
+        return $user?->isAgent() ? $user->getKey() : null;
     }
 
     public function create(ZohoRegionResolver $zohoRegions): View
@@ -81,7 +93,7 @@ class ClientConfigController extends Controller
             ->all();
 
         return view('inbound::clients.create', [
-            'clients'            => Client::query()->latest('created_at')->get(),
+            'clients'            => Client::query()->visibleTo(auth()->user())->latest('created_at')->get(),
             'availableGateways'  => $availableGateways,
             'availableTerminals' => $availableTerminals,
             'zohoRegions'        => $zohoRegions->options(),
@@ -146,6 +158,7 @@ class ClientConfigController extends Controller
         $isCustomPms = strtoupper($validated['client_pms']) === 'CUSTOM';
 
         $client = Client::query()->create([
+            'agent_id'                 => $this->creatingAgentId(),
             'pms_client_id'            => (string) Str::uuid(),
             'setup_token'              => strtolower(Str::random(12)),
             'webhook_secret'           => $isCustomPms ? 'whsec_' . Str::random(32) : null,
@@ -211,6 +224,7 @@ class ClientConfigController extends Controller
         ]);
 
         $client = BoardingClient::create([
+            'agent_id'           => $this->creatingAgentId(),
             'name'               => $validated['client_name'],
             'contact_email'      => $validated['client_email'],
             'client_id'          => 'iso_' . Str::uuid()->toString(),
@@ -238,6 +252,7 @@ class ClientConfigController extends Controller
     {
         if ($request->query('type') === 'boarding') {
             $client = BoardingClient::query()
+                ->visibleTo(auth()->user())
                 ->where('client_id', $request->query('client_id'))
                 ->firstOrFail();
 
@@ -250,6 +265,7 @@ class ClientConfigController extends Controller
         }
 
         $client = Client::query()
+            ->visibleTo(auth()->user())
             ->where('pms_client_id', $request->query('pms_client_id'))
             ->firstOrFail();
 
@@ -1156,7 +1172,14 @@ class ClientConfigController extends Controller
 
     public function updateStatus($clientId): RedirectResponse
     {
-        $ownerType = Client::where('id', $clientId)->exists() ? Client::class : BoardingClient::class;
+        // Resolve through the visibility scope so an agent gets a 404 for a
+        // client that isn't theirs instead of toggling it.
+        $user      = auth()->user();
+        $ownerType = match (true) {
+            Client::visibleTo($user)->where('id', $clientId)->exists()         => Client::class,
+            BoardingClient::visibleTo($user)->where('id', $clientId)->exists() => BoardingClient::class,
+            default                                                             => abort(404),
+        };
 
         $clientAccount = ClientAccount::where('owner_type', $ownerType)
             ->where('owner_id', $clientId)
@@ -1178,7 +1201,7 @@ class ClientConfigController extends Controller
 
     public function destroy($clientId)
     {
-        $client = Client::where('id', $clientId)->first();
+        $client = Client::visibleTo(auth()->user())->where('id', $clientId)->first();
 
         if ($client) {
             $client->delete();
@@ -1187,7 +1210,7 @@ class ClientConfigController extends Controller
             // Client (soft-deleted, account left intact for a possible restore), we
             // must also remove its ClientAccount here or the row is orphaned and its
             // email is permanently blocked from reuse.
-            $client = BoardingClient::where('id', $clientId)->firstOrFail();
+            $client = BoardingClient::visibleTo(auth()->user())->where('id', $clientId)->firstOrFail();
             $client->account?->delete();
             $client->delete();
         }

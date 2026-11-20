@@ -2,12 +2,16 @@
 
 namespace Modules\Auth\Providers;
 
+use App\Models\User;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Gate;
+use Modules\Auth\Models\ClientAccount;
 use Modules\Auth\Support\RateLimiting\AuthRateLimiters;
 use Modules\Auth\Console\SendClientInvitations;
 use Modules\Auth\Console\CreateClientAccounts;
 use Modules\Auth\Console\CreateBoardingClientAccounts;
 use Modules\Auth\Console\CreateAdminUser;
+use Modules\Auth\Console\AssignClientAgent;
 use Nwidart\Modules\Support\ModuleServiceProvider;
 
 class AuthServiceProvider extends ModuleServiceProvider
@@ -37,11 +41,18 @@ class AuthServiceProvider extends ModuleServiceProvider
         parent::boot();
         AuthRateLimiters::register();
 
+        // "View as client" (impersonation). Rule lives on User::canViewAsClient().
+        Gate::define(
+            'view-as-client',
+            fn (User $user, ClientAccount $clientAccount): bool => $user->canViewAsClient($clientAccount->owner)
+        );
+
         $this->commands([
             CreateClientAccounts::class,
             SendClientInvitations::class,
             CreateBoardingClientAccounts::class,
             CreateAdminUser::class,
+            AssignClientAgent::class,
         ]);
     }
 

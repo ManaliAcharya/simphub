@@ -9,7 +9,8 @@ use Modules\Auth\Models\ClientAccount;
 use Modules\Auth\Models\MerchantSession;
 
 /**
- * Lets a super-admin open a time-limited session on a client's portal/config
+ * Lets a super-admin (any client) or an agent (their own clients only — see
+ * User::canViewAsClient) open a time-limited session on a client's portal/config
  * screens, and edit that config, without ever knowing or using the client's
  * password. Implemented as a specially-flagged MerchantSession so it reuses
  * every existing merchant.auth-gated screen (client config, gateways,
@@ -58,6 +59,7 @@ class ImpersonationService
             payload: [
                 'admin_user_id' => $admin->id,
                 'admin_email' => $admin->email,
+                'admin_role' => $admin->role?->value,
                 'ip_address' => $ipAddress,
                 'merchant_session_id' => $session->id,
                 'expires_at' => $session->absolute_expires_at->toIso8601String(),

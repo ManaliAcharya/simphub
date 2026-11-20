@@ -42,10 +42,14 @@ Route::middleware('web')->group(function (): void {
 
         // ── Boarding (ISO) client admin pages — additional to the shared flow above ──
         Route::prefix('boarding')->name('boarding.')->group(function (): void {
-            Route::get('/{clientId}', [BoardingAdminClientController::class, 'show'])->name('show');
+            // api-docs is also linked from the client's own portal, so it can't require an admin login.
             Route::get('/{clientId}/api-docs', [BoardingAdminClientController::class, 'apiDocs'])->name('api-docs');
-            Route::post('/{clientId}/toggle-status', [BoardingAdminClientController::class, 'toggleStatus'])->name('toggle-status');
-            Route::post('/{clientId}/resend-invitation', [BoardingAdminClientController::class, 'resendInvitation'])->name('resend-invitation');
+
+            Route::middleware(['auth', 'no-cache'])->group(function (): void {
+                Route::get('/{clientId}', [BoardingAdminClientController::class, 'show'])->name('show');
+                Route::post('/{clientId}/toggle-status', [BoardingAdminClientController::class, 'toggleStatus'])->name('toggle-status');
+                Route::post('/{clientId}/resend-invitation', [BoardingAdminClientController::class, 'resendInvitation'])->name('resend-invitation');
+            });
         });
 
         Route::middleware(['merchant.auth', 'no-cache'])->group(function (): void {
