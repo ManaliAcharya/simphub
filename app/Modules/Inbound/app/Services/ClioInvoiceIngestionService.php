@@ -48,6 +48,7 @@ class ClioInvoiceIngestionService
             ->where('external_invoice_id', $normalized['external_invoice_id'])
             ->first();
         $existedBefore = $existing !== null;
+        $resendFingerprintBefore = $existing ? self::resendFingerprint($existing) : null;
 
         // Once paid through SimpHub the amount is history — Clio's balance then reads 0.
         if ($existing && PaymentSession::query()->where('invoice_id', $existing->id)->where('status', 'COMPLETED')->exists()) {
@@ -201,13 +202,40 @@ class ClioInvoiceIngestionService
             MarkClioBillSentJob::dispatchFor($result['invoice']);
         }
 
-        if ($existedBefore && $ledesReason === null && $closedReason === null) {
+        // Clio sends "updated" for every touch on a bill — including our own mark_as_sent right
+        // after the first email (MarkClioBillSentJob) — so resend only when something the client
+        // sees in the email actually changed. Otherwise every approval emailed the link twice.
+        if ($existedBefore && $ledesReason === null && $closedReason === null
+            && self::resendFingerprint($result['invoice']) !== $resendFingerprintBefore) {
             $this->lifecycle->resendOnUpdate($result['invoice'], $result['payment_session'], $recipientEmails, $pmsClientId);
         }
 
         $result['emails_sent'] = $emailsSent;
 
         return $result;
+    }
+
+    /**
+     * What the client sees in the payment-link email: amount, currency, bill number, due
+     * date and who it goes to. A change to any of these is worth an "Updated" resend.
+     *
+     * @return array<string, mixed>
+     */
+    public static function resendFingerprint(Invoice $invoice): array
+    {
+        $emails = array_map(
+            static fn ($email) => strtolower(trim((string) $email)),
+            array_filter((array) ($invoice->recipient_emails ?? []), 'is_string')
+        );
+        sort($emails);
+
+        return [
+            'amount_cents'   => (int) $invoice->amount_cents,
+            'currency'       => strtoupper((string) $invoice->currency),
+            'invoice_number' => (string) $invoice->invoice_number,
+            'due_at'         => (string) Arr::get((array) $invoice->raw_payload, 'invoice.data.due_at', ''),
+            'recipients'     => array_values(array_unique($emails)),
+        ];
     }
 
     private function skipAlreadyLogged(string $sessionId): bool
