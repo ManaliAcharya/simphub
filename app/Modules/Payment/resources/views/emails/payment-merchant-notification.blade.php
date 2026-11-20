@@ -93,7 +93,19 @@
             </tr>
         </table>
 
-        @if($markedPaid)
+        @if($isClio)
+        <div style="margin-top:24px;padding:14px 16px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;font-size:13px;color:#92400e;">
+            <strong>Action needed:</strong> this payment has not been recorded in Clio. Please record it on the bill in Clio so the bill shows as paid.
+        </div>
+        @if($clioBillUrl)
+        <div style="margin-top:14px;text-align:center;">
+            <a href="{{ $clioBillUrl }}"
+               style="display:inline-block;padding:11px 22px;background:#2563eb;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:600;font-size:13px;">
+                Open bill in Clio
+            </a>
+        </div>
+        @endif
+        @elseif($markedPaid)
         <div style="margin-top:24px;padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:13px;color:#166534;">
             &#10003;&nbsp; The invoice has been automatically marked as paid in {{ $pmsSource }}.
         </div>
