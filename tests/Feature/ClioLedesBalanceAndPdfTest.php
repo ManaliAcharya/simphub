@@ -36,10 +36,25 @@ class ClioLedesBalanceAndPdfTest extends TestCase
 
     // --- LEDES rules ----------------------------------------------------------------------
 
-    public function test_clio_native_ledes_setting_skips(): void
+    public function test_clios_native_ledes_setting_alone_does_not_skip(): void
     {
-        $this->assertSame('native_ledes_setting', ClioBillRules::ledesSkipReason([['require_utbms_codes' => true]]));
-        $this->assertNull(ClioBillRules::ledesSkipReason([['require_utbms_codes' => false]]));
+        // Firms keep it on for matters billed to both an insurer and the client.
+        $this->assertNull(ClioBillRules::ledesSkipReason([['require_utbms_codes' => true]]));
+        $this->assertNull(ClioBillRules::ledesSkipReason([['require_utbms_codes' => true, 'custom_field_values' => [
+            ['field_name' => 'LEDES', 'field_type' => 'checkbox', 'value' => false],
+        ]]]));
+    }
+
+    public function test_ledes_picklist_skips_only_on_yes(): void
+    {
+        $matter = fn (?string $option, int $id = 501) => [['custom_field_values' => [[
+            'field_name' => 'LEDES', 'field_type' => 'picklist', 'value' => $id,
+            'picklist_option' => $option === null ? null : ['id' => $id, 'option' => $option],
+        ]]]];
+
+        $this->assertSame('ledes_custom_field', ClioBillRules::ledesSkipReason($matter('Yes')));
+        $this->assertNull(ClioBillRules::ledesSkipReason($matter('No', 502)), 'the option id must not read as Yes');
+        $this->assertNull(ClioBillRules::ledesSkipReason($matter(null)));
     }
 
     public function test_ledes_checkbox_custom_field_skips_even_with_the_native_setting_off(): void

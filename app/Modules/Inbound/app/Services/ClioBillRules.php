@@ -17,9 +17,12 @@ final class ClioBillRules
     public const LEDES_FIELD_NAME = 'LEDES';
 
     /**
-     * Why the bill's matter(s) get no payment email: Clio's own LEDES billing setting
-     * (require_utbms_codes), or the firm's "LEDES" checkbox custom field. Either one on any
-     * of the bill's matters skips it. Null when neither is set.
+     * Why the bill's matter(s) get no payment email: the firm's "LEDES" matter custom field
+     * set to Yes on any of the bill's matters. Null otherwise.
+     *
+     * Clio's own LEDES billing setting (require_utbms_codes) is deliberately ignored: firms
+     * keep it on for matters billed to both an insurer and the client, so only the custom
+     * field says whether a matter's bills go to the insurer.
      *
      * @param  array<int, array>  $matters  matter records (the `data` of GET /matters/{id})
      */
@@ -30,20 +33,31 @@ final class ClioBillRules
                 continue;
             }
 
-            if (self::truthy($matter['require_utbms_codes'] ?? null)) {
-                return 'native_ledes_setting';
-            }
-
             foreach ((array) ($matter['custom_field_values'] ?? []) as $field) {
                 if (is_array($field)
                     && strcasecmp(trim((string) ($field['field_name'] ?? '')), self::LEDES_FIELD_NAME) === 0
-                    && self::truthy($field['value'] ?? null)) {
+                    && self::truthy(self::customFieldValue($field))) {
                     return 'ledes_custom_field';
                 }
             }
         }
 
         return null;
+    }
+
+    /**
+     * A checkbox's value is true/false; a picklist's value is the option's numeric id, so its
+     * label ("Yes"/"No") comes from picklist_option — never treat the id itself as "Yes".
+     */
+    private static function customFieldValue(array $field): mixed
+    {
+        $isPicklist = strtolower((string) ($field['field_type'] ?? '')) === 'picklist';
+
+        if ($isPicklist || is_array($field['picklist_option'] ?? null)) {
+            return is_array($field['picklist_option'] ?? null) ? ($field['picklist_option']['option'] ?? null) : null;
+        }
+
+        return $field['value'] ?? null;
     }
 
     /** What's still owed: Clio's balance (total less payments and applied trust funds). */
