@@ -969,7 +969,7 @@
                 @endif
 
                 {{-- Auto-Resend on Invoice Change --}}
-                @if (in_array($provider, ['quickbooks', 'clio', 'zoho', 'wave'], true) && $connection && $client)
+                @if (in_array($provider, ['quickbooks', 'clio', 'zoho', 'wave', 'lawcus'], true) && $connection && $client)
                     <div class="cc-card">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
                             <div>
