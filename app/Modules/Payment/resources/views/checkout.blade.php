@@ -197,7 +197,7 @@
                         </div>
                     </div>
                     <div id="ci-instructions" style="display:none;margin-top:14px;background:rgba(37,99,235,.08);border-radius:10px;padding:11px 14px;font-size:13px;color:#1e40af;line-height:1.55;">
-                        &#9432; <span id="ci-instructions-text"></span>
+                        &#9432; <span id="ci-instructions-text" style="white-space:pre-line;overflow-wrap:anywhere;"></span>
                     </div>
                 </div>
 

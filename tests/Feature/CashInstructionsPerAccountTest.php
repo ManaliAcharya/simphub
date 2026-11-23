@@ -58,6 +58,35 @@ class CashInstructionsPerAccountTest extends TestCase
         $this->assertArrayNotHasKey('trust_instructions', $quickBooks->fresh()->cash_discount_details);
     }
 
+    public function test_twenty_lines_of_wire_instructions_save_for_both_accounts(): void
+    {
+        // ~20 lines / ~1,500 characters, typed in a browser (\r\n line breaks).
+        $wire = implode("\r\n", array_map(fn ($i) => str_pad("Line {$i}: Bank / routing / account details", 76, '.'), range(1, 20)));
+        $this->assertGreaterThan(1500, strlen($wire));
+
+        $clio = $this->client('CLIO', []);
+        $this->saveFees($clio, $wire, $wire);
+
+        $saved = $clio->fresh()->cash_discount_details;
+        $this->assertSame(str_replace("\r\n", "\n", $wire), $saved['instructions']);
+        $this->assertSame(str_replace("\r\n", "\n", $wire), $saved['trust_instructions']);
+        $this->assertSame(20, substr_count($saved['instructions'], "\n") + 1, 'line breaks are kept');
+    }
+
+    public function test_instructions_over_the_limit_are_rejected_not_silently_dropped(): void
+    {
+        $clio = $this->client('CLIO', ['instructions' => 'Zelle: operating@rrlaw.test']);
+
+        try {
+            $this->saveFees($clio, str_repeat('x', ClientConfigController::CASH_INSTRUCTIONS_MAX + 1));
+            $this->fail('expected a validation error');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertArrayHasKey('cd_instructions', $e->errors());
+        }
+
+        $this->assertSame('Zelle: operating@rrlaw.test', $clio->fresh()->cash_discount_details['instructions']);
+    }
+
     public function test_the_migration_keeps_todays_instructions_on_trust_pages(): void
     {
         $lawcus     = $this->client('LAWCUS', ['instructions' => 'Zelle: firm@rrlaw.test']);
@@ -89,7 +118,7 @@ class CashInstructionsPerAccountTest extends TestCase
             ->viewData('feeConfig')['cash_discount_details'];
     }
 
-    private function saveFees(Client $client): void
+    private function saveFees(Client $client, ?string $instructions = null, ?string $trustInstructions = null): void
     {
         app(ClientConfigController::class)->updateFees(Request::create('/', 'POST', [
             'fee_surcharge_enabled' => '1',
@@ -104,8 +133,8 @@ class CashInstructionsPerAccountTest extends TestCase
             'cd_zip'                => '60601',
             'cd_phone'              => '312-555-1234',
             'cd_email'              => 'billing@rrlaw.test',
-            'cd_instructions'       => self::DETAILS['instructions'],
-            'cd_trust_instructions' => self::DETAILS['trust_instructions'],
+            'cd_instructions'       => $instructions ?? self::DETAILS['instructions'],
+            'cd_trust_instructions' => $trustInstructions ?? self::DETAILS['trust_instructions'],
         ]), $client->pms_client_id);
     }
 

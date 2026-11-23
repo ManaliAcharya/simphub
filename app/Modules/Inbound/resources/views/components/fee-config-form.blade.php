@@ -266,7 +266,7 @@
                         <label for="{{ $ns }}-cd-instructions" style="font-size:12px;color:#6b7c93;display:block;margin-bottom:3px;">
                             Additional instructions{{ $showIolta ? ' — Operating MID' : '' }} <span style="color:#9ca3af;">(optional{{ $showIolta ? ', shown on bills' : '' }})</span>
                         </label>
-                        <textarea id="{{ $ns }}-cd-instructions" name="cd_instructions" rows="2" placeholder="e.g. Please include invoice number on your check."
+                        <textarea id="{{ $ns }}-cd-instructions" name="cd_instructions" rows="4" maxlength="{{ \Modules\Inbound\Http\Controllers\ClientConfigController::CASH_INSTRUCTIONS_MAX }}" placeholder="e.g. Please include invoice number on your check."
                                   style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;resize:vertical;box-sizing:border-box;">{{ old('cd_instructions', $cd['instructions'] ?? '') }}</textarea>
                     </div>
                     @if($showIolta)
@@ -275,7 +275,7 @@
                         <label for="{{ $ns }}-cd-trust-instructions" style="font-size:12px;color:#6b7c93;display:block;margin-bottom:3px;">
                             Additional instructions — IOLTA MID <span style="color:#9ca3af;">(optional, shown on Trust Requests)</span>
                         </label>
-                        <textarea id="{{ $ns }}-cd-trust-instructions" name="cd_trust_instructions" rows="2" placeholder="e.g. Zelle to trust@firm.com (IOLTA account)."
+                        <textarea id="{{ $ns }}-cd-trust-instructions" name="cd_trust_instructions" rows="4" maxlength="{{ \Modules\Inbound\Http\Controllers\ClientConfigController::CASH_INSTRUCTIONS_MAX }}" placeholder="e.g. Zelle to trust@firm.com (IOLTA account)."
                                   style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;resize:vertical;box-sizing:border-box;">{{ old('cd_trust_instructions', $cd['trust_instructions'] ?? '') }}</textarea>
                     </div>
                     @endif
@@ -308,6 +308,9 @@
 @error('cd_zip')           <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror
 @error('cd_phone')         <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror
 @error('cd_email')         <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror
+@error('cd_instructions')  <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">Operating MID instructions: {{ $message }}</p> @enderror
+@error('cd_trust_instructions') <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">IOLTA MID instructions: {{ $message }}</p> @enderror
+@error('cd_disclosure')    <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror
 </form>
 
 <script>
