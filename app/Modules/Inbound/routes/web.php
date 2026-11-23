@@ -121,6 +121,9 @@ Route::middleware('web')->group(function (): void {
         Route::post('/inbound/wave/auto-resend-toggle', [PmsIntegrationController::class, 'saveAutoResendToggle'])
             ->name('inbound.wave.auto-resend-toggle');
 
+        Route::post('/inbound/lawcus/auto-resend-toggle', [PmsIntegrationController::class, 'saveAutoResendToggle'])
+            ->name('inbound.lawcus.auto-resend-toggle');
+
         Route::post('/inbound/quickbooks/surcharge-toggle', [PmsIntegrationController::class, 'saveQbSurchargeToggle'])
             ->name('inbound.quickbooks.surcharge-toggle');
 
