@@ -92,6 +92,20 @@
     .tile .logo-box img { max-width:100%; max-height:100%; object-fit:contain; }
     .tile .tile-name { font-size:12px; font-weight:600; color:#111827; }
 
+    /* Coming soon — not selectable */
+    .tile.coming-soon { cursor:not-allowed; background:#f9fafb; }
+    .tile.coming-soon:hover { border-color:#e5e7eb; box-shadow:none; }
+    .tile.coming-soon .logo-box,
+    .tile.coming-soon .tile-name { opacity:.55; }
+    .tile.coming-soon::before {
+        content:attr(data-tooltip); position:absolute; left:50%; bottom:calc(100% + 6px);
+        transform:translateX(-50%); white-space:nowrap; pointer-events:none;
+        background:#111827; color:#fff; font-size:12px; font-weight:500;
+        padding:5px 10px; border-radius:6px; opacity:0; transition:opacity .15s; z-index:5;
+    }
+    .tile.coming-soon:hover::before,
+    .tile.coming-soon:focus::before { opacity:1; }
+
     /* ── Actions ─────────────────────────────────────────── */
     .actions { display:flex; justify-content:flex-end; gap:10px; margin-top:28px; padding-top:20px; border-top:1px solid #f3f4f6; }
     .btn          { padding:10px 20px; border-radius:8px; font-size:14px; cursor:pointer; border:1px solid #d1d5db; background:#fff; font-weight:500; }
@@ -215,19 +229,20 @@
                             </div>
                             <div class="tile-name">Wave</div>
                         </div>
-                        <div class="tile pms {{ old('client_pms') === 'MINDBODY' ? 'selected' : '' }}" data-value="MINDBODY" onclick="selectPMS(this)">
+                        <div class="tile pms coming-soon" data-value="MINDBODY" data-tooltip="Coming soon.." aria-disabled="true" aria-describedby="coming-soon-note" tabindex="0">
                             <div class="logo-box">
                                 <div style="width:40px;height:40px;border-radius:8px;background:#ecfdf5;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#065f46;letter-spacing:-.5px;">MB</div>
                             </div>
                             <div class="tile-name">Mindbody</div>
                         </div>
-                        <div class="tile pms {{ old('client_pms') === 'ADVANCEDMD' ? 'selected' : '' }}" data-value="ADVANCEDMD" onclick="selectPMS(this)">
+                        <div class="tile pms coming-soon" data-value="ADVANCEDMD" data-tooltip="Coming soon.." aria-disabled="true" aria-describedby="coming-soon-note" tabindex="0">
                             <div class="logo-box">
                                 <div style="width:40px;height:40px;border-radius:8px;background:#eef2ff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;color:#4338ca;letter-spacing:-.5px;">AMD</div>
                             </div>
                             <div class="tile-name">AdvancedMD</div>
                         </div>
                     </div>
+                    <span id="coming-soon-note" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;">Coming soon.. Not available yet.</span>
                 </div>
 
                 {{-- Zoho region (shown only when Zoho is selected) --}}
@@ -306,7 +321,8 @@
             <input type="hidden" name="client_calls_our_api" value="0">
 
             <div class="actions">
-                <a href="{{ route('inbound.clients.create') }}" class="btn">Cancel</a>
+                {{-- Agents go back to their dashboard (client list); admins get a fresh form. --}}
+                <a href="{{ auth()->user()?->isAgent() ? route('inbound.clients.index') : route('inbound.clients.create') }}" class="btn">Cancel</a>
                 <button type="submit" class="btn primary">Create Client</button>
             </div>
         </form>

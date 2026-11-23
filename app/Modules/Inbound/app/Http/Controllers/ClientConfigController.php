@@ -40,6 +40,12 @@ use Throwable;
 
 class ClientConfigController extends Controller
 {
+    /**
+     * PMS options shown on Create Client as disabled "Coming soon.." tiles.
+     * Also rejected on store, so they can't be chosen by posting the form directly.
+     */
+    public const COMING_SOON_PMS = ['MINDBODY', 'ADVANCEDMD'];
+
     protected InvitationService $invitationService;
     protected PaymentLinkService $paymentLinks;
     public function __construct(InvitationService $invitationService, PaymentLinkService $paymentLinks)
@@ -129,7 +135,11 @@ class ClientConfigController extends Controller
         $validated = $request->validate([
             'client_name'                => ['required', 'string', 'max:255'],
 
-            'client_pms'                 => ['required', 'string', 'max:50'],
+            'client_pms'                 => ['required', 'string', 'max:50', function (string $attribute, mixed $value, \Closure $fail): void {
+                if (in_array(strtoupper((string) $value), self::COMING_SOON_PMS, true)) {
+                    $fail('This practice management system is coming soon and can\'t be selected yet.');
+                }
+            }],
             'zoho_region'                => ['nullable', 'string', Rule::in(array_keys($zohoRegions->options()))],
             'allowed_payment_gateways'   => ! $isTerminal && $availableGateways !== []
                 ? ['required', 'array', 'min:1']

@@ -136,6 +136,62 @@ class AgentRoleTest extends TestCase
             ->assertSee(route('inbound.clients.store'), false);
     }
 
+    public function test_create_client_cancel_takes_an_agent_to_their_dashboard(): void
+    {
+        $cancel = fn (User $user) => $this->actingAs($user)
+            ->get(route('inbound.clients.create'))
+            ->assertOk()
+            ->content();
+
+        $this->assertStringContainsString(
+            'href="' . route('inbound.clients.index') . '" class="btn">Cancel',
+            $cancel($this->user(UserRole::Agent))
+        );
+
+        $this->assertStringContainsString(
+            'href="' . route('inbound.clients.create') . '" class="btn">Cancel',
+            $cancel($this->user(UserRole::Admin))
+        );
+    }
+
+    public function test_mindbody_and_advancedmd_show_as_coming_soon_for_admins_and_agents(): void
+    {
+        foreach ([UserRole::Admin, UserRole::Agent] as $role) {
+            $html = $this->actingAs($this->user($role))
+                ->get(route('inbound.clients.create'))
+                ->assertOk()
+                ->content();
+
+            foreach (['MINDBODY', 'ADVANCEDMD'] as $pms) {
+                $this->assertMatchesRegularExpression(
+                    '/class="tile pms coming-soon" data-value="' . $pms . '" data-tooltip="Coming soon\.\." aria-disabled="true"/',
+                    $html,
+                    "{$pms} tile should be disabled for {$role->value}"
+                );
+            }
+
+            // Working PMS tiles stay clickable.
+            $this->assertStringContainsString('data-value="WAVE" onclick="selectPMS(this)"', $html);
+        }
+    }
+
+    public function test_coming_soon_pms_cannot_be_submitted(): void
+    {
+        foreach (['MINDBODY', 'advancedmd'] as $pms) {
+            $this->actingAs($this->user(UserRole::Admin))
+                ->from(route('inbound.clients.create'))
+                ->post(route('inbound.clients.store'), [
+                    'integration_type' => 'pms',
+                    'client_name'      => "Soon {$pms}",
+                    'client_email'     => 'soon@client.test',
+                    'client_pms'       => $pms,
+                ])
+                ->assertSessionHasErrors('client_pms');
+
+            $this->assertFalse(Client::query()->where('client_name', "Soon {$pms}")->exists());
+        }
+    }
+
     public function test_client_created_by_an_agent_belongs_to_them(): void
     {
         $agent = $this->user(UserRole::Agent);
