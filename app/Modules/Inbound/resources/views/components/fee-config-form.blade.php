@@ -262,6 +262,27 @@
                                    style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;box-sizing:border-box;">
                         </div>
                     </div>
+                    {{-- Zelle pays into a specific bank account, so Operating and IOLTA each get their own. Blank = not shown. --}}
+                    <div style="display:grid;grid-template-columns:{{ $showIolta ? '1fr 1fr' : '1fr' }};gap:10px;">
+                        <div>
+                            <label for="{{ $ns }}-cd-zelle" style="font-size:12px;color:#6b7c93;display:block;margin-bottom:3px;">
+                                Zelle ID{{ $showIolta ? ' — Operating MID' : '' }} <span style="color:#9ca3af;">(optional)</span>
+                            </label>
+                            <input type="text" id="{{ $ns }}-cd-zelle" name="cd_zelle_id" maxlength="255" placeholder="e.g. billing@firm.com or (555) 555-5555"
+                                   value="{{ old('cd_zelle_id', $cd['zelle_id'] ?? '') }}"
+                                   style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;box-sizing:border-box;">
+                        </div>
+                        @if($showIolta)
+                        <div>
+                            <label for="{{ $ns }}-cd-trust-zelle" style="font-size:12px;color:#6b7c93;display:block;margin-bottom:3px;">
+                                Zelle ID — IOLTA MID <span style="color:#9ca3af;">(optional, shown on Trust Requests)</span>
+                            </label>
+                            <input type="text" id="{{ $ns }}-cd-trust-zelle" name="cd_trust_zelle_id" maxlength="255" placeholder="e.g. trust@firm.com"
+                                   value="{{ old('cd_trust_zelle_id', $cd['trust_zelle_id'] ?? '') }}"
+                                   style="width:100%;padding:7px 10px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;box-sizing:border-box;">
+                        </div>
+                        @endif
+                    </div>
                     <div>
                         <label for="{{ $ns }}-cd-instructions" style="font-size:12px;color:#6b7c93;display:block;margin-bottom:3px;">
                             Additional instructions{{ $showIolta ? ' — Operating MID' : '' }} <span style="color:#9ca3af;">(optional{{ $showIolta ? ', shown on bills' : '' }})</span>
@@ -308,6 +329,8 @@
 @error('cd_zip')           <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror
 @error('cd_phone')         <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror
 @error('cd_email')         <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror
+@error('cd_zelle_id')      <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">Operating Zelle ID: {{ $message }}</p> @enderror
+@error('cd_trust_zelle_id') <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">IOLTA Zelle ID: {{ $message }}</p> @enderror
 @error('cd_instructions')  <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">Operating MID instructions: {{ $message }}</p> @enderror
 @error('cd_trust_instructions') <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">IOLTA MID instructions: {{ $message }}</p> @enderror
 @error('cd_disclosure')    <p style="font-size:11px;color:#9a2f2f;margin:4px 0 0;">{{ $message }}</p> @enderror

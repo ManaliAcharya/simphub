@@ -577,6 +577,8 @@ class ClientConfigController extends Controller
             'cd_email'               => [$isCd ? 'required' : 'nullable', 'email', 'max:255'],
             'cd_instructions'        => ['nullable', 'string', 'max:'.self::CASH_INSTRUCTIONS_MAX],
             'cd_trust_instructions'  => ['nullable', 'string', 'max:'.self::CASH_INSTRUCTIONS_MAX],
+            'cd_zelle_id'            => ['nullable', 'string', 'max:255'],
+            'cd_trust_zelle_id'      => ['nullable', 'string', 'max:255'],
             'cd_disclosure'          => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -609,6 +611,9 @@ class ClientConfigController extends Controller
                 'instructions'  => $validated['cd_instructions'] ?? null,
                 // Lawcus/Clio: the IOLTA account's own instructions (e.g. its own Zelle).
                 'trust_instructions' => $hasIoltaTab ? ($validated['cd_trust_instructions'] ?? null) : null,
+                // Zelle routes to a specific bank account, so Operating and IOLTA each have their own.
+                'zelle_id'       => trim((string) ($validated['cd_zelle_id'] ?? '')) ?: null,
+                'trust_zelle_id' => $hasIoltaTab ? (trim((string) ($validated['cd_trust_zelle_id'] ?? '')) ?: null) : null,
                 'disclosure'    => $validated['cd_disclosure'] ?? null,
             ], fn($v) => $v !== null && $v !== '');
         }

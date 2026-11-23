@@ -191,6 +191,10 @@
                             <p style="margin:0;font-size:12px;color:var(--muted);">Mail to</p>
                             <p id="ci-address" style="margin:3px 0 0;line-height:1.6;"></p>
                         </div>
+                        <div id="ci-zelle-row" style="display:none;">
+                            <p style="margin:0;font-size:12px;color:var(--muted);">Pay with Zelle to</p>
+                            <p id="ci-zelle" style="margin:3px 0 0;font-weight:600;overflow-wrap:anywhere;"></p>
+                        </div>
                         <div>
                             <p style="margin:0;font-size:12px;color:var(--muted);">Reference / Invoice</p>
                             <p id="ci-reference" style="margin:3px 0 0;font-family:ui-monospace,monospace;font-weight:600;"></p>
@@ -697,6 +701,11 @@
                 document.getElementById('ci-address').innerHTML = addrParts.map(escapeHtml).join('<br>');
             }
 
+            if (cd.zelle_id) {
+                document.getElementById('ci-zelle-row').style.display = 'grid';
+                document.getElementById('ci-zelle').textContent = cd.zelle_id;
+            }
+
             document.getElementById('ci-reference').textContent = invoiceRef;
 
             if (cd.instructions) {
@@ -893,6 +902,7 @@
                 if (addr)         rows.push(`<strong>Mail to:</strong> ${escapeHtml(addr)}`);
                 if (cd.phone)     rows.push(`<strong>Phone:</strong> ${escapeHtml(cd.phone)}`);
                 if (cd.email)     rows.push(`<strong>Email:</strong> <a href="mailto:${escapeHtml(cd.email)}" style="color:#10213a;">${escapeHtml(cd.email)}</a>`);
+                if (cd.zelle_id)  rows.push(`<strong>Zelle ID:</strong> ${escapeHtml(cd.zelle_id)}`);
                 // Same style as the rows above; keeps the merchant's line breaks (e.g. wire details).
                 if (cd.instructions) rows.push(`<span style="white-space:pre-line;overflow-wrap:anywhere;">${escapeHtml(cd.instructions)}</span>`);
 
