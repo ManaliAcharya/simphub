@@ -37,9 +37,18 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin.only'      => EnsureNotAgent::class,
         ]);
 
-        // Internal admin auth (Laravel's built-in guard) redirects unauthenticated
-        // requests here — distinct from the merchant/client portal login above.
-        $middleware->redirectGuestsTo(fn () => route('admin.login'));
+        // Internal admin auth (Laravel's built-in guard):
+        // - guests: unauthenticated requests go to the admin login, distinct
+        //   from the merchant/client portal login above.
+        // - users: an already-signed-in admin who opens /admin/login goes to the
+        //   admin home. Without this, Laravel falls back to '/', which redirects
+        //   to the client portal's /login.
+        // Set both in one call: redirectUsersTo() on its own resets the guest
+        // redirect to null.
+        $middleware->redirectTo(
+            guests: fn () => route('admin.login'),
+            users: fn () => route('inbound.clients.index'),
+        );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

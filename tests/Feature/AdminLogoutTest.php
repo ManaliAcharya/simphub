@@ -36,6 +36,18 @@ class AdminLogoutTest extends TestCase
         $this->assertGuest('web');
     }
 
+    public function test_signed_in_admin_opening_admin_login_goes_to_admin_home_not_client_login(): void
+    {
+        $this->actingAs($this->admin())
+            ->get(route('admin.login'))
+            ->assertRedirect(route('inbound.clients.index'));
+    }
+
+    public function test_guest_sees_the_admin_login_page(): void
+    {
+        $this->get(route('admin.login'))->assertOk();
+    }
+
     public function test_logout_requires_an_admin_session(): void
     {
         $this->post(route('admin.logout'))->assertRedirect(route('admin.login'));
