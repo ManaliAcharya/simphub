@@ -136,22 +136,14 @@ class AgentRoleTest extends TestCase
             ->assertSee(route('inbound.clients.store'), false);
     }
 
-    public function test_create_client_cancel_takes_an_agent_to_their_dashboard(): void
+    public function test_create_client_cancel_goes_to_the_client_list_for_admins_and_agents(): void
     {
-        $cancel = fn (User $user) => $this->actingAs($user)
-            ->get(route('inbound.clients.create'))
-            ->assertOk()
-            ->content();
-
-        $this->assertStringContainsString(
-            'href="' . route('inbound.clients.index') . '" class="btn">Cancel',
-            $cancel($this->user(UserRole::Agent))
-        );
-
-        $this->assertStringContainsString(
-            'href="' . route('inbound.clients.create') . '" class="btn">Cancel',
-            $cancel($this->user(UserRole::Admin))
-        );
+        foreach ([UserRole::Admin, UserRole::Agent] as $role) {
+            $this->actingAs($this->user($role))
+                ->get(route('inbound.clients.create'))
+                ->assertOk()
+                ->assertSee('href="' . route('inbound.clients.index') . '" class="btn">Cancel', false);
+        }
     }
 
     public function test_mindbody_and_advancedmd_show_as_coming_soon_for_admins_and_agents(): void
