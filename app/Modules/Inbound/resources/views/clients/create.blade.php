@@ -321,8 +321,7 @@
             <input type="hidden" name="client_calls_our_api" value="0">
 
             <div class="actions">
-                {{-- Agents go back to their dashboard (client list); admins get a fresh form. --}}
-                <a href="{{ auth()->user()?->isAgent() ? route('inbound.clients.index') : route('inbound.clients.create') }}" class="btn">Cancel</a>
+                <a href="{{ route('inbound.clients.index') }}" class="btn">Cancel</a>
                 <button type="submit" class="btn primary">Create Client</button>
             </div>
         </form>
