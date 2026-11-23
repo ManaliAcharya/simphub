@@ -2,6 +2,7 @@
 
 namespace Modules\Payment\Mail;
 
+use Modules\Payment\Services\EmailAmount;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Address;
@@ -43,7 +44,7 @@ class PaymentLinkMail extends Mailable
         if ($template) {
             $subject = $this->replaceVariables((string) $template, [
                 'invoice_number' => (string) $invoiceRef,
-                'amount'         => ($this->invoice->currency ?? 'USD') . ' ' . number_format($this->invoice->amount_cents / 100, 2),
+                'amount'         => EmailAmount::format((int) $this->invoice->amount_cents, $this->invoice->currency),
             ]);
         } else {
             $subject = ($this->isResend ? 'Updated: ' : '') . "Payment link for Invoice #{$invoiceRef}";
@@ -83,7 +84,7 @@ class PaymentLinkMail extends Mailable
             'merchant_name'  => $merchantName ?? '',
             'customer_name'  => $customerName,
             'invoice_number' => (string) ($this->invoice->invoice_number ?? $this->invoice->external_invoice_id ?? ''),
-            'amount'         => ($this->invoice->currency ?? 'USD') . ' ' . number_format($this->invoice->amount_cents / 100, 2),
+            'amount'         => EmailAmount::format((int) $this->invoice->amount_cents, $this->invoice->currency),
             'due_date'       => $dueDate,
             'payment_link'   => $this->paymentUrl,
             'merchant_phone' => '',
@@ -140,10 +141,7 @@ class PaymentLinkMail extends Mailable
 
     private function replaceVariables(string $template, array $data): string
     {
-        $search  = array_map(fn ($k) => "{{$k}}", array_keys($data));
-        $replace = array_values($data);
-
-        return str_replace($search, $replace, $template);
+        return EmailAmount::fill($template, $data);
     }
 
     private function extractCustomerName(): string

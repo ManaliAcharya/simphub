@@ -23,8 +23,14 @@ final class PaymentEmailTemplate
 
     public const RETAINER = 'retainer_request';
 
+    /** A Lawcus matter's last invoice: an expense in the "Recording Fee" activity category. */
+    public const RECORDING_FEE = 'recording_fee_invoice';
+
     /** The law firm templates stored in email_configurations.templates, over the base columns. */
-    public const EXTRA_KINDS = [self::BILLABLE, self::FLAT_FEE, self::RETAINER];
+    public const EXTRA_KINDS = [self::BILLABLE, self::FLAT_FEE, self::RETAINER, self::RECORDING_FEE];
+
+    /** The Lawcus activity category that marks a recording fee expense (compared case-insensitively). */
+    public const RECORDING_FEE_ACTIVITY = 'Recording Fee';
 
     /** Retainer requests never fall back to invoice wording. */
     public const RETAINER_SUBJECT         = 'Retainer Request #{invoice_number} – Deposit Requested';
@@ -44,9 +50,13 @@ final class PaymentEmailTemplate
             return self::RETAINER;
         }
 
-        $flatFeeOnly = strtolower((string) $invoice->pms_source) === 'lawcus'
-            ? self::hasOnlyLawcusFlatFees($invoice)
-            : null;
+        $isLawcus = strtolower((string) $invoice->pms_source) === 'lawcus';
+
+        if ($isLawcus && self::hasLawcusRecordingFee($invoice)) {
+            return self::RECORDING_FEE;
+        }
+
+        $flatFeeOnly = $isLawcus ? self::hasOnlyLawcusFlatFees($invoice) : null;
 
         return ($flatFeeOnly ?? self::isFlatFeeMatter($invoice)) ? self::FLAT_FEE : self::BILLABLE;
     }
@@ -120,6 +130,24 @@ final class PaymentEmailTemplate
             ->count();
 
         return $billed('flatfees') > 0 && $billed('timeentries') === 0 && $billed('expenses') === 0;
+    }
+
+    /**
+     * Whether a Lawcus invoice bills an expense in the Recording Fee activity category. The
+     * expense's activity_id is named from GET /activities when the invoice is read (kept in
+     * raw_payload.activities). A non-billable expense isn't charged, so it doesn't count.
+     * Invoices with nothing due are never emailed, so this only picks the template.
+     */
+    public static function hasLawcusRecordingFee(Invoice $invoice): bool
+    {
+        $raw        = (array) ($invoice->raw_payload ?? []);
+        $activities = (array) ($raw['activities'] ?? []);
+        $wanted     = strtolower(self::RECORDING_FEE_ACTIVITY);
+
+        return collect((array) Arr::get($raw, 'invoice.data.expenses', []))
+            ->filter(fn ($line) => is_array($line) && ! filter_var($line['is_non_billable'] ?? false, FILTER_VALIDATE_BOOLEAN))
+            ->contains(fn (array $line) => isset($line['activity_id'])
+                && strtolower(trim((string) ($activities[(string) $line['activity_id']] ?? ''))) === $wanted);
     }
 
     /**

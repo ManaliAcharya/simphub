@@ -14,11 +14,13 @@ use Throwable;
  * to the invoice's matter, so the firm's matter record stays complete even though
  * these emails don't go through Lawcus.
  *
- * Entries are written as outbound interactions — the only documented way to add
- * activity to a matter. They're logged as PHONE: Lawcus answers every EMAIL interaction
- * with a 500 (even with email_to/email_from) unless the firm's mailbox is connected, and
- * SECURE_MESSAGE would message the client through the portal. Best-effort: a failure is
- * audited and never interrupts the email or payment it describes.
+ * Entries are written as outbound interactions (POST /interactions) — the only documented
+ * way to add activity to a matter. Lawcus accepts EMAIL, PHONE or SECURE_MESSAGE; EMAIL
+ * answers 500 (even with email_to/email_from) unless the firm's mailbox is connected, and
+ * PHONE shows a phone-call icon in the feed. The firm asked for SECURE_MESSAGE, so that's
+ * the default; LAWCUS_ACTIVITY_INTERACTION_TYPE=PHONE switches back without a deploy if it
+ * turns out to reach the client's portal. Best-effort: a failure is audited and never
+ * interrupts the email or payment it describes.
  */
 class LawcusMatterActivityService
 {
@@ -100,7 +102,7 @@ class LawcusMatterActivityService
             $response = $this->api->createInteraction($connection, [
                 'matter_id'    => (int) $matterId,
                 'contact_id'   => (int) $contactId,
-                'type'         => 'PHONE',
+                'type'         => self::interactionType(),
                 'type_in'      => 'OUTBOUND',
                 'participants' => json_encode([['type' => 'CLIENT', 'id' => (int) $contactId]]),
                 'subject'      => $subject,
@@ -121,6 +123,13 @@ class LawcusMatterActivityService
                 'error'     => $e->getMessage(),
             ]);
         }
+    }
+
+    public static function interactionType(): string
+    {
+        $type = strtoupper(trim((string) config('services.lawcus.activity_interaction_type', 'SECURE_MESSAGE')));
+
+        return in_array($type, ['PHONE', 'SECURE_MESSAGE'], true) ? $type : 'SECURE_MESSAGE';
     }
 
     private function invoiceLabel(Invoice $invoice): string

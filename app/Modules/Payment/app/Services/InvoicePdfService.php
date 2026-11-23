@@ -89,7 +89,7 @@ class InvoicePdfService
                 'paymentUrl'       => $paymentUrl,
                 // Lawcus "Show Trust Balance": the matter's trust balance, for information only.
                 'trustBalance'     => app(LawcusTrustBalance::class)->formatted($invoice),
-            ], $this->clioView($invoice)))->render();
+            ], $this->clioView($invoice), $this->lawcusView($invoice, $totalAmount)))->render();
 
             return Pdf::loadHTML($html)->output();
         } catch (Throwable $e) {
@@ -146,7 +146,7 @@ class InvoicePdfService
      * line items during ingestion, so those fall back to one live API call
      * each - isolated in their own try/catch so a failure there degrades to
      * the single invoice-total line rather than losing the PDF entirely.
-     * Lawcus has neither a raw_payload shape nor a confirmed API for this yet.
+     * Lawcus' invoice (GET /invoices/{id}, kept in raw_payload) carries its lines.
      */
     private function resolveLineItems(Invoice $invoice): array
     {
@@ -229,6 +229,13 @@ class InvoicePdfService
             }
         }
 
+        if ($pmsSource === 'lawcus') {
+            $items = self::lawcusLineItems((array) Arr::get($raw, 'invoice.data', []), (array) ($raw['activities'] ?? []));
+            if ($items !== []) {
+                return $items;
+            }
+        }
+
         $fallbackAmount = $invoice->amount_cents / 100;
 
         return [[
@@ -238,6 +245,78 @@ class InvoicePdfService
             'rate'           => $fallbackAmount,
             'amount'         => $fallbackAmount,
         ]];
+    }
+
+    /**
+     * A Lawcus invoice's lines as Lawcus lists them: time entries, then flat fees, then
+     * expenses. GET /invoices/{id} embeds them as timeentries / flatfees / expenses; each row
+     * has date, quantity, rate and total. The client-facing text is description (time entries,
+     * flat fees) or public_note (expenses) — never private_note. The activity category
+     * (activity_id, named in $activities) fills the Product or Service column. Non-billable
+     * lines aren't charged, so they're left out.
+     *
+     * @param  array<string, string>  $activities  activity_id => name
+     * @return list<array{productOrService: string, description: string, subDescription: ?string, qty: float, rate: float, amount: float}>
+     */
+    public static function lawcusLineItems(array $data, array $activities = []): array
+    {
+        $groups = ['timeentries' => 'Time entry', 'flatfees' => 'Flat fee', 'expenses' => 'Expense'];
+        $items  = [];
+
+        foreach ($groups as $key => $label) {
+            foreach ((array) ($data[$key] ?? []) as $line) {
+                if (! is_array($line) || filter_var($line['is_non_billable'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+                    continue;
+                }
+
+                $qty    = is_numeric($line['quantity'] ?? null) ? (float) $line['quantity'] : 1.0;
+                $rate   = is_numeric($line['rate'] ?? null) ? (float) $line['rate'] : null;
+                $amount = is_numeric($line['total'] ?? null)
+                    ? (float) $line['total']
+                    : round($qty * (float) ($rate ?? $line['amount'] ?? 0), 2);
+
+                $description = trim(html_entity_decode(strip_tags((string) (
+                    ($line['description'] ?? null) ?: ($line['public_note'] ?? '')
+                ))));
+                $activity = isset($line['activity_id']) ? ($activities[(string) $line['activity_id']] ?? null) : null;
+                $date     = (string) ($line['date'] ?? '');
+
+                $items[] = [
+                    'productOrService' => $activity ?: $label,
+                    'description'      => $description !== '' ? $description : ($activity ?: $label),
+                    'subDescription'   => $date !== '' && strtotime($date) !== false ? date('m/d/Y', strtotime($date)) : null,
+                    'qty'              => $qty,
+                    'rate'             => $rate ?? ($qty != 0.0 ? round($amount / $qty, 2) : $amount),
+                    'amount'           => $amount,
+                ];
+            }
+        }
+
+        return $items;
+    }
+
+    /**
+     * A partly paid Lawcus invoice: its lines add up to the invoice total, not to what's
+     * still owed, so show the total, what's been paid and the balance due (as for Clio).
+     */
+    private function lawcusView(Invoice $invoice, float $due): array
+    {
+        if (strtolower((string) $invoice->pms_source) !== 'lawcus') {
+            return [];
+        }
+
+        $data  = (array) Arr::get($invoice->raw_payload ?? [], 'invoice.data', []);
+        $total = $data['total'] ?? null;
+
+        if (! is_numeric($total) || self::lawcusLineItems($data) === [] || (float) $total - $due < 0.01) {
+            return [];
+        }
+
+        return [
+            'subtotal'     => number_format((float) $total, 2),
+            'invoiceTotal' => number_format((float) $total, 2),
+            'paidAmount'   => number_format((float) $total - $due, 2),
+        ];
     }
 
     private function fetchClioLineItems(Invoice $invoice): array

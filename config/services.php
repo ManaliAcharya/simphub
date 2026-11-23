@@ -128,7 +128,10 @@ return [
         'scope'                => env('LAWCUS_SCOPE', 'openid'),
         'webhook_callback_url' => env('LAWCUS_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/lawcus'),
         'webhook_events'       => array_values(array_filter(array_map('trim', explode(',', env('LAWCUS_WEBHOOK_EVENTS', 'invoice.created'))))),
-        'ops_alert_email'      => env('LAWCUS_OPS_ALERT_EMAIL'),    ],
+        'ops_alert_email'      => env('LAWCUS_OPS_ALERT_EMAIL'),
+        // Matter activity feed entries SimpHub posts (LawcusMatterActivityService): SECURE_MESSAGE or PHONE.
+        'activity_interaction_type' => env('LAWCUS_ACTIVITY_INTERACTION_TYPE', 'SECURE_MESSAGE'),
+    ],
 
     'mindbody' => [
         'api_key' => env('MINDBODY_API_KEY'),

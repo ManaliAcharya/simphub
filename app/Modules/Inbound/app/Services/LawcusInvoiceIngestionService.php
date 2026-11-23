@@ -40,6 +40,7 @@ class LawcusInvoiceIngestionService
         $customerPayload = $this->fetchCustomerPayload($connection, $invoicePayload, $pmsClientId);
         $recipientEmails = $this->extractClientEmails($invoicePayload, $customerPayload);
         $customerName    = $this->extractClientName($invoicePayload, $customerPayload);
+        $activities      = $this->activityNames($connection, $invoicePayload);
         $nothingDue      = self::hasNothingDue((array) Arr::get($invoicePayload, 'data', $invoicePayload))
             || self::hasNothingDue((array) Arr::get($triggerPayload, 'list_row', []));
         $previousCents   = Invoice::query()
@@ -48,7 +49,7 @@ class LawcusInvoiceIngestionService
             ->where('external_invoice_id', $normalized['external_invoice_id'])
             ->value('amount_cents');
 
-        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $customerName, $pmsClientId, $nothingDue) {
+        $result = DB::transaction(function () use ($normalized, $invoicePayload, $customerPayload, $triggerPayload, $recipientEmails, $customerName, $pmsClientId, $nothingDue, $activities) {
             $invoice = Invoice::query()->updateOrCreate(
                 [
                     'pms_source'          => 'lawcus',
@@ -69,6 +70,8 @@ class LawcusInvoiceIngestionService
                         'trigger'  => $triggerPayload,
                         'invoice'  => $invoicePayload,
                         'customer' => $customerPayload,
+                        // activity_id => category name, for the lines' activity_ids (see activityNames()).
+                        'activities' => $activities,
                     ],
                     'recipient_emails' => $recipientEmails,
                     'customer'         => array_filter([
@@ -204,6 +207,40 @@ class LawcusInvoiceIngestionService
 
         return strtoupper((string) ($invoice['status'] ?? '')) === 'PAID'
             || (is_numeric($amountDue) && (float) $amountDue <= 0);
+    }
+
+    /**
+     * Names of the activity categories this invoice's lines use (activity_id => name), e.g.
+     * "Recording Fee" on an expense — it picks the email template (PaymentEmailTemplate) and
+     * labels the PDF's lines. Only fetched when a line has a category; a failed read leaves
+     * them unnamed rather than holding up the invoice.
+     *
+     * @return array<string, string>
+     */
+    private function activityNames(LawcusConnection $connection, array $invoicePayload): array
+    {
+        $data = (array) Arr::get($invoicePayload, 'data', []);
+        $ids  = collect(['timeentries', 'flatfees', 'expenses'])
+            ->flatMap(fn (string $key) => (array) ($data[$key] ?? []))
+            ->map(fn ($line) => is_array($line) ? ($line['activity_id'] ?? null) : null)
+            ->filter(fn ($id) => $id !== null && $id !== '')
+            ->map(fn ($id) => (string) $id)
+            ->unique();
+
+        if ($ids->isEmpty()) {
+            return [];
+        }
+
+        try {
+            return array_intersect_key($this->client->fetchActivities($connection), array_flip($ids->all()));
+        } catch (Throwable $e) {
+            Log::warning('Lawcus activity categories unavailable', [
+                'pms_client_id' => $connection->pms_client_id,
+                'error'         => $e->getMessage(),
+            ]);
+
+            return [];
+        }
     }
 
     private function sendsTrustLinks(string $pmsClientId): bool

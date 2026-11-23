@@ -42,12 +42,14 @@ class SendPaymentConfirmationListener
         $fromName = $this->resolveFromName($invoice, $client, $emailConfig);
 
         // ── Customer confirmation ─────────────────────────────────────────────
-        $customerEmail = trim((string) ($invoice->customer['email'] ?? ''));
-        if ($customerEmail === '') {
-            $customerEmail = trim((string) ($invoice->recipient_emails[0] ?? ''));
-        }
+        // Everyone the payment link went to (a Lawcus or Clio contact can have several
+        // addresses, and the payer may be any of them), not just the first.
+        $customerEmails = array_values(array_unique(array_filter(array_map(
+            static fn ($email) => is_string($email) ? strtolower(trim($email)) : '',
+            array_merge([$invoice->customer['email'] ?? null], (array) ($invoice->recipient_emails ?? [])),
+        ))));
 
-        if ($customerEmail !== '') {
+        foreach ($customerEmails as $customerEmail) {
             try {
                 Mail::to($customerEmail)->send(
                     new PaymentConfirmationMail($transaction, $invoice, $client, $emailConfig, $fromName)

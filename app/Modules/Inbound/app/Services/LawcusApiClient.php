@@ -266,6 +266,29 @@ class LawcusApiClient
      * type_in OUTBOUND or INBOUND, and participants a JSON-encoded list of
      * {type, id} using the numeric contact id.
      */
+    /**
+     * The firm's activity categories (GET /activities) as id => name — the "Activity
+     * Category" picked on time entries, flat fees and expenses (their activity_id).
+     * An account with none answers [].
+     *
+     * @return array<string, string>
+     */
+    public function fetchActivities(LawcusConnection $connection): array
+    {
+        $payload = (array) $this->apiTokenRequest($connection)
+            ->timeout(20)
+            ->get('/activities')
+            ->throw()
+            ->json();
+
+        $rows = $payload['list'] ?? $payload['activities'] ?? $payload['data'] ?? $payload;
+
+        return collect(is_array($rows) ? $rows : [])
+            ->filter(fn ($row) => is_array($row) && isset($row['id']) && is_string($row['name'] ?? null))
+            ->mapWithKeys(fn (array $row) => [(string) $row['id'] => trim($row['name'])])
+            ->all();
+    }
+
     public function createInteraction(LawcusConnection $connection, array $interaction): array
     {
         return (array) $this->apiTokenRequest($connection)
