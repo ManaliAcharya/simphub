@@ -46,6 +46,9 @@ class ClientConfigController extends Controller
      */
     public const COMING_SOON_PMS = ['MINDBODY', 'ADVANCEDMD'];
 
+    /** Cash/check "Additional instructions" (Operating and IOLTA): room for ~20 lines of wire details. */
+    public const CASH_INSTRUCTIONS_MAX = 2000;
+
     protected InvitationService $invitationService;
     protected PaymentLinkService $paymentLinks;
     public function __construct(InvitationService $invitationService, PaymentLinkService $paymentLinks)
@@ -548,6 +551,14 @@ class ClientConfigController extends Controller
         $isCd         = $request->input('fee_mode') === 'cash_discount';
         $feeOn        = (bool) $request->input('fee_surcharge_enabled');
 
+        // Browsers submit textarea line breaks as \r\n but count them as one character for
+        // maxlength; store \n so the limit means the same on both sides.
+        foreach (['cd_instructions', 'cd_trust_instructions'] as $field) {
+            if (is_string($request->input($field))) {
+                $request->merge([$field => str_replace("\r\n", "\n", $request->input($field))]);
+            }
+        }
+
         $validated = $request->validate([
             'fee_surcharge_enabled'  => ['nullable', 'boolean'],
             'fee_mode'               => ['nullable', 'string', Rule::in($allowedModes)],
@@ -564,8 +575,10 @@ class ClientConfigController extends Controller
             'cd_zip'                 => [$isCd ? 'required' : 'nullable', 'string', 'max:10'],
             'cd_phone'               => [$isCd ? 'required' : 'nullable', 'string', 'max:30'],
             'cd_email'               => [$isCd ? 'required' : 'nullable', 'email', 'max:255'],
-            'cd_instructions'        => ['nullable', 'string', 'max:500'],
-            'cd_trust_instructions'  => ['nullable', 'string', 'max:500'],
+            'cd_instructions'        => ['nullable', 'string', 'max:'.self::CASH_INSTRUCTIONS_MAX],
+            'cd_trust_instructions'  => ['nullable', 'string', 'max:'.self::CASH_INSTRUCTIONS_MAX],
+            'cd_zelle_id'            => ['nullable', 'string', 'max:255'],
+            'cd_trust_zelle_id'      => ['nullable', 'string', 'max:255'],
             'cd_disclosure'          => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -598,6 +611,9 @@ class ClientConfigController extends Controller
                 'instructions'  => $validated['cd_instructions'] ?? null,
                 // Lawcus/Clio: the IOLTA account's own instructions (e.g. its own Zelle).
                 'trust_instructions' => $hasIoltaTab ? ($validated['cd_trust_instructions'] ?? null) : null,
+                // Zelle routes to a specific bank account, so Operating and IOLTA each have their own.
+                'zelle_id'       => trim((string) ($validated['cd_zelle_id'] ?? '')) ?: null,
+                'trust_zelle_id' => $hasIoltaTab ? (trim((string) ($validated['cd_trust_zelle_id'] ?? '')) ?: null) : null,
                 'disclosure'    => $validated['cd_disclosure'] ?? null,
             ], fn($v) => $v !== null && $v !== '');
         }

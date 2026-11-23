@@ -154,11 +154,14 @@ class PaymentPageController extends Controller
     {
         $details = (array) ($client->cash_discount_details ?? []);
 
+        // Each account shows only its own Zelle ID — never the other one's, or the money would
+        // land in the wrong bank account. A blank one shows nothing.
         if ($client->requiresIoltaMid() && strtoupper((string) $invoice->fund_type) === 'TRUST') {
             $details['instructions'] = $details['trust_instructions'] ?? null;
+            $details['zelle_id']     = $details['trust_zelle_id'] ?? null;
         }
 
-        unset($details['trust_instructions']);
+        unset($details['trust_instructions'], $details['trust_zelle_id']);
 
         return array_filter($details, fn ($value) => $value !== null && $value !== '');
     }

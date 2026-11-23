@@ -191,13 +191,17 @@
                             <p style="margin:0;font-size:12px;color:var(--muted);">Mail to</p>
                             <p id="ci-address" style="margin:3px 0 0;line-height:1.6;"></p>
                         </div>
+                        <div id="ci-zelle-row" style="display:none;">
+                            <p style="margin:0;font-size:12px;color:var(--muted);">Pay with Zelle to</p>
+                            <p id="ci-zelle" style="margin:3px 0 0;font-weight:600;overflow-wrap:anywhere;"></p>
+                        </div>
                         <div>
                             <p style="margin:0;font-size:12px;color:var(--muted);">Reference / Invoice</p>
                             <p id="ci-reference" style="margin:3px 0 0;font-family:ui-monospace,monospace;font-weight:600;"></p>
                         </div>
                     </div>
                     <div id="ci-instructions" style="display:none;margin-top:14px;background:rgba(37,99,235,.08);border-radius:10px;padding:11px 14px;font-size:13px;color:#1e40af;line-height:1.55;">
-                        &#9432; <span id="ci-instructions-text"></span>
+                        &#9432; <span id="ci-instructions-text" style="white-space:pre-line;overflow-wrap:anywhere;"></span>
                     </div>
                 </div>
 
@@ -694,7 +698,12 @@
             const addrParts = [cd.address, [cd.city, [cd.state, cd.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ')].filter(Boolean);
             if (addrParts.length) {
                 document.getElementById('ci-address-row').style.display = 'grid';
-                document.getElementById('ci-address').innerHTML = addrParts.join('<br>');
+                document.getElementById('ci-address').innerHTML = addrParts.map(escapeHtml).join('<br>');
+            }
+
+            if (cd.zelle_id) {
+                document.getElementById('ci-zelle-row').style.display = 'grid';
+                document.getElementById('ci-zelle').textContent = cd.zelle_id;
             }
 
             document.getElementById('ci-reference').textContent = invoiceRef;
@@ -710,8 +719,8 @@
                 document.getElementById('ci-contact').style.display = 'block';
                 document.getElementById('ci-contact-label').textContent = 'Questions? Contact ' + (config.client_name || 'the merchant');
                 const lines = [];
-                if (cd.phone) lines.push('&#9990; ' + cd.phone);
-                if (cd.email) lines.push('&#9993; <a href="mailto:' + cd.email + '" style="color:#10213a;">' + cd.email + '</a>');
+                if (cd.phone) lines.push('&#9990; ' + escapeHtml(cd.phone));
+                if (cd.email) lines.push('&#9993; <a href="mailto:' + escapeHtml(cd.email) + '" style="color:#10213a;">' + escapeHtml(cd.email) + '</a>');
                 document.getElementById('ci-contact-details').innerHTML = lines.map(function(l) {
                     return '<div style="font-size:14px;padding:3px 0;">' + l + '</div>';
                 }).join('');
@@ -888,18 +897,20 @@
             if (els.cashDetailsPanel) {
                 const cd = (window.feeConfig && window.feeConfig.cash_discount_details) || {};
                 const rows = [];
-                if (cd.business_name) rows.push(`<strong>Make check payable to:</strong> ${cd.business_name}`);
+                if (cd.business_name) rows.push(`<strong>Make check payable to:</strong> ${escapeHtml(cd.business_name)}`);
                 const addr = [cd.address, cd.city, [cd.state, cd.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-                if (addr)         rows.push(`<strong>Mail to:</strong> ${addr}`);
-                if (cd.phone)     rows.push(`<strong>Phone:</strong> ${cd.phone}`);
-                if (cd.email)     rows.push(`<strong>Email:</strong> <a href="mailto:${cd.email}" style="color:#10213a;">${cd.email}</a>`);
-                if (cd.instructions) rows.push(`<em style="color:#6b7c93;">${cd.instructions}</em>`);
+                if (addr)         rows.push(`<strong>Mail to:</strong> ${escapeHtml(addr)}`);
+                if (cd.phone)     rows.push(`<strong>Phone:</strong> ${escapeHtml(cd.phone)}`);
+                if (cd.email)     rows.push(`<strong>Email:</strong> <a href="mailto:${escapeHtml(cd.email)}" style="color:#10213a;">${escapeHtml(cd.email)}</a>`);
+                if (cd.zelle_id)  rows.push(`<strong>Zelle ID:</strong> ${escapeHtml(cd.zelle_id)}`);
+                // Same style as the rows above; keeps the merchant's line breaks (e.g. wire details).
+                if (cd.instructions) rows.push(`<span style="white-space:pre-line;overflow-wrap:anywhere;">${escapeHtml(cd.instructions)}</span>`);
 
                 const detailRows = rows.length
                     ? rows.map((r) => `<div style="padding:4px 0;border-bottom:1px solid #f3f4f6;font-size:13px;">${r}</div>`).join('')
                     : '<p style="color:#6b7c93;font-size:13px;">Contact the merchant for offline payment details.</p>';
                 const cdDisclosure = cd.disclosure
-                    ? `<p style="margin:10px 0 0;font-size:12px;color:#6b7280;line-height:1.5;">${cd.disclosure}</p>`
+                    ? `<p style="margin:10px 0 0;font-size:12px;color:#6b7280;line-height:1.5;">${escapeHtml(cd.disclosure)}</p>`
                     : '';
                 els.cashDetailsContent.innerHTML = detailRows + cdDisclosure;
 
