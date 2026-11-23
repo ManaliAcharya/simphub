@@ -2,6 +2,7 @@
 
 namespace Modules\Payment\Mail;
 
+use Modules\Payment\Services\EmailAmount;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -30,7 +31,7 @@ class PaymentReminderAdminMail extends Mailable
 
         $subject = str_replace(
             ['{invoice_number}', '{amount}'],
-            [(string) $invoiceRef, ($this->invoice->currency ?? 'USD') . ' ' . number_format($this->invoice->amount_cents / 100, 2)],
+            [(string) $invoiceRef, EmailAmount::format((int) $this->invoice->amount_cents, $this->invoice->currency)],
             $this->subjectTemplate,
         );
 

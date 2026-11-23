@@ -20,10 +20,7 @@ class EmailConfigurationService
 
     public function replaceVariables(string $template, array $data): string
     {
-        $search  = array_map(fn ($k) => "{{$k}}", array_keys($data));
-        $replace = array_values($data);
-
-        return str_replace($search, $replace, $template);
+        return EmailAmount::fill($template, $data);
     }
 
     public function buildTemplateData(Invoice $invoice, string $paymentUrl, Client $client, ?EmailConfiguration $config): array
@@ -32,7 +29,7 @@ class EmailConfigurationService
             'merchant_name'  => $client->client_name ?? '',
             'customer_name'  => $this->extractCustomerName($invoice),
             'invoice_number' => (string) ($invoice->invoice_number ?? $invoice->external_invoice_id ?? ''),
-            'amount'         => ($invoice->currency ?? 'USD') . ' ' . number_format($invoice->amount_cents / 100, 2),
+            'amount'         => EmailAmount::format((int) $invoice->amount_cents, $invoice->currency),
             'due_date'       => $this->extractDueDate($invoice),
             'payment_link'   => $paymentUrl,
             'merchant_phone' => '',

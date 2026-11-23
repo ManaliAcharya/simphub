@@ -2,6 +2,7 @@
 
 namespace Modules\Payment\Mail;
 
+use Modules\Payment\Services\EmailAmount;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Address;
@@ -39,7 +40,7 @@ class PaymentReminderMail extends Mailable
 
         $subject = $this->replaceVariables($this->subjectTemplate, [
             'invoice_number' => (string) $invoiceRef,
-            'amount'         => ($this->invoice->currency ?? 'USD') . ' ' . number_format($this->invoice->amount_cents / 100, 2),
+            'amount'         => EmailAmount::format((int) $this->invoice->amount_cents, $this->invoice->currency),
         ]);
 
         $replyTo = [];
@@ -115,10 +116,7 @@ class PaymentReminderMail extends Mailable
 
     private function replaceVariables(string $template, array $data): string
     {
-        $search  = array_map(fn ($k) => "{{$k}}", array_keys($data));
-        $replace = array_values($data);
-
-        return str_replace($search, $replace, $template);
+        return EmailAmount::fill($template, $data);
     }
 
     private function extractCustomerName(): string

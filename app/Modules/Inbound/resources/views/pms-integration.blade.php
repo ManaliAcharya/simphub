@@ -2548,6 +2548,15 @@
                                     'reminder' => \Modules\Payment\Services\PaymentEmailTemplate::RETAINER_REMINDER_SUBJECT,
                                 ],
                             ];
+                            if (($provider ?? null) === 'lawcus') {
+                                $templateTabs[\Modules\Payment\Services\PaymentEmailTemplate::RECORDING_FEE] = [
+                                    'label'   => 'Recording fee',
+                                    'desc'    => 'Lawcus invoices with an expense in the "'.\Modules\Payment\Services\PaymentEmailTemplate::RECORDING_FEE_ACTIVITY.'" activity category — the matter\'s last invoice. Invoices paid from trust ($0 due) are never emailed. Blank fields use the email settings above.',
+                                    'subject' => $emailConfig?->subject_template ?? 'Invoice #{invoice_number} – Payment Required',
+                                    'updated' => $emailConfig?->subject_template_updated ?? 'Updated: Invoice #{invoice_number} – Payment Required',
+                                    'reminder' => $client->reminder_subject_template ?? 'Reminder: Invoice {invoice_number} is awaiting payment',
+                                ];
+                            }
                         @endphp
                         <div class="cc-card">
                             <div class="cc-card-title">Templates by Trigger</div>
@@ -2741,6 +2750,9 @@
                                     <option value="{{ \Modules\Payment\Services\PaymentEmailTemplate::BILLABLE }}">Billable hours invoice</option>
                                     <option value="{{ \Modules\Payment\Services\PaymentEmailTemplate::FLAT_FEE }}">Flat fee invoice</option>
                                     <option value="{{ \Modules\Payment\Services\PaymentEmailTemplate::RETAINER }}">Retainer request</option>
+                                    @if (($provider ?? null) === 'lawcus')
+                                        <option value="{{ \Modules\Payment\Services\PaymentEmailTemplate::RECORDING_FEE }}">Recording fee</option>
+                                    @endif
                                 </select>
                             </label>
                         @endif

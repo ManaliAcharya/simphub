@@ -154,10 +154,68 @@ class InvoiceLiveStatusResolver
             return 0.0;
         }
 
+        // Paid in full by what's recorded against it: amount_paid, or the payments' credits.
+        $total    = Arr::get($data, 'total');
+        $credited = collect((array) Arr::get($payload, 'payments', []))
+            ->sum(fn ($payment) => is_array($payment) && is_numeric($payment['credit'] ?? null) ? (float) $payment['credit'] : 0.0);
+        $paid     = max((float) (is_numeric(Arr::get($data, 'amount_paid')) ? Arr::get($data, 'amount_paid') : 0), $credited);
+
+        if (is_numeric($total) && (float) $total > 0 && $paid >= (float) $total - 0.005) {
+            return 0.0;
+        }
+
+        // The single-invoice read can still show the old amount due right after a payment is
+        // recorded (a firm recording the check it already has on a new Trust Request). The
+        // invoice list is what Lawcus' own screens show, so it gets the last word on "paid".
+        $listRow = $this->lawcusListRow($connection, $invoice, $data);
+
+        Log::info('InvoiceLiveStatusResolver: Lawcus invoice read', [
+            'invoice_id'       => $invoice->id,
+            'status'           => Arr::get($data, 'status'),
+            'amount_due'       => Arr::get($data, 'amount_due'),
+            'total'            => Arr::get($data, 'total'),
+            'amount_paid'      => Arr::get($data, 'amount_paid'),
+            'payments_credit'  => $credited,
+            'list_status'      => $listRow['status'] ?? null,
+            'list_amount_due'  => $listRow['amount_due'] ?? null,
+        ]);
+
+        if ($listRow !== null && LawcusInvoiceIngestionService::hasNothingDue($listRow)) {
+            return 0.0;
+        }
+
         $amountDue = Arr::get($data, 'amount_due');
 
         // Without an amount due the balance can't be told, so the caller treats it as unknown.
         return is_numeric($amountDue) ? (float) $amountDue : null;
+    }
+
+    /**
+     * This invoice's row from the Lawcus invoice list (POST /v2/invoices), or null when it
+     * can't be read. Only invoices created since this one are paged through.
+     */
+    private function lawcusListRow(LawcusConnection $connection, Invoice $invoice, array $data): ?array
+    {
+        $created = strtotime((string) (Arr::get($data, 'created_at') ?? ''));
+
+        try {
+            $rows = $this->lawcusApi->fetchInvoicesCreatedSince(
+                $connection,
+                (new \DateTimeImmutable('@'.($created !== false ? $created - 60 : time() - 86400))),
+                5,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('InvoiceLiveStatusResolver: Lawcus invoice list unavailable', [
+                'invoice_id' => $invoice->id,
+                'error'      => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+
+        $id = (string) $invoice->external_invoice_id;
+
+        return collect($rows)->first(fn (array $row) => (string) ($row['id'] ?? '') === $id);
     }
 
     private function resolveZohoBalance(Invoice $invoice): float|string|null
