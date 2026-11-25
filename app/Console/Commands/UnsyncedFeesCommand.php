@@ -105,7 +105,7 @@ class UnsyncedFeesCommand extends Command
                 isset($payload['surcharge_amount']) => ($payload['qb_journalentry_id'] ?? $payload['wave_money_txn_id'] ?? '') !== ''
                     ? Transaction::FEE_SPLIT
                     : Transaction::FEE_NOT_RECORDED,
-                $pms === 'lawcus' => Transaction::FEE_NOT_RECORDED,
+                in_array($pms, ['lawcus', 'jobtread'], true) => Transaction::FEE_NOT_RECORDED,
                 default           => Transaction::FEE_NOT_SPLIT,
             };
 

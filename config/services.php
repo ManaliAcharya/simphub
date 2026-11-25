@@ -133,6 +133,24 @@ return [
         'activity_interaction_type' => env('LAWCUS_ACTIVITY_INTERACTION_TYPE', 'SECURE_MESSAGE'),
     ],
 
+    // JobTread (Pave API). Field names and enums live in Modules\Inbound\Services\JobTreadPave;
+    // the values marked "verify" there are unconfirmed until the first-day tests with HEP's grant key.
+    'jobtread' => [
+        'api_url'              => rtrim(env('JOBTREAD_API_URL', 'https://api.jobtread.com/pave'), '/'),
+        'webhook_callback_url' => env('JOBTREAD_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/jobtread'),
+        'webhook_events'       => array_values(array_filter(array_map('trim', explode(',', env('JOBTREAD_WEBHOOK_EVENTS', 'documentCreated,documentUpdated,documentSent'))))),
+        // Payment written back for a customer receipt: credit or debit (first-day test #3).
+        'payment_type'         => env('JOBTREAD_PAYMENT_TYPE', 'credit'),
+        // Optional createPayment "source" value; left out when blank (its allowed values are unverified).
+        'payment_source'       => env('JOBTREAD_PAYMENT_SOURCE'),
+        // No published rate limits: at most one request per this many milliseconds per connection.
+        'min_request_interval_ms' => (int) env('JOBTREAD_MIN_REQUEST_INTERVAL_MS', 350),
+        // Attach JobTread's own invoice PDF instead of SimpHub's (first-day test #7). Off until verified.
+        'native_pdf'           => (bool) env('JOBTREAD_NATIVE_PDF', false),
+        'pdf_base_url'         => rtrim(env('JOBTREAD_PDF_BASE_URL', 'https://api.jobtread.com/t'), '/'),
+        'ops_alert_email'      => env('JOBTREAD_OPS_ALERT_EMAIL'),
+    ],
+
     'mindbody' => [
         'api_key' => env('MINDBODY_API_KEY'),
     ],

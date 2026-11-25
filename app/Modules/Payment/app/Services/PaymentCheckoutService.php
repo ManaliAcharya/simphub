@@ -61,6 +61,12 @@ class PaymentCheckoutService
     {
         $invoice = $session->invoice()->first();
 
+        if ($invoice && (string) $invoice->pms_source === 'jobtread') {
+            $this->syncJobTreadBalance($invoice, $session, $atSubmit);
+
+            return;
+        }
+
         if (! $invoice || (string) $invoice->pms_source !== 'clio') {
             return;
         }
@@ -72,6 +78,28 @@ class PaymentCheckoutService
         }
 
         if ($atSubmit && $result === \Modules\Inbound\Services\ClioLiveBalanceService::UNKNOWN) {
+            throw new RuntimeException('We could not confirm the current balance on this invoice. Please try again in a moment.');
+        }
+    }
+
+    /**
+     * JobTread invoices follow the same rules as Clio bills (live amount, closed when paid or
+     * denied), and a Draft one, being edited with Make Changes, can't be paid until it's
+     * pushed to pending again.
+     */
+    private function syncJobTreadBalance(\Modules\Billing\Models\Invoice $invoice, PaymentSession $session, bool $atSubmit): void
+    {
+        $result = app(\Modules\Inbound\Services\JobTreadLiveBalanceService::class)->sync($invoice, $session);
+
+        if ($result === \Modules\Inbound\Services\JobTreadLiveBalanceService::CLOSED) {
+            $session->refresh();
+        }
+
+        if ($result === \Modules\Inbound\Services\JobTreadLiveBalanceService::EDITING) {
+            throw new RuntimeException(\Modules\Inbound\Services\JobTreadLiveBalanceService::EDITING_MESSAGE);
+        }
+
+        if ($atSubmit && $result === \Modules\Inbound\Services\JobTreadLiveBalanceService::UNKNOWN) {
             throw new RuntimeException('We could not confirm the current balance on this invoice. Please try again in a moment.');
         }
     }

@@ -243,7 +243,7 @@
                             </div>
                             <div style="display:flex;gap:8px;flex-wrap:wrap;">
 
-                                @if ($connectUrl && $provider !== 'lawcus')
+                                @if ($connectUrl && ! in_array($provider, ['lawcus', 'jobtread'], true))
                                     {{-- <a href="{{ $connectUrl }}" class="reconnect-btn"
                                         style="font-size:12px;padding:7px 16px;">Reconnect</a> --}}
 
@@ -299,6 +299,19 @@
                                     </form>
                                 @endif
 
+                                @if ($provider === 'jobtread' && $client)
+                                    <form method="POST" action="{{ route('inbound.jobtread.disconnect') }}"
+                                        onsubmit="return confirm('Disconnect JobTread? SimpHub will remove its webhook, and invoices will stop coming in until a grant key is entered again.');">
+                                        @csrf
+                                        <input type="hidden" name="pms_client_id"
+                                            value="{{ $client->pms_client_id }}">
+                                        <button type="submit" class="button secondary"
+                                            style="font-size:12px;padding:7px 16px;color:#dc2626;border-color:#dc2626;background:#fef2f2;">
+                                            Disconnect
+                                        </button>
+                                    </form>
+                                @endif
+
                                 @if ($provider === 'clio' && $client)
                                     <form method="POST" action="{{ route('inbound.clio.disconnect') }}"
                                         onsubmit="return confirm('Disconnect Clio? The client will need to reconnect to resume invoice processing.');">
@@ -333,6 +346,21 @@
                             if ($connection->token_expires_at) {
                                 $connDetails['Token Expires'] = $connection->token_expires_at->format('M j, Y');
                             }
+                            if ($provider === 'jobtread') {
+                                if (!empty($jobtread_organization_name)) {
+                                    $connDetails['Organization'] = $jobtread_organization_name;
+                                }
+                                if (!empty($jobtread_organization_id)) {
+                                    $connDetails['Organization ID'] = $jobtread_organization_id;
+                                }
+                                $connDetails['Webhook'] = !empty($jobtread_webhook_id) ? 'Registered' : 'Not registered (polling every 5 min)';
+                                if (!empty($jobtread_last_success_at)) {
+                                    $connDetails['Last Synced'] = \Illuminate\Support\Carbon::parse($jobtread_last_success_at)->diffForHumans();
+                                }
+                                if ($jobtread_baseline_count !== null) {
+                                    $connDetails['Pending At Connect (not emailed)'] = $jobtread_baseline_count;
+                                }
+                            }
                         @endphp
                         @if (count($connDetails))
                             <hr class="cc-card-divider">
@@ -358,6 +386,33 @@
                                 ({{ $connection->last_error }}). Invoices for this client are not syncing.
                                 Have the firm generate a fresh access token and paste it below.
                             </div>
+                        @endif
+
+                        @if ($provider === 'jobtread' && ($connection->consecutive_failures ?? 0) > 0)
+                            <hr class="cc-card-divider">
+                            <div class="cc-notice error" style="margin-bottom:12px;">
+                                This connection is broken: the last {{ $connection->consecutive_failures }}
+                                request(s) to JobTread failed authentication ({{ $connection->last_error }}).
+                                Invoices and payments for this client are not syncing. Have the merchant create a
+                                new grant key in JobTread and paste it below.
+                            </div>
+                        @endif
+
+                        @if ($provider === 'jobtread' && $client)
+                            <form method="POST"
+                                action="{{ route('inbound.jobtread.connect-key') }}"
+                                style="margin-top:10px;display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <input type="hidden" name="organization_id" value="{{ $jobtread_organization_id ?? '' }}">
+                                <div style="flex:1;min-width:260px;">
+                                    <label for="jobtread-replace-key" class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">New JobTread grant key</label>
+                                    <input type="password" id="jobtread-replace-key" name="grant_key" required autocomplete="off"
+                                        placeholder="Paste a new JobTread grant key to replace the current one"
+                                        style="width:100%;padding:8px 12px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;">
+                                </div>
+                                <button type="submit" class="button secondary" style="font-size:12px;padding:7px 16px;flex-shrink:0;">Replace key</button>
+                            </form>
                         @endif
 
                         @if ($provider === 'lawcus' && $client)
@@ -420,10 +475,43 @@
                                     @endif
                                 </div>
                             </div>
-                            @if ($connectUrl && $provider !== 'lawcus')
+                            @if ($connectUrl && ! in_array($provider, ['lawcus', 'jobtread'], true))
                                 <a href="{{ $connectUrl }}" class="button primary">Connect {{ $providerLabel }}</a>
                             @endif
                         </div>
+
+                        {{-- JobTread has no OAuth: the merchant creates a grant key in JobTread and it's pasted here. --}}
+                        @if ($provider === 'jobtread' && $client)
+                            <form method="POST"
+                                action="{{ route('inbound.jobtread.connect-key') }}"
+                                style="margin-top:14px;display:flex;flex-direction:column;gap:10px;max-width:640px;">
+                                @csrf
+                                <input type="hidden" name="pms_client_id" value="{{ $client->pms_client_id }}">
+                                <div>
+                                    <label for="jobtread-grant-key" style="display:block;font-size:12px;font-weight:600;color:#78350f;margin-bottom:4px;">Grant key</label>
+                                    <input type="password" id="jobtread-grant-key" name="grant_key" required autocomplete="off"
+                                        aria-describedby="jobtread-grant-key-help"
+                                        placeholder="Paste the JobTread grant key here"
+                                        style="width:100%;padding:8px 12px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;">
+                                    <div id="jobtread-grant-key-help" style="font-size:12px;color:#78350f;margin-top:4px;">
+                                        Created in JobTread under Settings &gt; Integrations &gt; API &gt; Grants, and shown only once.
+                                        Create it from an admin or dedicated integration user, not a staff member's personal login:
+                                        the key stops working if that user is removed.
+                                    </div>
+                                </div>
+                                <div>
+                                    <label for="jobtread-org-id" style="display:block;font-size:12px;font-weight:600;color:#78350f;margin-bottom:4px;">Organization ID (optional)</label>
+                                    <input type="text" id="jobtread-org-id" name="organization_id"
+                                        aria-describedby="jobtread-org-id-help"
+                                        style="width:100%;padding:8px 12px;border:1px solid rgba(19,34,56,.15);border-radius:8px;font:inherit;font-size:13px;">
+                                    <div id="jobtread-org-id-help" style="font-size:12px;color:#78350f;margin-top:4px;">
+                                        Only needed if the key has access to more than one JobTread organization.
+                                        Invoices already pending when you connect are not emailed.
+                                    </div>
+                                </div>
+                                <div><button type="submit" class="button primary">Connect JobTread</button></div>
+                            </form>
+                        @endif
 
                         {{-- Lawcus has no usable OAuth app for us (no client_id/client_secret) — a firm's
                              own owner/admin generates a personal access token from their Lawcus account
@@ -969,7 +1057,7 @@
                 @endif
 
                 {{-- Auto-Resend on Invoice Change --}}
-                @if (in_array($provider, ['quickbooks', 'clio', 'zoho', 'wave', 'lawcus'], true) && $connection && $client)
+                @if (in_array($provider, ['quickbooks', 'clio', 'zoho', 'wave', 'lawcus', 'jobtread'], true) && $connection && $client)
                     <div class="cc-card">
                         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
                             <div>

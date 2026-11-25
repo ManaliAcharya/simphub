@@ -74,6 +74,7 @@ class SyncInvoicePaidListener
             'clio'       => $this->syncToClio($transaction, $invoice, $client),
             'quickbooks' => $this->syncToQuickBooks($transaction, $invoice, $client),
             'lawcus'     => $this->syncToLawcus($transaction, $invoice, $client),
+            'jobtread'   => app(\Modules\Inbound\Services\JobTreadPaymentSyncService::class)->sync($transaction, $invoice),
             'wave'       => $this->syncToWave($transaction, $invoice, $client),
             'advancedmd' => $this->syncToAdvancedMd($transaction, $invoice, $client),
             default      => null,

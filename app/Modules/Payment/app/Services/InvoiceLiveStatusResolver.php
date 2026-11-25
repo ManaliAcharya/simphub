@@ -58,6 +58,7 @@ class InvoiceLiveStatusResolver
                 'wave'       => $this->resolveWaveBalance($invoice),
                 'quickbooks' => $this->resolveQuickBooksBalance($invoice),
                 'lawcus'     => $this->resolveLawcusBalance($invoice),
+                'jobtread'   => $this->resolveJobTreadBalance($invoice),
                 default      => null,
             };
         } catch (RequestException $e) {
@@ -131,6 +132,43 @@ class InvoiceLiveStatusResolver
         $data       = Arr::get($payload, 'data', $payload);
 
         return (float) (Arr::get($data, 'balance') ?? Arr::get($data, 'total', 0));
+    }
+
+    /**
+     * JobTread: the invoice's balance, so a payment recorded by hand in JobTread stops reminders.
+     * Denied or deleted is "gone"; a Draft invoice (being edited) is unknown, so no reminder
+     * goes out until it's pushed again.
+     */
+    private function resolveJobTreadBalance(Invoice $invoice): float|string|null
+    {
+        $connection = \Modules\Inbound\Models\JobTreadConnection::forClient((string) $invoice->pms_client_id);
+
+        if (! $connection) {
+            return null;
+        }
+
+        try {
+            $document = app(\Modules\Inbound\Services\JobTreadApiClient::class)
+                ->fetchDocument($connection, (string) $invoice->external_invoice_id);
+        } catch (\Modules\Inbound\Services\JobTreadApiException $e) {
+            if ($e->isNotFound()) {
+                return 'gone';
+            }
+
+            throw $e;
+        }
+
+        if (\Modules\Inbound\Services\JobTreadDocument::isDenied($document)) {
+            return 'gone';
+        }
+
+        if (\Modules\Inbound\Services\JobTreadDocument::isDraft($document)) {
+            return null;
+        }
+
+        $balance = \Modules\Inbound\Services\JobTreadDocument::balanceCents($document);
+
+        return $balance === null ? null : $balance / 100;
     }
 
     private function resolveLawcusBalance(Invoice $invoice): float|string|null

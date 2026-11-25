@@ -4,6 +4,8 @@ namespace Modules\Inbound\Providers;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Modules\Inbound\Jobs\PollAdvancedMdChargesJob;
+use Modules\Inbound\Jobs\PollJobTreadInvoicesJob;
+use Modules\Inbound\Services\Connectors\JobTreadConnector;
 use Modules\Inbound\Jobs\PollLawcusInvoicesJob;
 use Modules\Inbound\Jobs\PollWaveInvoicesJob;
 use Modules\Inbound\Jobs\RenewClioWebhooksJob;
@@ -57,6 +59,7 @@ class InboundServiceProvider extends ModuleServiceProvider
                 $app->make(LawcusConnector::class),
                 $app->make(WaveConnector::class),
                 $app->make(ZohoCrmConnector::class),
+                $app->make(JobTreadConnector::class),
             ]);
         });
     }
@@ -81,6 +84,11 @@ class InboundServiceProvider extends ModuleServiceProvider
                 ->onOneServer();
 
             $schedule->job(PollLawcusInvoicesJob::class)->everyMinute()
+                ->withoutOverlapping()
+                ->onOneServer();
+
+            // Backstop for JobTread's unsigned webhooks; also keeps grant keys in use.
+            $schedule->job(PollJobTreadInvoicesJob::class)->everyFiveMinutes()
                 ->withoutOverlapping()
                 ->onOneServer();
 
