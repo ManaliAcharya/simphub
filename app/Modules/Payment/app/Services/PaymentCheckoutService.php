@@ -1245,7 +1245,7 @@ class PaymentCheckoutService
             PaymentSession::query()
                 ->where('invoice_id', $other->id)
                 ->where('link_status', 'active')
-                ->update(['link_status' => 'paid', 'next_reminder_at' => null, 'updated_at' => now()]);
+                ->update(PaymentLinkClosure::attributes(PaymentLinkClosure::PAID_VIA_SIMPHUB) + ['updated_at' => now()]);
 
             AuditLogger::log('INVOICE_PAID_WITH_OUTSTANDING', 'invoice', $other->id, [
                 'transaction_id' => $transaction->id,

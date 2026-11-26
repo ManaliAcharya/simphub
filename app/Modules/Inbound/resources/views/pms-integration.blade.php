@@ -2904,8 +2904,22 @@
                                             </td>
                                         @endforeach
                                         <td>
-                                            @if (!empty($invoice->recipient_emails) && $invoice->has_payment_link)
+                                            @if ($invoice->payment_url || (!empty($invoice->recipient_emails) && $invoice->has_payment_link))
+                                                @php $linkFor = $invoice->invoice_number ? 'invoice #' . $invoice->invoice_number : 'this invoice'; @endphp
                                                 <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                                                    {{-- The customer's own link: open it to see exactly what the customer sees.
+                                                         Opening it sends nothing. --}}
+                                                    @if ($invoice->payment_url)
+                                                        <a href="{{ $invoice->payment_url }}" target="_blank" rel="noopener noreferrer"
+                                                            class="button secondary"
+                                                            aria-label="Open the payment link for {{ $linkFor }} (opens in a new tab)"
+                                                            title="Open the payment page the customer sees. Nothing is sent.">Open link</a>
+                                                        <button type="button" class="button secondary js-copy-payment-link"
+                                                            data-url="{{ $invoice->payment_url }}"
+                                                            aria-label="Copy the payment link for {{ $linkFor }}">Copy link</button>
+                                                    @endif
+
+                                                    @if (!empty($invoice->recipient_emails) && $invoice->has_payment_link)
                                                     <form
                                                         action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
                                                         method="POST">
@@ -2918,6 +2932,7 @@
                                                             {{ $invoice->has_been_sent ? 'Resend' : 'Send' }}
                                                         </button>
                                                     </form>
+                                                    @endif
 
                                                     {{-- Pause stops this invoice's reminders (e.g. a check is in the mail);
                                                          Resume sends one now and restarts the reminder schedule. --}}
@@ -2951,6 +2966,28 @@
                             </tbody>
 
                         </table>
+
+                        <div id="payment-link-copy-status" class="sr-only" role="status" aria-live="polite"
+                            style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);"></div>
+                        <script>
+                            document.addEventListener('click', function (e) {
+                                var btn = e.target.closest('.js-copy-payment-link');
+                                if (!btn) { return; }
+                                var status = document.getElementById('payment-link-copy-status');
+                                var done = function (ok) {
+                                    var original = btn.dataset.label || btn.textContent;
+                                    btn.dataset.label = original;
+                                    btn.textContent = ok ? 'Copied' : 'Copy failed';
+                                    if (status) { status.textContent = ok ? 'Payment link copied.' : 'Could not copy the payment link.'; }
+                                    setTimeout(function () { btn.textContent = original; }, 2000);
+                                };
+                                if (navigator.clipboard && window.isSecureContext) {
+                                    navigator.clipboard.writeText(btn.dataset.url).then(function () { done(true); }, function () { done(false); });
+                                } else {
+                                    window.prompt('Copy the payment link:', btn.dataset.url);
+                                }
+                            });
+                        </script>
                     @else
                         <div class="alert alert-info">
                             No invoices found.

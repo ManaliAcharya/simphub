@@ -847,6 +847,7 @@ class PmsIntegrationController extends Controller
                     'currency',
                     'amount_cents',
                     'status',
+                    'pms_source',
                     'created_at',
                 ])
                 ->where('pms_client_id', $pmsClientId)
@@ -861,15 +862,17 @@ class PmsIntegrationController extends Controller
         $latestSessionByInvoice = PaymentSession::query()
             ->whereIn('invoice_id', $invoices->pluck('id'))
             ->orderByDesc('created_at')
-            ->get(['id', 'invoice_id', 'status', 'link_status', 'payment_link_sent_at', 'first_email_sent_at', 'reminders_paused_at'])
+            ->get(['id', 'invoice_id', 'status', 'link_status', 'hosted_url_token', 'payment_link_sent_at', 'first_email_sent_at', 'reminders_paused_at'])
             ->unique('invoice_id')
             ->keyBy('invoice_id');
+
+        $paymentLinks = app(\Modules\Payment\Services\PaymentLinkService::class);
 
         // Email and Payment columns — invoices.status mixes the PMS's own status with
         // our checkout result, so neither is shown from it (see InvoiceListStatus).
         $listStatuses = app(InvoiceListStatus::class)->forInvoices($invoices);
 
-        $invoices = $invoices->map(function ($invoice) use ($latestSessionByInvoice, $listStatuses, $client) {
+        $invoices = $invoices->map(function ($invoice) use ($latestSessionByInvoice, $listStatuses, $client, $paymentLinks) {
             $session = $latestSessionByInvoice->get($invoice->id);
             $invoice->recipient_email_list = implode(', ', $invoice->recipient_emails ?? []);
             $invoice->has_been_sent = (bool) $session?->payment_link_sent_at;
@@ -878,6 +881,8 @@ class PmsIntegrationController extends Controller
             $invoice->reminders_paused    = (bool) $session?->reminders_paused_at;
             // No payment link at all (e.g. a Lawcus invoice with nothing due): nothing to send.
             $invoice->has_payment_link = $latestSessionByInvoice->has($invoice->id);
+            // The customer's link, so staff can open it and see exactly what the customer sees.
+            $invoice->payment_url = $session?->hosted_url_token ? $paymentLinks->urlForSession($session) : null;
             $invoice->email_status   = $listStatuses[$invoice->id]['email'];
             $invoice->payment_status = $listStatuses[$invoice->id]['payment'];
 

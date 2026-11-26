@@ -8,6 +8,7 @@ use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\ClioConnection;
+use Modules\Payment\Services\PaymentLinkClosure;
 use Throwable;
 
 /**
@@ -109,7 +110,9 @@ class ClioLiveBalanceService
             return;
         }
 
-        $session->forceFill(['link_status' => $reason, 'next_reminder_at' => null])->save();
+        PaymentLinkClosure::close($session, $reason === 'voided'
+            ? PaymentLinkClosure::VOIDED_IN_PMS
+            : PaymentLinkClosure::paidReason($session));
 
         AuditLogger::log("payment_link.{$reason}", 'payment_session', $session->id, [
             'invoice_id'          => $invoice->id,

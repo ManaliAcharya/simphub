@@ -1265,6 +1265,19 @@ class ClientConfigController extends Controller
                 ->latest('created_at')
                 ->firstOrFail();
 
+            // Never email a link that would only say "already paid" or "no longer
+            // available". For QuickBooks this also reopens a link closed by a payment
+            // recorded there when a balance is due again, at the current balance.
+            $blocked = app(\Modules\Inbound\Services\ResendLinkCheck::class)
+                ->blockReason($invoice, $paymentSession, $connection);
+
+            if ($blocked !== null) {
+                return back()->with('error', $blocked);
+            }
+
+            $invoice->refresh();
+            $paymentSession->refresh();
+
             $pdf = null;
             $useNativePdf = Client::query()->where('pms_client_id', $pms_client_id)->value('qb_use_native_pdf') ?? true;
 

@@ -6,6 +6,7 @@ use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\Invoice;
 use Modules\Billing\Models\PaymentSession;
 use Modules\Inbound\Models\Client;
+use Modules\Payment\Services\PaymentLinkClosure;
 use Modules\Payment\Services\PaymentLinkService;
 
 /**
@@ -83,7 +84,9 @@ class InvoiceLinkLifecycleService
             return;
         }
 
-        $session->forceFill(['link_status' => $status])->save();
+        PaymentLinkClosure::close($session, $status === 'voided'
+            ? PaymentLinkClosure::VOIDED_IN_PMS
+            : PaymentLinkClosure::REMOVED_IN_PMS);
 
         AuditLogger::log("payment_link.{$status}", 'payment_session', $session->id, [
             'invoice_id'          => $invoice->id,

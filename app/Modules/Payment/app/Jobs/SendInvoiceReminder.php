@@ -97,10 +97,11 @@ class SendInvoiceReminder implements ShouldQueue
         ]);
 
         if ($status === 'paid' || $status === 'gone') {
-            $session->forceFill([
-                'link_status'      => $status === 'paid' ? 'paid' : $session->link_status,
-                'next_reminder_at' => null,
-            ])->save();
+            if ($status === 'paid') {
+                \Modules\Payment\Services\PaymentLinkClosure::close($session, \Modules\Payment\Services\PaymentLinkClosure::paidReason($session));
+            } else {
+                $session->forceFill(['next_reminder_at' => null])->save();
+            }
 
             AuditLogger::log('payment_reminder_stopped', 'payment_session', $session->id, [
                 'invoice_id' => $invoice->id,
