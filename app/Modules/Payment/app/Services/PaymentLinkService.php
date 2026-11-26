@@ -28,6 +28,21 @@ class PaymentLinkService
     }
 
     /**
+     * The same page for staff checking it from the invoice list: signed and short-lived,
+     * so the visit is logged as staff ($viewer, e.g. "user:12") instead of as the customer.
+     * Never emailed — customers only ever get urlForSession().
+     */
+    public function staffViewUrl(PaymentSession $session, string $viewer): string
+    {
+        return $this->baseUrl().\Illuminate\Support\Facades\URL::temporarySignedRoute(
+            'payment.page.show',
+            now()->addHours(12),
+            ['session' => $session->hosted_url_token, 'viewer' => $viewer],
+            false,
+        );
+    }
+
+    /**
      * Callers pass an explicit $pdfContent when a PMS's own native PDF export
      * should be used (e.g. QuickBooks, when the client has opted into it).
      * Everyone else - and QuickBooks clients who opt out - gets a PDF we

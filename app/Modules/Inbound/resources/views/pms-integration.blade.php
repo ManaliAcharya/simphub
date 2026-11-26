@@ -2910,7 +2910,7 @@
                                                     {{-- The customer's own link: open it to see exactly what the customer sees.
                                                          Opening it sends nothing. --}}
                                                     @if ($invoice->payment_url)
-                                                        <a href="{{ $invoice->payment_url }}" target="_blank" rel="noopener noreferrer"
+                                                        <a href="{{ $invoice->staff_view_url ?? $invoice->payment_url }}" target="_blank" rel="noopener noreferrer"
                                                             class="button secondary"
                                                             aria-label="Open the payment link for {{ $linkFor }} (opens in a new tab)"
                                                             title="Open the payment page the customer sees. Nothing is sent.">Open link</a>

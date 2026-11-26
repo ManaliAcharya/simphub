@@ -27,6 +27,13 @@ class PaymentPageController extends Controller
             ->first();
 
         if ($paymentSession) {
+            // Opened with "Open link" on the invoice list (a signed, short-lived URL):
+            // every step of this visit is logged as staff, not the customer.
+            $viewer = (string) request()->query('viewer', '');
+            if ($viewer !== '' && request()->hasValidRelativeSignature()) {
+                $audit->markStaffVisit($visitId, $viewer);
+            }
+
             $audit->record($paymentSession, 'CHECKOUT_PAGE_OPENED', [
                 'visit_id'     => $visitId,
                 'referer_host' => parse_url((string) request()->headers->get('referer'), PHP_URL_HOST) ?: null,

@@ -2,6 +2,7 @@
 
 namespace Modules\Payment\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Modules\Audit\Services\AuditLogger;
 use Modules\Billing\Models\PaymentSession;
@@ -48,15 +49,54 @@ class CheckoutAuditTrail
         'status', 'message', 'step', 'last_step',
     ];
 
+    /** How long a page visit opened from the invoice list stays marked as a staff visit. */
+    private const STAFF_VISIT_TTL_HOURS = 12;
+
     public function record(PaymentSession $session, string $eventType, array $payload = []): void
     {
-        AuditLogger::log($eventType, 'payment_session', (string) $session->id, array_merge([
+        $payload = array_merge([
             'invoice_id'     => $session->invoice_id,
             'session_status' => $session->status,
             'link_status'    => $session->link_status,
             'visit_id'       => $this->visitId(),
             'user_agent'     => Str::limit((string) request()?->userAgent(), 255, ''),
-        ], $payload), 'payer');
+        ], $payload);
+
+        // A visit opened with "Open link" on the invoice list is staff checking the page,
+        // not the customer — kept apart so "the customer viewed it" stays true.
+        $viewer = $this->staffViewer($payload['visit_id'] ?? null);
+
+        if ($viewer !== null) {
+            $payload['viewer'] = $viewer;
+        }
+
+        AuditLogger::log($eventType, 'payment_session', (string) $session->id, $payload, $viewer !== null ? 'staff' : 'payer');
+    }
+
+    /**
+     * Mark a page visit as staff. The visit id is generated on the server for each page
+     * load, so a customer can't attach their visit to it; the caller has already checked
+     * the signed "Open link" URL.
+     */
+    public function markStaffVisit(string $visitId, string $viewer): void
+    {
+        Cache::put(self::staffVisitKey($visitId), Str::limit($viewer, 64, ''), now()->addHours(self::STAFF_VISIT_TTL_HOURS));
+    }
+
+    private function staffViewer(?string $visitId): ?string
+    {
+        if (! is_string($visitId) || ! Str::isUuid($visitId)) {
+            return null;
+        }
+
+        $viewer = Cache::get(self::staffVisitKey($visitId));
+
+        return is_string($viewer) ? $viewer : null;
+    }
+
+    private static function staffVisitKey(string $visitId): string
+    {
+        return 'checkout_staff_visit:'.$visitId;
     }
 
     public function recordBrowserEvent(PaymentSession $session, string $event, array $detail): bool

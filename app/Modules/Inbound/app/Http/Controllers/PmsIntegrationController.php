@@ -867,12 +867,14 @@ class PmsIntegrationController extends Controller
             ->keyBy('invoice_id');
 
         $paymentLinks = app(\Modules\Payment\Services\PaymentLinkService::class);
+        // Who "Open link" visits are logged as: the signed-in user, or the merchant on a share link.
+        $viewer = auth()->id() ? 'user:'.auth()->id() : 'merchant';
 
         // Email and Payment columns — invoices.status mixes the PMS's own status with
         // our checkout result, so neither is shown from it (see InvoiceListStatus).
         $listStatuses = app(InvoiceListStatus::class)->forInvoices($invoices);
 
-        $invoices = $invoices->map(function ($invoice) use ($latestSessionByInvoice, $listStatuses, $client, $paymentLinks) {
+        $invoices = $invoices->map(function ($invoice) use ($latestSessionByInvoice, $listStatuses, $client, $paymentLinks, $viewer) {
             $session = $latestSessionByInvoice->get($invoice->id);
             $invoice->recipient_email_list = implode(', ', $invoice->recipient_emails ?? []);
             $invoice->has_been_sent = (bool) $session?->payment_link_sent_at;
@@ -883,6 +885,10 @@ class PmsIntegrationController extends Controller
             $invoice->has_payment_link = $latestSessionByInvoice->has($invoice->id);
             // The customer's link, so staff can open it and see exactly what the customer sees.
             $invoice->payment_url = $session?->hosted_url_token ? $paymentLinks->urlForSession($session) : null;
+            // "Open link" uses a signed copy so the visit is logged as staff, not the customer.
+            $invoice->staff_view_url = $session?->hosted_url_token
+                ? $paymentLinks->staffViewUrl($session, $viewer)
+                : null;
             $invoice->email_status   = $listStatuses[$invoice->id]['email'];
             $invoice->payment_status = $listStatuses[$invoice->id]['payment'];
 
