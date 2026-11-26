@@ -17,6 +17,7 @@ use Modules\Inbound\Models\QuickBooksConnection;
 use Modules\Inbound\Services\QbReadyToSend;
 use Modules\Inbound\Services\QuickBooksApiClient;
 use Modules\Inbound\Services\QuickBooksEmailResolver;
+use Modules\Payment\Services\PaymentLinkClosure;
 use Modules\Payment\Services\PaymentLinkService;
 
 class ProcessQBInvoiceLinkJob implements ShouldQueue
@@ -88,18 +89,22 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
             ->first();
 
         if ($this->operation === 'delete') {
-            $this->disableLink($invoice, $session, 'disabled');
+            $this->disableLink($invoice, $session, PaymentLinkClosure::REMOVED_IN_PMS);
             return;
         }
 
         if ($this->operation === 'void') {
-            $this->disableLink($invoice, $session, 'voided');
+            $this->disableLink($invoice, $session, PaymentLinkClosure::VOIDED_IN_PMS);
             return;
         }
 
         // Update — compare amounts
         if ($this->operation === 'update') {
             if (! $session) {
+                // A link closed by a payment recorded in QuickBooks comes back when the
+                // invoice has a balance again (payment deleted, or invoice edited upward).
+                $this->reopenIfBalanceReturned($connection, $qbApi, $invoice);
+
                 Log::info('ProcessQBInvoiceLinkJob: invoice update received but no active payment session, skipping resend', [
                     'invoice_id'    => $invoice->id,
                     'qb_invoice_id' => $this->entityId,
@@ -119,6 +124,31 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         Invoice $invoice,
         PaymentSession $session,
     ): void {
+        // Paid through SimpHub: writing that payment back to QuickBooks is itself an
+        // invoice update, and must never send the customer another "please pay" email.
+        if ($session->status === 'COMPLETED') {
+            return;
+        }
+
+        // Fetch the live invoice — before the send settings below, so a balance paid down
+        // to $0 closes the link whatever this client's send settings are.
+        try {
+            $liveData = $qbApi->fetchInvoice($connection, $this->entityId);
+        } catch (\Throwable $e) {
+            Log::error('ProcessQBInvoiceLinkJob: failed to fetch live invoice', [
+                'invoice_id' => $this->entityId,
+                'error'      => $e->getMessage(),
+            ]);
+            return;
+        }
+
+        // Nothing left to pay: close the link instead of emailing a $0 payment request.
+        // QuickBooks doesn't reliably send a Payment webhook when a payment is applied.
+        if (self::liveBalance($liveData) <= 0) {
+            $this->markLinkPaid($invoice, $session, ['source' => 'invoice_update']);
+            return;
+        }
+
         $client = Client::query()->where('pms_client_id', $invoice->pms_client_id)->first();
         $readyToSendMode = QbReadyToSend::mode($client);
 
@@ -156,17 +186,6 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         //     return;
         // }
 
-        // Fetch live invoice and compare amount
-        try {
-            $liveData = $qbApi->fetchInvoice($connection, $this->entityId);
-        } catch (\Throwable $e) {
-            Log::error('ProcessQBInvoiceLinkJob: failed to fetch live invoice', [
-                'invoice_id' => $this->entityId,
-                'error'      => $e->getMessage(),
-            ]);
-            return;
-        }
-
         // "Ready to Send?" trigger mode — checked against the invoice just saved in QB, not
         // the stored copy, which the parallel ingestion may not have refreshed yet.
         if ($readyToSendMode === QbReadyToSend::TRIGGER) {
@@ -188,8 +207,7 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
         // Compare against Balance (what ingestion stores in amount_cents), not TotalAmt.
         // TotalAmt stays fixed when a partial external payment reduces the Balance —
         // comparing TotalAmt vs stored Balance would produce a false diff on every view.
-        $invoiceData     = Arr::get($liveData, 'Invoice', $liveData);
-        $liveBalance     = (float) ($invoiceData['Balance'] ?? $invoiceData['TotalAmt'] ?? 0);
+        $liveBalance     = self::liveBalance($liveData);
         $originalCents   = (int) ($invoice->amount_cents ?? 0);
         $originalDollars = $originalCents / 100;
 
@@ -320,21 +338,6 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
             return;
         }
 
-        // Paid in QuickBooks directly (not through our link): reflect it in the invoice
-        // list. The Invoice update webhook would also do this, but QB doesn't reliably
-        // send one when a payment is applied.
-        if ($invoice->status !== 'PAID') {
-            $previousStatus = $invoice->status;
-            $invoice->forceFill(['status' => 'PAID'])->save();
-
-            AuditLogger::log('INVOICE_MARKED_PAID_VIA_PMS', 'invoice', $invoice->id, [
-                'pms_source'      => 'quickbooks',
-                'qb_invoice_id'   => $qbInvoiceId,
-                'qb_payment_id'   => $this->entityId,
-                'previous_status' => $previousStatus,
-            ]);
-        }
-
         $session = PaymentSession::query()
             ->where('invoice_id', $invoice->id)
             ->whereIn('link_status', ['active'])
@@ -342,10 +345,26 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
             ->first();
 
         if (! $session) {
+            $this->markInvoicePaid($invoice, $qbInvoiceId, ['qb_payment_id' => $this->entityId]);
             return;
         }
 
-        $session->forceFill(['link_status' => 'paid'])->save();
+        $this->markLinkPaid($invoice, $session, ['qb_invoice_id' => $qbInvoiceId, 'qb_payment_id' => $this->entityId]);
+    }
+
+    /**
+     * QuickBooks shows nothing left to pay: mark the invoice paid and close its link —
+     * "paid through SimpHub" when our own checkout completed it (this is then just our
+     * payment being written back), otherwise "marked paid in QuickBooks".
+     */
+    private function markLinkPaid(Invoice $invoice, PaymentSession $session, array $audit): void
+    {
+        $qbInvoiceId = (string) ($audit['qb_invoice_id'] ?? $invoice->external_invoice_id);
+
+        $this->markInvoicePaid($invoice, $qbInvoiceId, $audit);
+
+        $reason = PaymentLinkClosure::paidReason($session);
+        PaymentLinkClosure::close($session, $reason);
 
         AuditLogger::log(
             'payment_link.marked_paid_via_qb_payment',
@@ -354,18 +373,106 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
             [
                 'invoice_id'    => $invoice->id,
                 'qb_invoice_id' => $qbInvoiceId,
-                'qb_payment_id' => $this->entityId,
-            ]
+                'reason'        => $reason,
+            ] + $audit
         );
     }
 
-    private function disableLink(Invoice $invoice, ?PaymentSession $session, string $status): void
+    /**
+     * Paid in QuickBooks directly (not through our link): reflect it in the invoice list.
+     * The Invoice update webhook would also do this, but QB doesn't reliably send one when
+     * a payment is applied.
+     */
+    private function markInvoicePaid(Invoice $invoice, string $qbInvoiceId, array $audit): void
+    {
+        if ($invoice->status === 'PAID') {
+            return;
+        }
+
+        $previousStatus = $invoice->status;
+        $invoice->forceFill(['status' => 'PAID'])->save();
+
+        AuditLogger::log('INVOICE_MARKED_PAID_VIA_PMS', 'invoice', $invoice->id, [
+            'pms_source'      => 'quickbooks',
+            'qb_invoice_id'   => $qbInvoiceId,
+            'previous_status' => $previousStatus,
+        ] + $audit);
+    }
+
+    /**
+     * The invoice was updated in QuickBooks and has no open link. If its link was closed
+     * only because a payment was recorded in QuickBooks, and that payment has since been
+     * removed or the invoice edited so a balance is due again, reopen the same link for
+     * the current balance. Nothing is emailed: whoever wants the customer to know uses
+     * Resend. A link paid through SimpHub, voided or removed is never reopened here.
+     */
+    private function reopenIfBalanceReturned(QuickBooksConnection $connection, QuickBooksApiClient $qbApi, Invoice $invoice): void
+    {
+        $session = PaymentSession::query()
+            ->where('invoice_id', $invoice->id)
+            ->latest('created_at')
+            ->first();
+
+        if (! $session || ! PaymentLinkClosure::reopenable($session)) {
+            return;
+        }
+
+        try {
+            $liveData = $qbApi->fetchInvoice($connection, $this->entityId);
+        } catch (\Throwable $e) {
+            Log::error('ProcessQBInvoiceLinkJob: failed to fetch live invoice for reopen check', [
+                'invoice_id' => $this->entityId,
+                'error'      => $e->getMessage(),
+            ]);
+            return;
+        }
+
+        $balance = self::liveBalance($liveData);
+
+        if ($balance <= 0) {
+            return;
+        }
+
+        self::applyLiveBalance($invoice, $session, $balance);
+
+        PaymentLinkClosure::reopen($session, [
+            'qb_invoice_id' => $this->entityId,
+            'qbo_balance'   => $balance,
+            'source'        => 'invoice_update',
+        ]);
+    }
+
+    /**
+     * Store the live QuickBooks balance on the invoice, which is what the checkout page
+     * charges, and take it out of PAID. Ingestion of the same update writes the same
+     * amount; doing it here too means the link never opens on a stale amount.
+     */
+    public static function applyLiveBalance(Invoice $invoice, PaymentSession $session, float $balance): void
+    {
+        $invoice->forceFill([
+            'amount_cents' => (int) round($balance * 100),
+            'status'       => $invoice->status === 'PAID'
+                ? ($session->payment_link_sent_at ? 'SENT' : 'PENDING')
+                : $invoice->status,
+        ])->save();
+    }
+
+    /** What's still due on a fetched QuickBooks invoice — Balance, not TotalAmt. */
+    public static function liveBalance(array $liveData): float
+    {
+        $invoiceData = Arr::get($liveData, 'Invoice', $liveData);
+
+        return (float) ($invoiceData['Balance'] ?? $invoiceData['TotalAmt'] ?? 0);
+    }
+
+    private function disableLink(Invoice $invoice, ?PaymentSession $session, string $reason): void
     {
         if (! $session) {
             return;
         }
 
-        $session->forceFill(['link_status' => $status])->save();
+        PaymentLinkClosure::close($session, $reason);
+        $status = $session->link_status;
 
         AuditLogger::log(
             "payment_link.{$status}",
@@ -375,6 +482,7 @@ class ProcessQBInvoiceLinkJob implements ShouldQueue
                 'invoice_id'    => $invoice->id,
                 'qb_invoice_id' => $this->entityId,
                 'operation'     => $this->operation,
+                'reason'        => $reason,
             ]
         );
     }

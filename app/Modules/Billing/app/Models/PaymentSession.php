@@ -24,6 +24,7 @@ class PaymentSession extends Model
             'payment_link_last_sent_to' => 'array',
             'original_amount'           => 'decimal:2',
             'link_status'               => 'string',
+            'link_closed_at'            => 'datetime',
             'first_email_sent_at'       => 'datetime',
             'last_reminder_sent_at'     => 'datetime',
             'next_reminder_at'          => 'datetime',

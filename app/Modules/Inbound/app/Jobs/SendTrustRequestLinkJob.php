@@ -77,7 +77,7 @@ class SendTrustRequestLinkJob implements ShouldQueue, ShouldBeUnique
 
         if ($status === 'paid' || $status === 'gone') {
             if ($status === 'paid') {
-                $session->forceFill(['link_status' => 'paid'])->save();
+                \Modules\Payment\Services\PaymentLinkClosure::close($session, \Modules\Payment\Services\PaymentLinkClosure::PAID_IN_PMS);
             }
 
             AuditLogger::log('PAYMENT_LINK_SKIPPED', 'payment_session', $session->id, [

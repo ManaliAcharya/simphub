@@ -38,7 +38,7 @@ class InvoiceListStatus
                 ->whereIn('invoice_id', $chunk)
                 ->orderByDesc('created_at')
                 ->get([
-                    'id', 'invoice_id', 'status', 'link_status', 'payment_link_sent_at',
+                    'id', 'invoice_id', 'status', 'link_status', 'link_closed_reason', 'payment_link_sent_at',
                     'payment_link_last_sent_to', 'last_email_sent_at', 'reminders_sent_count',
                     'last_reminder_sent_at', 'reminders_paused_at',
                 ]));
@@ -153,6 +153,16 @@ class InvoiceListStatus
 
         if ($linkStatus === 'disabled') {
             return $this->status('Link disabled', 'neutral', null, 'Invoice was removed in the PMS');
+        }
+
+        // Closed as paid, yet the invoice is unpaid again (e.g. the payment recorded in the
+        // PMS was removed): the customer's link only says "already paid".
+        if ($linkStatus === 'paid' && $sessionStatus !== 'COMPLETED') {
+            $closedAs = PaymentLinkClosure::LABELS[$session?->link_closed_reason] ?? 'Closed as paid';
+
+            return $this->status('Link closed', 'warning', null, (string) $invoice->pms_source === 'quickbooks'
+                ? "{$closedAs}, but a balance is due again. Resend reopens the link at the current QuickBooks balance."
+                : "{$closedAs}, but the invoice is unpaid again. The customer's link shows it as paid.");
         }
 
         if ($sessionStatus === 'PROCESSING') {
