@@ -19,8 +19,8 @@ use Throwable;
 
 /**
  * Records a captured SimpHub payment on its JobTread invoice:
- * createPayment (externalId = the gateway transaction id), then createDocumentPayment to
- * apply it to the invoice, both with notify: false.
+ * createPayment (externalId = "simphub-" + the gateway transaction id, linked to the invoice's
+ * customer account like every payment HEP records), then createDocumentPayment to apply it.
  *
  * The two calls aren't atomic, so every run first looks for what an earlier run already did:
  * a payment on the invoice with our externalId means done; a payment with our externalId
@@ -126,11 +126,15 @@ class JobTreadPaymentSyncService
             if ($paymentId === null) {
                 $paymentId = $this->api->createPayment($connection, array_filter([
                     'organizationId' => $organizationId,
+                    // Every invoice payment in JobTread belongs to the invoice's customer account.
+                    'accountId'      => Arr::get($document, 'job.location.account.id'),
                     'amount'         => $amount,
                     'paidAt'         => ($transaction->created_at ?? now())->copy()->utc()->toIso8601String(),
                     'type'           => (string) config('services.jobtread.payment_type', 'credit'),
                     'externalId'     => $externalId,
-                    'source'         => config('services.jobtread.payment_source') ?: null,
+                    // Free text in JobTread; merchants use "Card" / "Check".
+                    'source'         => config('services.jobtread.payment_source') ?: ($this->isAch($transaction) ? 'ACH' : 'Card'),
+                    'description'    => 'Paid online via SimpHub ('.($this->isAch($transaction) ? 'ACH' : 'card').'), ref '.$externalId,
                 ], fn ($value) => $value !== null && $value !== ''));
             }
 

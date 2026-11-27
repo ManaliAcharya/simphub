@@ -12,8 +12,8 @@ use Modules\Inbound\Models\JobTreadConnection;
 /**
  * JobTread's Pave API: one POST endpoint, the grant key passed as the query's "$".
  *
- * Every write SimpHub makes passes notify: false, so JobTread never emails the customer;
- * SimpHub's branded email is the only one they get. Query shapes live in JobTreadPave.
+ * Pave has no "notify" switch on createPayment / createDocumentPayment (verified 2026-11-27:
+ * the field is rejected). Query shapes live in JobTreadPave.
  */
 class JobTreadApiClient
 {
@@ -165,7 +165,7 @@ class JobTreadApiClient
     /** @return string the new payment's id */
     public function createPayment(JobTreadConnection $connection, array $input): string
     {
-        $data = $this->query($connection, JobTreadPave::createPayment($input + ['notify' => false]));
+        $data = $this->query($connection, JobTreadPave::createPayment($input));
         $id   = (string) Arr::get($data, 'createPayment.createdPayment.id', '');
 
         if ($id === '') {
@@ -178,7 +178,7 @@ class JobTreadApiClient
     /** @return string the new document payment's id */
     public function createDocumentPayment(JobTreadConnection $connection, array $input): string
     {
-        $data = $this->query($connection, JobTreadPave::createDocumentPayment($input + ['notify' => false]));
+        $data = $this->query($connection, JobTreadPave::createDocumentPayment($input));
 
         return (string) Arr::get($data, 'createDocumentPayment.createdDocumentPayment.id', '');
     }

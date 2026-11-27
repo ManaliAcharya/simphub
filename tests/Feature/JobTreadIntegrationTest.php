@@ -27,7 +27,7 @@ use Tests\TestCase;
 /**
  * JobTread: an invoice reaching "pending" emails its payment link once; Make Changes + Push
  * to Pending emails it again; payments are written back with createPayment +
- * createDocumentPayment (notify: false). The Pave API is faked by answering on the query's
+ * createDocumentPayment. The Pave API is faked by answering on the query's
  * top-level key.
  */
 class JobTreadIntegrationTest extends TestCase
@@ -324,8 +324,10 @@ class JobTreadIntegrationTest extends TestCase
         $this->assertSame(['to@example.com'], JobTreadDocument::recipientEmails($document + ['toEmailAddress' => 'to@example.com']));
     }
 
-    public function test_payment_is_written_back_without_notifying_and_not_twice(): void
+    /** Input shapes match what the live API accepted on 2026-11-27 (it rejects a "notify" field). */
+    public function test_payment_is_written_back_to_the_customer_and_not_twice(): void
     {
+        $this->doc['job'] = ['id' => 'job-1', 'location' => ['id' => 'loc-1', 'account' => ['id' => 'acct-1', 'name' => 'Jane Homeowner']]];
         $client = $this->connectedClient();
         [$transaction, $invoice] = $this->paidInvoice($client);
 
@@ -333,13 +335,15 @@ class JobTreadIntegrationTest extends TestCase
 
         $createPayment = $this->mutation('createPayment');
         $this->assertSame('org-1', $createPayment['organizationId']);
+        $this->assertSame('acct-1', $createPayment['accountId'], 'Linked to the invoice customer, like every payment HEP records.');
         $this->assertEquals(250.0, $createPayment['amount']);
         $this->assertSame('simphub-gw-txn-1', $createPayment['externalId']);
         $this->assertSame('credit', $createPayment['type']);
-        $this->assertFalse($createPayment['notify']);
+        $this->assertSame('Card', $createPayment['source']);
+        $this->assertArrayNotHasKey('notify', $createPayment);
 
         $apply = $this->mutation('createDocumentPayment');
-        $this->assertSame(['documentId' => 'doc-1', 'paymentId' => 'pay-1', 'amount' => 250.0, 'notify' => false], $apply);
+        $this->assertSame(['documentId' => 'doc-1', 'paymentId' => 'pay-1', 'amount' => 250.0], $apply);
         $this->assertSame('SYNCED', $invoice->fresh()->pms_sync_status);
 
         // A retry sees our payment on the invoice and writes nothing.
