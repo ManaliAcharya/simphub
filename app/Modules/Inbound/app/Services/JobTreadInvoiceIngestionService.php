@@ -94,6 +94,10 @@ class JobTreadInvoiceIngestionService
             return self::skipped('not_customer_invoice');
         }
 
+        if (! JobTreadDocument::passesTestFilter($document)) {
+            return self::skipped('outside_test_filter');
+        }
+
         $existing = Invoice::query()
             ->where('pms_source', self::SOURCE)
             ->where('pms_client_id', $pmsClientId)

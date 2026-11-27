@@ -138,7 +138,9 @@ return [
     'jobtread' => [
         'api_url'              => rtrim(env('JOBTREAD_API_URL', 'https://api.jobtread.com/pave'), '/'),
         'webhook_callback_url' => env('JOBTREAD_WEBHOOK_CALLBACK_URL', rtrim(env('APP_URL', 'http://localhost'), '/').'/api/v1/inbound/webhooks/jobtread'),
-        'webhook_events'       => array_values(array_filter(array_map('trim', explode(',', env('JOBTREAD_WEBHOOK_EVENTS', 'documentCreated,documentUpdated,documentSent'))))),
+        // Names verified against the live API on 2026-11-27. Payment events let a payment recorded
+        // in JobTread (check, card) close or reopen the SimpHub link right away instead of at the next poll.
+        'webhook_events'       => array_values(array_filter(array_map('trim', explode(',', env('JOBTREAD_WEBHOOK_EVENTS', 'documentCreated,documentUpdated,documentSent,documentDeleted,documentPaymentCreated,documentPaymentDeleted'))))),
         // Payment written back for a customer receipt: credit or debit (first-day test #3).
         'payment_type'         => env('JOBTREAD_PAYMENT_TYPE', 'credit'),
         // Optional createPayment "source" value; left out when blank (its allowed values are unverified).
@@ -149,6 +151,16 @@ return [
         'native_pdf'           => (bool) env('JOBTREAD_NATIVE_PDF', false),
         'pdf_base_url'         => rtrim(env('JOBTREAD_PDF_BASE_URL', 'https://api.jobtread.com/t'), '/'),
         'ops_alert_email'      => env('JOBTREAD_OPS_ALERT_EMAIL'),
+
+        // ── Safety switches while testing on a live JobTread account ──
+        // Off: connecting does not register a webhook; the 5-minute poll finds invoices instead.
+        'webhooks_enabled'     => (bool) env('JOBTREAD_WEBHOOKS_ENABLED', false),
+        // Off: a SimpHub payment is not written back to JobTread (nothing is created there).
+        'payment_writeback'    => (bool) env('JOBTREAD_PAYMENT_WRITEBACK', false),
+        // When either list is set, only invoices for these recipients / JobTread customer
+        // accounts are processed; every other invoice is ignored (not stored, not emailed).
+        'only_recipients'      => array_values(array_filter(array_map(fn ($v) => strtolower(trim($v)), explode(',', (string) env('JOBTREAD_ONLY_RECIPIENTS', ''))))),
+        'only_account_ids'     => array_values(array_filter(array_map('trim', explode(',', (string) env('JOBTREAD_ONLY_ACCOUNT_IDS', ''))))),
     ],
 
     'mindbody' => [

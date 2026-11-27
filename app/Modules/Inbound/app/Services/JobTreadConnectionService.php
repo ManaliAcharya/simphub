@@ -77,7 +77,11 @@ class JobTreadConnectionService
             $this->recordBaseline($connection);
         }
 
-        $this->registerWebhook($connection);
+        // Registering a webhook writes to the client's JobTread account; while it's switched
+        // off the 5-minute poll is the only way invoices are found.
+        if (config('services.jobtread.webhooks_enabled')) {
+            $this->registerWebhook($connection);
+        }
 
         AuditLogger::log('JOBTREAD_CONNECTED', 'client', $pmsClientId, [
             'organization_id'   => $organization['id'],

@@ -170,6 +170,7 @@ class InvoiceActivityLog
             'INVOICE_PAID_WITH_OUTSTANDING' => ['title' => 'Paid together with another invoice', 'tone' => 'success'],
             'PMS_PAYMENT_RECORDED'        => ['title' => "Payment recorded in {$pms}", 'detail' => $txnText, 'tone' => 'success'],
             'PMS_PAYMENT_RECORD_FAILED'   => ['title' => "Payment could not be recorded in {$pms}", 'detail' => 'The customer paid, but the payment still needs to be recorded in '.$pms.'.', 'tone' => 'danger'],
+            'PMS_PAYMENT_RECORD_SKIPPED'  => ['title' => "Payment not recorded in {$pms}", 'detail' => "Automatic recording in {$pms} is switched off, so it needs to be recorded there by hand.", 'tone' => 'warning'],
             'PMS_FEE_NOT_SPLIT'           => ['title' => "Processing fee not recorded as a separate line in {$pms}", 'tone' => 'warning'],
             'ZOHO_BOOKS_PAYMENT_RECORDED' => ['title' => 'Payment recorded in Zoho Books', 'tone' => 'success'],
             'ZOHO_BOOKS_SYNC_FAILED'      => ['title' => 'Payment could not be recorded in Zoho Books', 'tone' => 'danger'],

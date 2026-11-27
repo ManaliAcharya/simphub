@@ -21,7 +21,10 @@ class JobTreadApiException extends RuntimeException
 
         $message = strtolower($this->getMessage());
 
-        return str_contains($message, 'grant') && (str_contains($message, 'invalid') || str_contains($message, 'expired'));
+        // Verified 2026-11-27: a bad or revoked key comes back as HTTP 400,
+        // "Supplied key is invalid or expired" (plain text, not JSON).
+        return (str_contains($message, 'grant') || str_contains($message, 'key'))
+            && (str_contains($message, 'invalid') || str_contains($message, 'expired'));
     }
 
     /** The record doesn't exist (deleted), or the grant can't see it. */

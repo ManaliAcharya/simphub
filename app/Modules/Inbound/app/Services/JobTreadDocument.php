@@ -110,7 +110,7 @@ final class JobTreadDocument
                     continue;
                 }
 
-                $emails[] = $recipient['emailAddress'] ?? Arr::get($recipient, 'user.emailAddress');
+                $emails[] = Arr::get($recipient, 'user.emailAddress');
             }
         }
 
@@ -130,6 +130,27 @@ final class JobTreadDocument
         }
 
         return null;
+    }
+
+    /**
+     * Testing on a live account: when JOBTREAD_ONLY_RECIPIENTS or JOBTREAD_ONLY_ACCOUNT_IDS is
+     * set, only invoices for those recipients or customer accounts are processed. With neither
+     * set, every invoice passes.
+     */
+    public static function passesTestFilter(array $document): bool
+    {
+        $recipients = (array) config('services.jobtread.only_recipients', []);
+        $accounts   = (array) config('services.jobtread.only_account_ids', []);
+
+        if ($recipients === [] && $accounts === []) {
+            return true;
+        }
+
+        if ($accounts !== [] && in_array((string) Arr::get($document, 'job.location.account.id'), $accounts, true)) {
+            return true;
+        }
+
+        return $recipients !== [] && array_intersect(self::recipientEmails($document), $recipients) !== [];
     }
 
     /** The invoice number staff and the customer see. */

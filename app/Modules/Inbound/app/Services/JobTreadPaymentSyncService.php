@@ -41,6 +41,19 @@ class JobTreadPaymentSyncService
     {
         $amount = SyncInvoicePaidListener::invoicePortion($transaction, $invoice);
 
+        // Writing the payment creates records in the client's JobTread account. While it's
+        // switched off nothing is sent; the invoice stays PENDING_SYNC so it can be recorded later.
+        if (! config('services.jobtread.payment_writeback')) {
+            AuditLogger::log('PMS_PAYMENT_RECORD_SKIPPED', 'invoice', $invoice->id, [
+                'pms_source'     => 'jobtread',
+                'transaction_id' => $transaction->id,
+                'amount'         => $amount,
+                'reason'         => 'payment write-back is switched off (JOBTREAD_PAYMENT_WRITEBACK)',
+            ]);
+
+            return false;
+        }
+
         try {
             Cache::lock('jobtread:payment:'.$transaction->id, 120)
                 ->block(30, fn () => $this->record($transaction, $invoice, $amount));
@@ -196,7 +209,9 @@ class JobTreadPaymentSyncService
 
     public static function externalId(Transaction $transaction): string
     {
-        return (string) ($transaction->gateway_txn_id ?: $transaction->id);
+        // Prefixed: merchants put their own short references (check numbers) in externalId,
+        // so a bare gateway id could match one of theirs in the duplicate check.
+        return 'simphub-'.($transaction->gateway_txn_id ?: $transaction->id);
     }
 
     private function isAch(Transaction $transaction): bool

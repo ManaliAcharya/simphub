@@ -57,6 +57,11 @@ class JobTreadIntegrationTest extends TestCase
         config()->set('services.jobtread.min_request_interval_ms', 0);
         config()->set('services.jobtread.native_pdf', false);
         config()->set('services.jobtread.webhook_callback_url', 'https://simphub.test/api/v1/inbound/webhooks/jobtread');
+        // Full behaviour; the live-account safety switches have their own tests below.
+        config()->set('services.jobtread.webhooks_enabled', true);
+        config()->set('services.jobtread.payment_writeback', true);
+        config()->set('services.jobtread.only_recipients', []);
+        config()->set('services.jobtread.only_account_ids', []);
 
         $this->doc = [
             'id'             => 'doc-1',
@@ -237,12 +242,81 @@ class JobTreadIntegrationTest extends TestCase
         $this->assertSame([], JobTreadWebhookService::documentIds(['id' => 'evt-1', 'type' => 'documentUpdated']));
     }
 
+    public function test_connecting_with_webhooks_switched_off_only_reads(): void
+    {
+        config()->set('services.jobtread.webhooks_enabled', false);
+        Mail::fake();
+        Client::query()->forceCreate(['id' => (string) Str::uuid(), 'pms_client_id' => $id = (string) Str::uuid(), 'client_name' => 'HEP', 'client_pms' => 'JOBTREAD']);
+
+        app(\Modules\Inbound\Services\JobTreadConnectionService::class)->connect('grant-key', $id);
+
+        $this->assertNull($this->mutation('createWebhook'));
+        $this->assertSame([], array_values(array_diff(
+            array_map(fn ($q) => array_key_first($q), $this->queries),
+            ['currentGrant', 'organization', 'document'],
+        )), 'Only read queries are sent.');
+        $this->assertSame('org-1', JobTreadConnection::forClient($id)->organizationId());
+    }
+
+    public function test_with_write_back_switched_off_nothing_is_written_to_jobtread(): void
+    {
+        config()->set('services.jobtread.payment_writeback', false);
+        $client = $this->connectedClient();
+        [$transaction, $invoice] = $this->paidInvoice($client);
+        $statusBefore = $invoice->fresh()->pms_sync_status;
+
+        $this->assertFalse(app(JobTreadPaymentSyncService::class)->sync($transaction, $invoice));
+
+        $this->assertNull($this->mutation('createPayment'));
+        $this->assertNull($this->mutation('createDocumentPayment'));
+        $this->assertSame($statusBefore, $invoice->fresh()->pms_sync_status, 'Not marked as recorded in JobTread.');
+        $this->assertTrue(\Modules\Audit\Models\AuditLog::query()->where('event_type', 'PMS_PAYMENT_RECORD_SKIPPED')->exists());
+    }
+
+    public function test_the_test_filter_only_processes_matching_invoices(): void
+    {
+        $client = $this->connectedClient();
+
+        config()->set('services.jobtread.only_recipients', ['me@example.com']);
+        $this->assertSame('outside_test_filter', $this->ingest($client)['skipped'] ?? null);
+        $this->assertFalse(Invoice::query()->where('external_invoice_id', 'doc-1')->exists(), 'Other customers are not stored.');
+        Mail::assertNothingSent();
+
+        $this->doc['toEmailAddress'] = 'Me@Example.com';
+        $this->assertSame(1, $this->ingest($client)['emails_sent']);
+
+        // Or by JobTread customer account.
+        config()->set('services.jobtread.only_recipients', []);
+        config()->set('services.jobtread.only_account_ids', ['acct-me']);
+        $this->doc['job'] = ['id' => 'job-1', 'location' => ['id' => 'loc-1', 'account' => ['id' => 'acct-other']]];
+        $this->assertSame('outside_test_filter', $this->ingest($client)['skipped'] ?? null);
+        $this->doc['job']['location']['account']['id'] = 'acct-me';
+        $this->assertNotSame('outside_test_filter', $this->ingest($client)['skipped'] ?? null);
+    }
+
+    /** Responses below are what the live API returned on 2026-11-27. */
+    public function test_a_revoked_key_is_recognised_from_jobtreads_real_response(): void
+    {
+        $revoked = new \Modules\Inbound\Services\JobTreadApiException('JobTread API error 400: Supplied key is invalid or expired', 400);
+        $badField = new \Modules\Inbound\Services\JobTreadApiException('JobTread API error 400: The field "emailAddress" does not exist at "document"."documentRecipients"."nodes"', 400);
+
+        $this->assertTrue($revoked->isAuthFailure());
+        $this->assertFalse($badField->isAuthFailure(), 'A wrong field name must not look like a revoked key.');
+    }
+
+    public function test_the_payment_lookup_sends_a_single_where_condition(): void
+    {
+        $query = \Modules\Inbound\Services\JobTreadPave::paymentsByExternalId('org-1', 'simphub-gw-txn-1');
+
+        $this->assertSame([['externalId'], '=', 'simphub-gw-txn-1'], $query['organization']['payments']['$']['where']);
+    }
+
     public function test_recipients_skip_suppressed_users(): void
     {
         $document = [
             'documentRecipients' => ['nodes' => [
-                ['emailAddress' => null, 'user' => ['emailAddress' => 'Bounced@Example.com', 'hasSuppressedEmailAddress' => true]],
-                ['emailAddress' => null, 'user' => ['emailAddress' => 'Owner@Example.com', 'hasSuppressedEmailAddress' => false]],
+                ['user' => ['emailAddress' => 'Bounced@Example.com', 'hasSuppressedEmailAddress' => true]],
+                ['user' => ['emailAddress' => 'Owner@Example.com', 'hasSuppressedEmailAddress' => false]],
             ]],
         ];
 
@@ -260,7 +334,7 @@ class JobTreadIntegrationTest extends TestCase
         $createPayment = $this->mutation('createPayment');
         $this->assertSame('org-1', $createPayment['organizationId']);
         $this->assertEquals(250.0, $createPayment['amount']);
-        $this->assertSame('gw-txn-1', $createPayment['externalId']);
+        $this->assertSame('simphub-gw-txn-1', $createPayment['externalId']);
         $this->assertSame('credit', $createPayment['type']);
         $this->assertFalse($createPayment['notify']);
 
@@ -279,7 +353,7 @@ class JobTreadIntegrationTest extends TestCase
     {
         $client = $this->connectedClient();
         [$transaction, $invoice] = $this->paidInvoice($client);
-        $this->paymentsByExternalId = [['id' => 'pay-earlier', 'externalId' => 'gw-txn-1', 'amount' => 250]];
+        $this->paymentsByExternalId = [['id' => 'pay-earlier', 'externalId' => 'simphub-gw-txn-1', 'amount' => 250]];
 
         $this->assertTrue(app(JobTreadPaymentSyncService::class)->sync($transaction, $invoice));
 
@@ -430,6 +504,8 @@ class JobTreadIntegrationTest extends TestCase
 
         return match ($key) {
             'document' => Http::response(['document' => $this->doc]),
+            'currentGrant' => Http::response(['currentGrant' => ['id' => 'grant-1', 'user' => ['id' => 'u-1', 'name' => 'Owner',
+                'memberships' => ['nodes' => [['organization' => ['id' => 'org-1', 'name' => 'HEP']]]]]]]),
             'organization' => isset($query['organization']['payments'])
                 ? Http::response(['organization' => ['id' => 'org-1', 'payments' => ['nodes' => $this->paymentsByExternalId]]])
                 : Http::response(['organization' => ['id' => 'org-1', 'documents' => ['nodes' => $this->pendingList, 'nextPage' => null]]]),
@@ -445,7 +521,7 @@ class JobTreadIntegrationTest extends TestCase
         $this->doc['documentPayments']['nodes'][] = [
             'id'      => 'dp-1',
             'amount'  => $input['amount'],
-            'payment' => ['id' => $input['paymentId'], 'externalId' => 'gw-txn-1'],
+            'payment' => ['id' => $input['paymentId'], 'externalId' => 'simphub-gw-txn-1'],
         ];
 
         return Http::response(['createDocumentPayment' => ['createdDocumentPayment' => ['id' => 'dp-1']]]);

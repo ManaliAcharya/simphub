@@ -51,12 +51,12 @@ final class JobTreadPave
         'dates' => ['issueDate' => [], 'dueDate' => [], 'createdAt' => []],
         // VERIFY (first-day test #5): populated on an unsent invoice?
         'recipient' => ['toEmailAddress' => [], 'toName' => []],
-        // VERIFY: recipient list, delivery status (accidental Send) and suppression flag.
+        // Verified 2026-11-27: a recipient node has no emailAddress of its own; the address is on user.
+        // emailDeliveryStatus values seen: null, "delivered", "opened".
         'recipients' => [
             'documentRecipients' => [
                 'nodes' => [
                     'id'                  => [],
-                    'emailAddress'        => [],
                     'emailDeliveryStatus' => [],
                     'user'                => [
                         'id'                        => [],
@@ -166,7 +166,8 @@ final class JobTreadPave
                 'payments' => [
                     '$'     => [
                         'size'  => 5,
-                        'where' => [[['externalId'], '=', $externalId]],
+                        // Verified 2026-11-27: one condition goes in as-is; wrapping it in a list is rejected.
+                        'where' => [['externalId'], '=', $externalId],
                     ],
                     'nodes' => [
                         'id'               => [],
