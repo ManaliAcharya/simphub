@@ -182,6 +182,24 @@
         background: #f9fafb;
         text-align: left;
     }
+
+    /* Invoice list actions: one compact row — main action, History, and a "More" menu. */
+    /* The buttons wrap and long emails break, so the table always fits inside the card. */
+    .cc-table td.ia-cell { vertical-align: middle; }
+    .cc-table td.ia-email { overflow-wrap: anywhere; }
+    .ia-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .ia-actions form { margin: 0; }
+    .ia-btn { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; padding: 6px 12px; font-size: 13px; font-weight: 600; line-height: 1.2; border-radius: 999px; border: 1px solid #d6dce5; background: #fff; color: #132238; cursor: pointer; list-style: none; }
+    .ia-btn::-webkit-details-marker { display: none; }
+    .ia-btn:hover { border-color: #132238; }
+    .ia-btn:focus-visible, .ia-item:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
+    .ia-primary { background: #132238; border-color: #132238; color: #fff; }
+    .ia-primary:hover { background: #1f3354; }
+    .ia-more { position: relative; }
+    .ia-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 190px; padding: 4px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 10px 24px rgba(0,0,0,.12); }
+    .ia-menu form { margin: 0; }
+    .ia-item { display: block; width: 100%; padding: 8px 10px; font-size: 13px; font-weight: 500; text-align: left; color: #132238; background: none; border: 0; border-radius: 6px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+    .ia-item:hover { background: #f3f4f6; }
 </style>
 
 <x-inbound::layouts.master :title="($providerLabel ?? 'PMS') . ' Configuration'">
@@ -2866,7 +2884,7 @@
                                                 <span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:#ede9fe;color:#5b21b6;font-size:11px;font-weight:600;">Trust</span>
                                             @endif
                                         </td>
-                                        <td>{{ $invoice->recipient_email_list ?: '-' }}</td>
+                                        <td class="ia-email">{{ $invoice->recipient_email_list ?: '-' }}</td>
 
                                         <td>
                                             {{ !is_null($invoice->amount_cents) ? number_format($invoice->amount_cents / 100, 2) : '-' }}
@@ -2903,57 +2921,61 @@
                                                 @endif
                                             </td>
                                         @endforeach
-                                        <td>
-                                            @if ($invoice->payment_url || (!empty($invoice->recipient_emails) && $invoice->has_payment_link))
-                                                @php $linkFor = $invoice->invoice_number ? 'invoice #' . $invoice->invoice_number : 'this invoice'; @endphp
-                                                <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                                                    {{-- The customer's own link: open it to see exactly what the customer sees.
-                                                         Opening it sends nothing. --}}
-                                                    @if ($invoice->payment_url)
-                                                        <a href="{{ $invoice->staff_view_url ?? $invoice->payment_url }}" target="_blank" rel="noopener noreferrer"
-                                                            class="button secondary"
-                                                            aria-label="Open the payment link for {{ $linkFor }} (opens in a new tab)"
-                                                            title="Open the payment page the customer sees. Nothing is sent.">Open link</a>
-                                                        <button type="button" class="button secondary js-copy-payment-link"
-                                                            data-url="{{ $invoice->payment_url }}"
-                                                            aria-label="Copy the payment link for {{ $linkFor }}">Copy link</button>
-                                                    @endif
-
-                                                    @if (!empty($invoice->recipient_emails) && $invoice->has_payment_link)
-                                                    <form
-                                                        action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
-                                                        method="POST">
+                                        <td class="ia-cell">
+                                            @php
+                                                $linkFor = $invoice->invoice_number ? 'invoice #' . $invoice->invoice_number : 'this invoice';
+                                                $canSend = !empty($invoice->recipient_emails) && $invoice->has_payment_link;
+                                                $hasMore = $invoice->payment_url || $invoice->can_pause_reminders;
+                                            @endphp
+                                            {{-- One compact row: the main action, History, and the rest under "More". --}}
+                                            <div class="ia-actions">
+                                                @if ($canSend)
+                                                    <form action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}" method="POST">
                                                         @csrf
-
-                                                        <input type="hidden" name="provider"
-                                                            value="{{ $provider }}">
-
-                                                        <button type="submit" class="button primary">
+                                                        <input type="hidden" name="provider" value="{{ $provider }}">
+                                                        <button type="submit" class="ia-btn ia-primary"
+                                                            aria-label="{{ $invoice->has_been_sent ? 'Resend' : 'Send' }} {{ $linkFor }}">
                                                             {{ $invoice->has_been_sent ? 'Resend' : 'Send' }}
                                                         </button>
                                                     </form>
-                                                    @endif
+                                                @endif
 
-                                                    {{-- Pause stops this invoice's reminders (e.g. a check is in the mail);
-                                                         Resume sends one now and restarts the reminder schedule. --}}
-                                                    @if ($invoice->can_pause_reminders)
-                                                        @php $invoiceLabel = $invoice->invoice_number ? 'invoice #' . $invoice->invoice_number : 'this invoice'; @endphp
-                                                        <form
-                                                            action="{{ route('inbound.clients.invoice-reminders', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
-                                                            method="POST">
-                                                            @csrf
-                                                            <input type="hidden" name="action" value="{{ $invoice->reminders_paused ? 'resume' : 'pause' }}">
-                                                            <button type="submit" class="button secondary"
-                                                                aria-label="{{ $invoice->reminders_paused ? 'Resume reminders for ' : 'Pause reminders for ' }}{{ $invoiceLabel }}"
-                                                                title="{{ $invoice->reminders_paused ? 'Send a reminder now and restart the reminder schedule' : 'Stop reminders for this invoice' }}">
-                                                                {{ $invoice->reminders_paused ? 'Resume' : 'Pause' }}
-                                                            </button>
-                                                        </form>
-                                                    @endif
-                                                </div>
-                                            @else
-                                                -
-                                            @endif
+                                                {{-- Everything that has happened to this invoice so far, in plain words. --}}
+                                                <button type="button" class="ia-btn js-invoice-history"
+                                                    data-url="{{ route('inbound.clients.invoice-history', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
+                                                    aria-haspopup="dialog"
+                                                    aria-label="Show the history of {{ $linkFor }}">History</button>
+
+                                                @if ($hasMore)
+                                                    <details class="ia-more">
+                                                        <summary class="ia-btn" aria-label="More actions for {{ $linkFor }}">More <span aria-hidden="true">&#9662;</span></summary>
+                                                        <div class="ia-menu">
+                                                            {{-- The customer's own link: opening it sends nothing, and the visit is logged as staff. --}}
+                                                            @if ($invoice->payment_url)
+                                                                <a href="{{ $invoice->staff_view_url ?? $invoice->payment_url }}" target="_blank" rel="noopener noreferrer"
+                                                                    class="ia-item"
+                                                                    aria-label="Open the payment link for {{ $linkFor }} (opens in a new tab)">Open payment link</a>
+                                                                <button type="button" class="ia-item js-copy-payment-link"
+                                                                    data-url="{{ $invoice->payment_url }}"
+                                                                    aria-label="Copy the payment link for {{ $linkFor }}">Copy payment link</button>
+                                                            @endif
+
+                                                            {{-- Pause stops this invoice's reminders (e.g. a check is in the mail);
+                                                                 Resume sends one now and restarts the reminder schedule. --}}
+                                                            @if ($invoice->can_pause_reminders)
+                                                                <form action="{{ route('inbound.clients.invoice-reminders', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}" method="POST">
+                                                                    @csrf
+                                                                    <input type="hidden" name="action" value="{{ $invoice->reminders_paused ? 'resume' : 'pause' }}">
+                                                                    <button type="submit" class="ia-item"
+                                                                        aria-label="{{ $invoice->reminders_paused ? 'Resume reminders for ' : 'Pause reminders for ' }}{{ $linkFor }}">
+                                                                        {{ $invoice->reminders_paused ? 'Resume reminders' : 'Pause reminders' }}
+                                                                    </button>
+                                                                </form>
+                                                            @endif
+                                                        </div>
+                                                    </details>
+                                                @endif
+                                            </div>
                                         </td>
                                     </tr>
                                 @empty
@@ -2987,6 +3009,120 @@
                                     window.prompt('Copy the payment link:', btn.dataset.url);
                                 }
                             });
+                        </script>
+
+                        {{-- Invoice history: filled from the audit log when "History" is clicked. --}}
+                        <style>
+                            #invoice-history-dialog { width: min(640px, calc(100vw - 32px)); max-height: 80vh; padding: 0; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 20px 40px rgba(0,0,0,.18); color: #111827; background: #fff; }
+                            #invoice-history-dialog::backdrop { background: rgba(17,24,39,.45); }
+                            #invoice-history-dialog .ih-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #e5e7eb; position: sticky; top: 0; background: #fff; }
+                            #invoice-history-dialog h2 { margin: 0; font-size: 16px; font-weight: 600; }
+                            #invoice-history-dialog .ih-body { padding: 8px 18px 18px; overflow-y: auto; max-height: calc(80vh - 56px); }
+                            #invoice-history-dialog .ih-note { font-size: 12px; color: #4b5563; margin: 8px 0 4px; }
+                            #invoice-history-dialog ol { list-style: none; margin: 0; padding: 0; }
+                            #invoice-history-dialog li { display: grid; grid-template-columns: 12px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+                            #invoice-history-dialog li:last-child { border-bottom: 0; }
+                            #invoice-history-dialog .ih-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; background: #9ca3af; }
+                            #invoice-history-dialog .ih-dot.success { background: #16a34a; }
+                            #invoice-history-dialog .ih-dot.danger { background: #dc2626; }
+                            #invoice-history-dialog .ih-dot.warning { background: #d97706; }
+                            #invoice-history-dialog .ih-dot.info { background: #2563eb; }
+                            #invoice-history-dialog .ih-title { font-size: 14px; font-weight: 600; }
+                            #invoice-history-dialog .ih-detail { font-size: 13px; color: #374151; margin-top: 2px; overflow-wrap: anywhere; }
+                            #invoice-history-dialog .ih-meta { font-size: 12px; color: #4b5563; margin-top: 2px; }
+                        </style>
+                        <dialog id="invoice-history-dialog" aria-labelledby="invoice-history-title">
+                            <div class="ih-head">
+                                <h2 id="invoice-history-title">Invoice history</h2>
+                                <button type="button" class="button secondary js-invoice-history-close">Close</button>
+                            </div>
+                            <div class="ih-body">
+                                <p class="ih-note">Newest first. Times are shown in your local time.</p>
+                                <div id="invoice-history-content" role="status" aria-live="polite"></div>
+                            </div>
+                        </dialog>
+                        <script>
+                            (function () {
+                                var dialog = document.getElementById('invoice-history-dialog');
+                                var content = document.getElementById('invoice-history-content');
+                                var title = document.getElementById('invoice-history-title');
+                                var opener = null;
+                                if (!dialog) { return; }
+
+                                var when = function (iso) {
+                                    var d = new Date(iso);
+                                    return isNaN(d) ? '' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+                                };
+                                var el = function (tag, cls, text) {
+                                    var n = document.createElement(tag);
+                                    if (cls) { n.className = cls; }
+                                    if (text) { n.textContent = text; }
+                                    return n;
+                                };
+                                var message = function (text) {
+                                    content.replaceChildren(el('p', 'ih-note', text));
+                                };
+
+                                var render = function (data) {
+                                    title.textContent = 'History of invoice ' + data.invoice;
+                                    if (!data.entries.length) { message('Nothing has been recorded for this invoice yet.'); return; }
+
+                                    var list = el('ol');
+                                    data.entries.forEach(function (entry) {
+                                        var item = el('li');
+                                        var dot = el('span', 'ih-dot ' + entry.tone);
+                                        dot.setAttribute('aria-hidden', 'true');
+                                        var body = el('div');
+                                        body.appendChild(el('div', 'ih-title', entry.title));
+                                        if (entry.detail) { body.appendChild(el('div', 'ih-detail', entry.detail)); }
+                                        var meta = entry.last_at ? when(entry.at) + ' to ' + when(entry.last_at) : when(entry.at);
+                                        if (entry.who) { meta += ' · ' + entry.who; }
+                                        body.appendChild(el('div', 'ih-meta', meta));
+                                        item.appendChild(dot);
+                                        item.appendChild(body);
+                                        list.appendChild(item);
+                                    });
+                                    content.replaceChildren(list);
+                                };
+
+                                document.addEventListener('click', function (e) {
+                                    if (e.target.closest('.js-invoice-history-close')) { dialog.close(); return; }
+
+                                    var btn = e.target.closest('.js-invoice-history');
+                                    if (!btn) { return; }
+
+                                    opener = btn;
+                                    title.textContent = 'Invoice history';
+                                    message('Loading…');
+                                    dialog.showModal();
+
+                                    fetch(btn.dataset.url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+                                        .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.json(); })
+                                        .then(render)
+                                        .catch(function () { message('Could not load the history. Please try again.'); });
+                                });
+
+                                // "More" menus: one open at a time; outside click or Esc closes them.
+                                var closeMenus = function (except) {
+                                    document.querySelectorAll('details.ia-more[open]').forEach(function (d) { if (d !== except) { d.open = false; } });
+                                };
+                                document.addEventListener('toggle', function (e) {
+                                    if (e.target.matches && e.target.matches('details.ia-more') && e.target.open) { closeMenus(e.target); }
+                                }, true);
+                                document.addEventListener('click', function (e) {
+                                    if (!e.target.closest('details.ia-more')) { closeMenus(null); }
+                                    if (e.target.closest('.ia-menu a, .js-invoice-history')) { closeMenus(null); }
+                                });
+                                document.addEventListener('keydown', function (e) {
+                                    if (e.key !== 'Escape') { return; }
+                                    var open = document.querySelector('details.ia-more[open]');
+                                    if (open) { open.open = false; open.querySelector('summary').focus(); }
+                                });
+
+                                // Clicking the dimmed background closes it too.
+                                dialog.addEventListener('click', function (e) { if (e.target === dialog) { dialog.close(); } });
+                                dialog.addEventListener('close', function () { if (opener) { opener.focus(); } });
+                            })();
                         </script>
                     @else
                         <div class="alert alert-info">
