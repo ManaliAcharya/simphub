@@ -258,6 +258,31 @@ class JobTreadIntegrationTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_with_a_recipient_filter_only_the_allowed_address_is_ever_emailed(): void
+    {
+        config()->set('services.jobtread.only_recipients', ['manali@impacttechlab.com']);
+        $client = $this->connectedClient();
+
+        // A real customer is the "to" address; the test address is only among the recipients.
+        $this->doc['toEmailAddress'] = 'real.customer@example.com';
+        $this->doc['documentRecipients'] = ['nodes' => [
+            ['user' => ['emailAddress' => 'Manali@ImpactTechlab.com', 'hasSuppressedEmailAddress' => false]],
+            ['user' => ['emailAddress' => 'another.customer@example.com', 'hasSuppressedEmailAddress' => false]],
+        ]];
+
+        $result = $this->ingest($client);
+
+        $this->assertSame(1, $result['emails_sent']);
+        $this->assertSame(['manali@impacttechlab.com'], $result['invoice']->recipient_emails);
+        Mail::assertSent(PaymentLinkMail::class, fn ($mail) => $mail->hasTo('manali@impacttechlab.com'));
+        Mail::assertNotSent(PaymentLinkMail::class, fn ($mail) => $mail->hasTo('real.customer@example.com') || $mail->hasTo('another.customer@example.com'));
+
+        // An invoice without the test address is ignored entirely.
+        $this->doc['documentRecipients'] = ['nodes' => []];
+        $this->doc['id'] = 'doc-2';
+        $this->assertSame('outside_test_filter', app(JobTreadInvoiceIngestionService::class)->ingest('doc-2', ['pms_client_id' => $client->pms_client_id])['skipped']);
+    }
+
     public function test_connecting_with_webhooks_switched_off_only_reads(): void
     {
         config()->set('services.jobtread.webhooks_enabled', false);

@@ -98,6 +98,14 @@ final class JobTreadDocument
      */
     public static function recipientEmails(array $document): array
     {
+        // Testing on a live account: only the allowed addresses are ever emailed, even when
+        // the invoice also lists real customers.
+        $allowed = (array) config('services.jobtread.only_recipients', []);
+
+        if ($allowed !== []) {
+            return array_values(array_intersect(self::everyEmail($document), $allowed));
+        }
+
         $emails = [];
 
         if (is_string($document['toEmailAddress'] ?? null)) {
@@ -115,6 +123,24 @@ final class JobTreadDocument
         }
 
         return self::validEmails($emails);
+    }
+
+    /**
+     * Every address on the invoice: its "to" address and all recipients, suppressed or not.
+     *
+     * @return list<string>
+     */
+    private static function everyEmail(array $document): array
+    {
+        $emails = [$document['toEmailAddress'] ?? null];
+
+        foreach ((array) Arr::get($document, 'documentRecipients.nodes', []) as $recipient) {
+            if (is_array($recipient) && Arr::get($recipient, 'user.hasSuppressedEmailAddress') !== true) {
+                $emails[] = Arr::get($recipient, 'user.emailAddress');
+            }
+        }
+
+        return self::validEmails(array_filter($emails, 'is_string'));
     }
 
     public static function customerName(array $document): ?string
