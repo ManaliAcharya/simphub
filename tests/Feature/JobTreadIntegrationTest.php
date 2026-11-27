@@ -242,6 +242,22 @@ class JobTreadIntegrationTest extends TestCase
         $this->assertSame([], JobTreadWebhookService::documentIds(['id' => 'evt-1', 'type' => 'documentUpdated']));
     }
 
+    public function test_the_sync_command_processes_and_explains_one_invoice(): void
+    {
+        $client = $this->connectedClient();
+
+        $this->artisan('jobtread:sync', ['pms_client_id' => $client->pms_client_id, '--document' => 'doc-1'])
+            ->expectsOutputToContain('processed')
+            ->assertSuccessful();
+
+        Mail::assertSent(PaymentLinkMail::class, 1);
+
+        config()->set('services.jobtread.only_account_ids', ['acct-me']);
+        $this->artisan('jobtread:sync', ['pms_client_id' => $client->pms_client_id, '--document' => 'doc-1'])
+            ->expectsOutputToContain('outside_test_filter')
+            ->assertSuccessful();
+    }
+
     public function test_connecting_with_webhooks_switched_off_only_reads(): void
     {
         config()->set('services.jobtread.webhooks_enabled', false);
