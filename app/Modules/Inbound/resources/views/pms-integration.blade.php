@@ -184,10 +184,12 @@
     }
 
     /* Invoice list actions: one compact row — main action, History, and a "More" menu. */
-    .cc-table td.ia-cell { white-space: nowrap; vertical-align: middle; }
-    .ia-actions { display: flex; align-items: center; gap: 6px; }
+    /* The buttons wrap and long emails break, so the table always fits inside the card. */
+    .cc-table td.ia-cell { vertical-align: middle; }
+    .cc-table td.ia-email { overflow-wrap: anywhere; }
+    .ia-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
     .ia-actions form { margin: 0; }
-    .ia-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 13px; font-weight: 600; line-height: 1.2; border-radius: 999px; border: 1px solid #d6dce5; background: #fff; color: #132238; cursor: pointer; list-style: none; }
+    .ia-btn { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; padding: 6px 12px; font-size: 13px; font-weight: 600; line-height: 1.2; border-radius: 999px; border: 1px solid #d6dce5; background: #fff; color: #132238; cursor: pointer; list-style: none; }
     .ia-btn::-webkit-details-marker { display: none; }
     .ia-btn:hover { border-color: #132238; }
     .ia-btn:focus-visible, .ia-item:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
@@ -2882,7 +2884,7 @@
                                                 <span style="display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;background:#ede9fe;color:#5b21b6;font-size:11px;font-weight:600;">Trust</span>
                                             @endif
                                         </td>
-                                        <td>{{ $invoice->recipient_email_list ?: '-' }}</td>
+                                        <td class="ia-email">{{ $invoice->recipient_email_list ?: '-' }}</td>
 
                                         <td>
                                             {{ !is_null($invoice->amount_cents) ? number_format($invoice->amount_cents / 100, 2) : '-' }}
