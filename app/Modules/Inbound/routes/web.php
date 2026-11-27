@@ -6,6 +6,7 @@ use Modules\Boarding\Http\Controllers\Portal\ClientPortalController as BoardingC
 use Modules\Inbound\Http\Controllers\AdvancedMdIntegrationController;
 use Modules\Inbound\Http\Controllers\ClientConfigController;
 use Modules\Inbound\Http\Controllers\ClioAuthController;
+use Modules\Inbound\Http\Controllers\InvoiceHistoryController;
 use Modules\Inbound\Http\Controllers\MindbodyController;
 use Modules\Inbound\Http\Controllers\PmsAuthController;
 use Modules\Inbound\Http\Controllers\PmsFeatureSettingsController;
@@ -79,6 +80,7 @@ Route::middleware('web')->group(function (): void {
                 ->name('redirect-action');
             Route::post('/{pms_client_id}/invoices/{invoice}/resend', [ClientConfigController::class, 'resendInvoice'])->name('resend-invoice');
             Route::post('/{pms_client_id}/invoices/{invoice}/reminders', [ClientConfigController::class, 'updateInvoiceReminders'])->name('invoice-reminders');
+            Route::get('/{pms_client_id}/invoices/{invoice}/history', [InvoiceHistoryController::class, 'show'])->name('invoice-history');
 
         });
     });

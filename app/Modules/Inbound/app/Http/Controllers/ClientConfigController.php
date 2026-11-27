@@ -1314,12 +1314,14 @@ class ClientConfigController extends Controller
                 );
 
             if ($emailsSent > 0) {
+                // Sent by someone pressing Send/Resend on the invoice list, so the
+                // invoice history can say who did it.
                 AuditLogger::log($isFirstSend ? 'PAYMENT_LINK_SENT' : 'PAYMENT_LINK_RESENT', 'payment_session', $paymentSession->id, [
                     'invoice_id'       => $invoice->id,
                     'pms_client_id'    => $pms_client_id,
                     'emails_sent'      => $emailsSent,
                     'recipient_emails' => $invoice->recipient_emails,
-                ]);
+                ], request()->attributes->get('is_impersonating') ? 'admin' : 'merchant');
 
                 // A held Clio Trust Request (or "Ready to Send?" bill) is first sent from here.
                 if ($isFirstSend) {

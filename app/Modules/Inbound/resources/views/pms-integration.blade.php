@@ -2904,9 +2904,14 @@
                                             </td>
                                         @endforeach
                                         <td>
-                                            @if ($invoice->payment_url || (!empty($invoice->recipient_emails) && $invoice->has_payment_link))
                                                 @php $linkFor = $invoice->invoice_number ? 'invoice #' . $invoice->invoice_number : 'this invoice'; @endphp
                                                 <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                                                    {{-- Everything that has happened to this invoice so far, in plain words. --}}
+                                                    <button type="button" class="button secondary js-invoice-history"
+                                                        data-url="{{ route('inbound.clients.invoice-history', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
+                                                        aria-haspopup="dialog"
+                                                        aria-label="Show the history of {{ $linkFor }}">History</button>
+
                                                     {{-- The customer's own link: open it to see exactly what the customer sees.
                                                          Opening it sends nothing. --}}
                                                     @if ($invoice->payment_url)
@@ -2951,9 +2956,6 @@
                                                         </form>
                                                     @endif
                                                 </div>
-                                            @else
-                                                -
-                                            @endif
                                         </td>
                                     </tr>
                                 @empty
@@ -2987,6 +2989,103 @@
                                     window.prompt('Copy the payment link:', btn.dataset.url);
                                 }
                             });
+                        </script>
+
+                        {{-- Invoice history: filled from the audit log when "History" is clicked. --}}
+                        <style>
+                            #invoice-history-dialog { width: min(640px, calc(100vw - 32px)); max-height: 80vh; padding: 0; border: 1px solid #e5e7eb; border-radius: 10px; box-shadow: 0 20px 40px rgba(0,0,0,.18); color: #111827; background: #fff; }
+                            #invoice-history-dialog::backdrop { background: rgba(17,24,39,.45); }
+                            #invoice-history-dialog .ih-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid #e5e7eb; position: sticky; top: 0; background: #fff; }
+                            #invoice-history-dialog h2 { margin: 0; font-size: 16px; font-weight: 600; }
+                            #invoice-history-dialog .ih-body { padding: 8px 18px 18px; overflow-y: auto; max-height: calc(80vh - 56px); }
+                            #invoice-history-dialog .ih-note { font-size: 12px; color: #4b5563; margin: 8px 0 4px; }
+                            #invoice-history-dialog ol { list-style: none; margin: 0; padding: 0; }
+                            #invoice-history-dialog li { display: grid; grid-template-columns: 12px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+                            #invoice-history-dialog li:last-child { border-bottom: 0; }
+                            #invoice-history-dialog .ih-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; background: #9ca3af; }
+                            #invoice-history-dialog .ih-dot.success { background: #16a34a; }
+                            #invoice-history-dialog .ih-dot.danger { background: #dc2626; }
+                            #invoice-history-dialog .ih-dot.warning { background: #d97706; }
+                            #invoice-history-dialog .ih-dot.info { background: #2563eb; }
+                            #invoice-history-dialog .ih-title { font-size: 14px; font-weight: 600; }
+                            #invoice-history-dialog .ih-detail { font-size: 13px; color: #374151; margin-top: 2px; overflow-wrap: anywhere; }
+                            #invoice-history-dialog .ih-meta { font-size: 12px; color: #4b5563; margin-top: 2px; }
+                        </style>
+                        <dialog id="invoice-history-dialog" aria-labelledby="invoice-history-title">
+                            <div class="ih-head">
+                                <h2 id="invoice-history-title">Invoice history</h2>
+                                <button type="button" class="button secondary js-invoice-history-close">Close</button>
+                            </div>
+                            <div class="ih-body">
+                                <p class="ih-note">Newest first. Times are shown in your local time.</p>
+                                <div id="invoice-history-content" role="status" aria-live="polite"></div>
+                            </div>
+                        </dialog>
+                        <script>
+                            (function () {
+                                var dialog = document.getElementById('invoice-history-dialog');
+                                var content = document.getElementById('invoice-history-content');
+                                var title = document.getElementById('invoice-history-title');
+                                var opener = null;
+                                if (!dialog) { return; }
+
+                                var when = function (iso) {
+                                    var d = new Date(iso);
+                                    return isNaN(d) ? '' : d.toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+                                };
+                                var el = function (tag, cls, text) {
+                                    var n = document.createElement(tag);
+                                    if (cls) { n.className = cls; }
+                                    if (text) { n.textContent = text; }
+                                    return n;
+                                };
+                                var message = function (text) {
+                                    content.replaceChildren(el('p', 'ih-note', text));
+                                };
+
+                                var render = function (data) {
+                                    title.textContent = 'History of invoice ' + data.invoice;
+                                    if (!data.entries.length) { message('Nothing has been recorded for this invoice yet.'); return; }
+
+                                    var list = el('ol');
+                                    data.entries.forEach(function (entry) {
+                                        var item = el('li');
+                                        var dot = el('span', 'ih-dot ' + entry.tone);
+                                        dot.setAttribute('aria-hidden', 'true');
+                                        var body = el('div');
+                                        body.appendChild(el('div', 'ih-title', entry.title));
+                                        if (entry.detail) { body.appendChild(el('div', 'ih-detail', entry.detail)); }
+                                        var meta = entry.last_at ? when(entry.at) + ' to ' + when(entry.last_at) : when(entry.at);
+                                        if (entry.who) { meta += ' · ' + entry.who; }
+                                        body.appendChild(el('div', 'ih-meta', meta));
+                                        item.appendChild(dot);
+                                        item.appendChild(body);
+                                        list.appendChild(item);
+                                    });
+                                    content.replaceChildren(list);
+                                };
+
+                                document.addEventListener('click', function (e) {
+                                    if (e.target.closest('.js-invoice-history-close')) { dialog.close(); return; }
+
+                                    var btn = e.target.closest('.js-invoice-history');
+                                    if (!btn) { return; }
+
+                                    opener = btn;
+                                    title.textContent = 'Invoice history';
+                                    message('Loading…');
+                                    dialog.showModal();
+
+                                    fetch(btn.dataset.url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+                                        .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.json(); })
+                                        .then(render)
+                                        .catch(function () { message('Could not load the history. Please try again.'); });
+                                });
+
+                                // Clicking the dimmed background closes it too.
+                                dialog.addEventListener('click', function (e) { if (e.target === dialog) { dialog.close(); } });
+                                dialog.addEventListener('close', function () { if (opener) { opener.focus(); } });
+                            })();
                         </script>
                     @else
                         <div class="alert alert-info">
