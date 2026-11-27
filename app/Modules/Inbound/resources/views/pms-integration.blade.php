@@ -182,6 +182,22 @@
         background: #f9fafb;
         text-align: left;
     }
+
+    /* Invoice list actions: one compact row — main action, History, and a "More" menu. */
+    .cc-table td.ia-cell { white-space: nowrap; vertical-align: middle; }
+    .ia-actions { display: flex; align-items: center; gap: 6px; }
+    .ia-actions form { margin: 0; }
+    .ia-btn { display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; font-size: 13px; font-weight: 600; line-height: 1.2; border-radius: 999px; border: 1px solid #d6dce5; background: #fff; color: #132238; cursor: pointer; list-style: none; }
+    .ia-btn::-webkit-details-marker { display: none; }
+    .ia-btn:hover { border-color: #132238; }
+    .ia-btn:focus-visible, .ia-item:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }
+    .ia-primary { background: #132238; border-color: #132238; color: #fff; }
+    .ia-primary:hover { background: #1f3354; }
+    .ia-more { position: relative; }
+    .ia-menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 190px; padding: 4px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 10px 24px rgba(0,0,0,.12); }
+    .ia-menu form { margin: 0; }
+    .ia-item { display: block; width: 100%; padding: 8px 10px; font-size: 13px; font-weight: 500; text-align: left; color: #132238; background: none; border: 0; border-radius: 6px; cursor: pointer; text-decoration: none; white-space: nowrap; }
+    .ia-item:hover { background: #f3f4f6; }
 </style>
 
 <x-inbound::layouts.master :title="($providerLabel ?? 'PMS') . ' Configuration'">
@@ -2903,59 +2919,61 @@
                                                 @endif
                                             </td>
                                         @endforeach
-                                        <td>
-                                                @php $linkFor = $invoice->invoice_number ? 'invoice #' . $invoice->invoice_number : 'this invoice'; @endphp
-                                                <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                                                    {{-- Everything that has happened to this invoice so far, in plain words. --}}
-                                                    <button type="button" class="button secondary js-invoice-history"
-                                                        data-url="{{ route('inbound.clients.invoice-history', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
-                                                        aria-haspopup="dialog"
-                                                        aria-label="Show the history of {{ $linkFor }}">History</button>
-
-                                                    {{-- The customer's own link: open it to see exactly what the customer sees.
-                                                         Opening it sends nothing. --}}
-                                                    @if ($invoice->payment_url)
-                                                        <a href="{{ $invoice->staff_view_url ?? $invoice->payment_url }}" target="_blank" rel="noopener noreferrer"
-                                                            class="button secondary"
-                                                            aria-label="Open the payment link for {{ $linkFor }} (opens in a new tab)"
-                                                            title="Open the payment page the customer sees. Nothing is sent.">Open link</a>
-                                                        <button type="button" class="button secondary js-copy-payment-link"
-                                                            data-url="{{ $invoice->payment_url }}"
-                                                            aria-label="Copy the payment link for {{ $linkFor }}">Copy link</button>
-                                                    @endif
-
-                                                    @if (!empty($invoice->recipient_emails) && $invoice->has_payment_link)
-                                                    <form
-                                                        action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
-                                                        method="POST">
+                                        <td class="ia-cell">
+                                            @php
+                                                $linkFor = $invoice->invoice_number ? 'invoice #' . $invoice->invoice_number : 'this invoice';
+                                                $canSend = !empty($invoice->recipient_emails) && $invoice->has_payment_link;
+                                                $hasMore = $invoice->payment_url || $invoice->can_pause_reminders;
+                                            @endphp
+                                            {{-- One compact row: the main action, History, and the rest under "More". --}}
+                                            <div class="ia-actions">
+                                                @if ($canSend)
+                                                    <form action="{{ route('inbound.clients.resend-invoice', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}" method="POST">
                                                         @csrf
-
-                                                        <input type="hidden" name="provider"
-                                                            value="{{ $provider }}">
-
-                                                        <button type="submit" class="button primary">
+                                                        <input type="hidden" name="provider" value="{{ $provider }}">
+                                                        <button type="submit" class="ia-btn ia-primary"
+                                                            aria-label="{{ $invoice->has_been_sent ? 'Resend' : 'Send' }} {{ $linkFor }}">
                                                             {{ $invoice->has_been_sent ? 'Resend' : 'Send' }}
                                                         </button>
                                                     </form>
-                                                    @endif
+                                                @endif
 
-                                                    {{-- Pause stops this invoice's reminders (e.g. a check is in the mail);
-                                                         Resume sends one now and restarts the reminder schedule. --}}
-                                                    @if ($invoice->can_pause_reminders)
-                                                        @php $invoiceLabel = $invoice->invoice_number ? 'invoice #' . $invoice->invoice_number : 'this invoice'; @endphp
-                                                        <form
-                                                            action="{{ route('inbound.clients.invoice-reminders', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
-                                                            method="POST">
-                                                            @csrf
-                                                            <input type="hidden" name="action" value="{{ $invoice->reminders_paused ? 'resume' : 'pause' }}">
-                                                            <button type="submit" class="button secondary"
-                                                                aria-label="{{ $invoice->reminders_paused ? 'Resume reminders for ' : 'Pause reminders for ' }}{{ $invoiceLabel }}"
-                                                                title="{{ $invoice->reminders_paused ? 'Send a reminder now and restart the reminder schedule' : 'Stop reminders for this invoice' }}">
-                                                                {{ $invoice->reminders_paused ? 'Resume' : 'Pause' }}
-                                                            </button>
-                                                        </form>
-                                                    @endif
-                                                </div>
+                                                {{-- Everything that has happened to this invoice so far, in plain words. --}}
+                                                <button type="button" class="ia-btn js-invoice-history"
+                                                    data-url="{{ route('inbound.clients.invoice-history', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}"
+                                                    aria-haspopup="dialog"
+                                                    aria-label="Show the history of {{ $linkFor }}">History</button>
+
+                                                @if ($hasMore)
+                                                    <details class="ia-more">
+                                                        <summary class="ia-btn" aria-label="More actions for {{ $linkFor }}">More <span aria-hidden="true">&#9662;</span></summary>
+                                                        <div class="ia-menu">
+                                                            {{-- The customer's own link: opening it sends nothing, and the visit is logged as staff. --}}
+                                                            @if ($invoice->payment_url)
+                                                                <a href="{{ $invoice->staff_view_url ?? $invoice->payment_url }}" target="_blank" rel="noopener noreferrer"
+                                                                    class="ia-item"
+                                                                    aria-label="Open the payment link for {{ $linkFor }} (opens in a new tab)">Open payment link</a>
+                                                                <button type="button" class="ia-item js-copy-payment-link"
+                                                                    data-url="{{ $invoice->payment_url }}"
+                                                                    aria-label="Copy the payment link for {{ $linkFor }}">Copy payment link</button>
+                                                            @endif
+
+                                                            {{-- Pause stops this invoice's reminders (e.g. a check is in the mail);
+                                                                 Resume sends one now and restarts the reminder schedule. --}}
+                                                            @if ($invoice->can_pause_reminders)
+                                                                <form action="{{ route('inbound.clients.invoice-reminders', ['pms_client_id' => $client->pms_client_id, 'invoice' => $invoice->id]) }}" method="POST">
+                                                                    @csrf
+                                                                    <input type="hidden" name="action" value="{{ $invoice->reminders_paused ? 'resume' : 'pause' }}">
+                                                                    <button type="submit" class="ia-item"
+                                                                        aria-label="{{ $invoice->reminders_paused ? 'Resume reminders for ' : 'Pause reminders for ' }}{{ $linkFor }}">
+                                                                        {{ $invoice->reminders_paused ? 'Resume reminders' : 'Pause reminders' }}
+                                                                    </button>
+                                                                </form>
+                                                            @endif
+                                                        </div>
+                                                    </details>
+                                                @endif
+                                            </div>
                                         </td>
                                     </tr>
                                 @empty
@@ -3080,6 +3098,23 @@
                                         .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.json(); })
                                         .then(render)
                                         .catch(function () { message('Could not load the history. Please try again.'); });
+                                });
+
+                                // "More" menus: one open at a time; outside click or Esc closes them.
+                                var closeMenus = function (except) {
+                                    document.querySelectorAll('details.ia-more[open]').forEach(function (d) { if (d !== except) { d.open = false; } });
+                                };
+                                document.addEventListener('toggle', function (e) {
+                                    if (e.target.matches && e.target.matches('details.ia-more') && e.target.open) { closeMenus(e.target); }
+                                }, true);
+                                document.addEventListener('click', function (e) {
+                                    if (!e.target.closest('details.ia-more')) { closeMenus(null); }
+                                    if (e.target.closest('.ia-menu a, .js-invoice-history')) { closeMenus(null); }
+                                });
+                                document.addEventListener('keydown', function (e) {
+                                    if (e.key !== 'Escape') { return; }
+                                    var open = document.querySelector('details.ia-more[open]');
+                                    if (open) { open.open = false; open.querySelector('summary').focus(); }
                                 });
 
                                 // Clicking the dimmed background closes it too.
