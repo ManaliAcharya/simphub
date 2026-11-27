@@ -5,6 +5,7 @@ namespace Modules\Inbound\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Inbound\Services\ClioWebhookService;
+use Modules\Inbound\Services\JobTreadWebhookService;
 use Modules\Inbound\Services\LawcusWebhookService;
 use Modules\Inbound\Services\QuickBooksWebhookService;
 use Modules\Inbound\Services\WaveWebhookService;
@@ -21,6 +22,7 @@ class WebhookController extends Controller
         QuickBooksWebhookService $quickbooks,
         LawcusWebhookService $lawcus,
         WaveWebhookService $wave,
+        JobTreadWebhookService $jobtread,
     ): Response {
         return match ($source) {
             'clio'       => $clio->handleIncoming($request),
@@ -28,6 +30,7 @@ class WebhookController extends Controller
             'quickbooks' => $quickbooks->handleIncoming($request),
             'lawcus'     => $lawcus->handleIncoming($request),
             'wave'       => $wave->handleIncoming($request),
+            'jobtread'   => $jobtread->handleIncoming($request),
             default      => response()->json(['accepted' => true, 'source' => $source], 202),
         };
     }

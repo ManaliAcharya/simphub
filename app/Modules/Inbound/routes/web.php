@@ -25,7 +25,7 @@ Route::middleware('web')->group(function (): void {
 
     // ── Public / admin routes (no merchant login required) ────────────────
     Route::get('/setup/{provider}/{token}', [PmsIntegrationController::class, 'showByToken'])
-        ->whereIn('provider', ['clio', 'zoho', 'zohocrm', 'lawcus', 'wave', 'quickbooks', 'mindbody'])
+        ->whereIn('provider', ['clio', 'zoho', 'zohocrm', 'lawcus', 'wave', 'quickbooks', 'mindbody', 'jobtread'])
         ->middleware(['merchant.auth', 'no-cache'])
         ->name('inbound.setup.share');
 
@@ -151,10 +151,19 @@ Route::middleware('web')->group(function (): void {
 
         Route::post('/inbound/wave/surcharge-account', [PmsIntegrationController::class, 'saveWaveSurchargeAccount'])
             ->name('inbound.wave.surcharge-account');
+
+        Route::post('/inbound/jobtread/connect-key', [PmsAuthController::class, 'connectJobTreadKey'])
+            ->name('inbound.jobtread.connect-key');
+
+        Route::post('/inbound/jobtread/disconnect', [PmsAuthController::class, 'disconnectJobTread'])
+            ->name('inbound.jobtread.disconnect');
+
+        Route::post('/inbound/jobtread/auto-resend-toggle', [PmsIntegrationController::class, 'saveAutoResendToggle'])
+            ->name('inbound.jobtread.auto-resend-toggle');
     });
 
     // OAuth callbacks — initiated by external provider, no session cookie present
-    foreach (['clio', 'zoho', 'zohocrm', 'lawcus', 'wave'] as $provider) {
+    foreach (['clio', 'zoho', 'zohocrm', 'lawcus', 'wave', 'jobtread'] as $provider) {
 
         Route::prefix("inbound/{$provider}")
             ->name("inbound.{$provider}.")

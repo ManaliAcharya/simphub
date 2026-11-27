@@ -7,7 +7,10 @@ use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Route;
 use Modules\Inbound\Models\Client;
+use Modules\Inbound\Models\JobTreadConnection;
+use Modules\Inbound\Services\Connectors\JobTreadConnector;
 use Modules\Inbound\Services\Connectors\LawcusConnector;
+use Modules\Inbound\Services\JobTreadConnectionService;
 use Modules\Inbound\Services\PmsConnectorRegistry;
 use Modules\Inbound\Services\PmsOAuthStateService;
 use Throwable;
@@ -171,6 +174,59 @@ class PmsAuthController extends Controller
                 'pms_client_id' => $validated['pms_client_id'],
             ]);
         }
+    }
+
+    /**
+     * JobTread has no OAuth: the merchant creates a grant key in JobTread (Settings >
+     * Integrations > API > Grants) and it's pasted here, with the organization ID when the
+     * key covers more than one organization.
+     */
+    public function connectJobTreadKey(Request $request, JobTreadConnector $connector): RedirectResponse
+    {
+        $validated = $request->validate([
+            'pms_client_id'   => ['required', 'string'],
+            'grant_key'       => ['required', 'string', 'max:500'],
+            'organization_id' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $client = Client::query()->where('pms_client_id', $validated['pms_client_id'])->firstOrFail();
+
+        if (! $this->clientUsesProvider($client, 'jobtread')) {
+            return $this->redirectToClientPage($client, 'This client is set up for a different PMS. Connect it from its own configuration page.');
+        }
+
+        try {
+            $result = $connector->connectWithGrantKey(
+                $validated['grant_key'],
+                $client->pms_client_id,
+                $validated['organization_id'] ?? null,
+            );
+
+            return redirect()->route('inbound.jobtread.page', [
+                'success'       => $result->successMessage,
+                'pms_client_id' => $client->pms_client_id,
+            ]);
+        } catch (Throwable $exception) {
+            return redirect()->route('inbound.jobtread.page', [
+                'error'         => $exception->getMessage(),
+                'pms_client_id' => $client->pms_client_id,
+            ]);
+        }
+    }
+
+    public function disconnectJobTread(Request $request, JobTreadConnectionService $connections): RedirectResponse
+    {
+        $pmsClientId = $request->validate(['pms_client_id' => ['required', 'string']])['pms_client_id'];
+        $connection  = JobTreadConnection::forClient($pmsClientId);
+
+        if ($connection) {
+            $connections->disconnect($connection);
+        }
+
+        return redirect()->route('inbound.jobtread.page', [
+            'success'       => 'JobTread disconnected.',
+            'pms_client_id' => $pmsClientId,
+        ]);
     }
 
     public function disconnect(Request $request): RedirectResponse

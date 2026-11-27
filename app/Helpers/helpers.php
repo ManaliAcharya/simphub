@@ -38,6 +38,10 @@ if (! function_exists('clientConfigUrl')) {
                 'pms_client_id' => $client->pms_client_id,
             ]),
 
+            'jobtread' => route('inbound.jobtread.page', [
+                'pms_client_id' => $client->pms_client_id,
+            ]),
+
             'advancedmd' => route('inbound.advancedmd.page', [
                 'pms_client_id' => $client->pms_client_id,
             ]),

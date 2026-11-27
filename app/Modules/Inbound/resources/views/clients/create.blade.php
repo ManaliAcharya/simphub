@@ -229,6 +229,12 @@
                             </div>
                             <div class="tile-name">Wave</div>
                         </div>
+                        <div class="tile pms {{ old('client_pms') === 'JOBTREAD' ? 'selected' : '' }}" data-value="JOBTREAD" onclick="selectPMS(this)">
+                            <div class="logo-box">
+                                <div style="width:40px;height:40px;border-radius:8px;background:#fff7ed;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#9a3412;letter-spacing:-.5px;">JT</div>
+                            </div>
+                            <div class="tile-name">JobTread</div>
+                        </div>
                         <div class="tile pms coming-soon" data-value="MINDBODY" data-tooltip="Coming soon.." aria-disabled="true" aria-describedby="coming-soon-note" tabindex="0">
                             <div class="logo-box">
                                 <div style="width:40px;height:40px;border-radius:8px;background:#ecfdf5;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;color:#065f46;letter-spacing:-.5px;">MB</div>

@@ -699,7 +699,7 @@ class PmsIntegrationController extends Controller
             ->firstOrFail();
 
         abort_unless(
-            in_array(strtoupper((string) $client->client_pms), ['QUICKBOOKS', 'CLIO', 'ZOHO', 'WAVE', 'LAWCUS'], true),
+            in_array(strtoupper((string) $client->client_pms), ['QUICKBOOKS', 'CLIO', 'ZOHO', 'WAVE', 'LAWCUS', 'JOBTREAD'], true),
             422,
             'Auto-resend toggle is not supported for this PMS.'
         );
